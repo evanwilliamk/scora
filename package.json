@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "turbo run dev --parallel",
-    "build": "turbo run build",
+    "build": "cd apps/api && npm run build",
+    "start": "cd apps/api && npm start",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
