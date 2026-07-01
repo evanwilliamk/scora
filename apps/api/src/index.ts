@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import dotenv from 'dotenv';
 import staticPlugin from '@fastify/static';
+import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,12 +14,14 @@ const fastify = Fastify({ logger: true });
 
 fastify.register(cors);
 
-// Serve static files from public folder
+// Register static files FIRST, before other routes
 fastify.register(staticPlugin, {
   root: path.join(__dirname, '../public'),
   prefix: '/',
+  constraints: {},
 });
 
+// API routes (after static)
 fastify.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString(), api: 'scora' };
 });
