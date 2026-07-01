@@ -28,7 +28,11 @@ struct StravaAuthButton: View {
   }
   
   func openStravaAuth() {
-    let authURL = URL(string: "\(apiBaseURL)/api/auth/strava")!
+    guard let authURL = URL(string: "\(apiBaseURL)/api/auth/strava") else {
+      print("ERROR: Could not create URL")
+      return
+    }
+    print("Opening Strava auth: \(authURL)")
     stravaAuthURL = authURL
     showSafari = true
   }
@@ -36,9 +40,12 @@ struct StravaAuthButton: View {
 
 struct SafariView: UIViewControllerRepresentable {
   let url: URL
+  @Environment(\.dismiss) var dismiss
   
   func makeUIViewController(context: UIViewControllerRepresentableContext<SafariView>) -> SFSafariViewController {
-    return SFSafariViewController(url: url)
+    let safari = SFSafariViewController(url: url)
+    safari.preferredControlTintColor = .white
+    return safari
   }
   
   func updateUIViewController(_ uiViewController: SFSafariViewController, context: UIViewControllerRepresentableContext<SafariView>) {}
