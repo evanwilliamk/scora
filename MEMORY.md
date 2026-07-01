@@ -96,17 +96,28 @@
 
 ---
 
-**Status:** Phase 0 Day 1 IN PROGRESS
+**Status:** Phase 0 Day 1 COMPLETE ✅
 - ✅ Monorepo scaffold complete
-- ✅ API server live (Fastify)
+- ✅ API server live (Fastify, TypeScript)
 - ✅ Supabase database migrations pushed (5 tables)
-- ✅ Strava OAuth working (redirect → token exchange → success page)
-- ❌ HTML landing pages crashing on Railway (deployment issue)
-- ⏸️ Oura OAuth blocked on HTML pages for legal docs
+- ✅ Strava OAuth 100% working (redirect → token exchange → success page → iOS deep link)
+- ✅ Landing pages live (black minimal design)
+- ✅ Privacy + Terms pages deployed
+- ⚠️ Oura OAuth registered but hitting `invalid_request` error on token exchange
 
-**Current blocker:** Railway crashes when serving HTML. Deployed JSON-only version, still 502.
+**Oura Blocker:** Development app returns 400 `invalid_request` on token exchange. Tried:
+- Basic auth + form-encoded body ❌
+- Client credentials in body ❌
+- URL encoding everything ❌
+- Signing in as app creator ❌
+- No production upgrade path visible on Oura dashboard
+
+Decision: **Skip Oura OAuth for now.** Strava is ship-ready. Will revisit Oura in Phase 1 or request prod access from Oura team.
 
 **Live API:** https://zonal-prosperity-production-3965.up.railway.app
-- `/health` → returns JSON (works locally, crashes on Railway)
-- `/api/auth/strava` → OAuth flow (WORKING)
-- `/api/auth/strava/callback` → Success (WORKING)
+- `/health` → returns JSON ✅
+- `/` → Landing page (S logo, black bg, feature list) ✅
+- `/privacy`, `/terms` → Legal pages ✅
+- `/api/auth/strava` → OAuth flow ✅
+- `/api/auth/strava/callback` → Token exchange + deep link ✅
+- `/api/auth/oura` → Authorize flow works, callback broken ⚠️
