@@ -96,4 +96,17 @@
 
 ---
 
-**Status:** v1.4 spec complete, Phase 0-1 scope locked in CLAUDE.md + Execution Plan + Acceptance Criteria. Ready to start building.
+**Status:** Phase 0 Day 1 IN PROGRESS
+- ✅ Monorepo scaffold complete
+- ✅ API server live (Fastify)
+- ✅ Supabase database migrations pushed (5 tables)
+- ✅ Strava OAuth working (redirect → token exchange → success page)
+- ❌ HTML landing pages crashing on Railway (deployment issue)
+- ⏸️ Oura OAuth blocked on HTML pages for legal docs
+
+**Current blocker:** Railway crashes when serving HTML. Deployed JSON-only version, still 502.
+
+**Live API:** https://zonal-prosperity-production-3965.up.railway.app
+- `/health` → returns JSON (works locally, crashes on Railway)
+- `/api/auth/strava` → OAuth flow (WORKING)
+- `/api/auth/strava/callback` → Success (WORKING)
