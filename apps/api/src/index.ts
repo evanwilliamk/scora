@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import staticPlugin from '@fastify/static';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,14 +14,33 @@ const fastify = Fastify({ logger: true });
 
 fastify.register(cors);
 
-// Register static files FIRST, before other routes
-fastify.register(staticPlugin, {
-  root: path.join(__dirname, '../public'),
-  prefix: '/',
-  constraints: {},
+// Load HTML files
+const publicDir = path.join(__dirname, '../public');
+const indexHtml = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf-8');
+const privacyHtml = fs.readFileSync(path.join(publicDir, 'privacy.html'), 'utf-8');
+const termsHtml = fs.readFileSync(path.join(publicDir, 'terms.html'), 'utf-8');
+
+// Static routes
+fastify.get('/', async (request, reply) => {
+  return reply.type('text/html').send(indexHtml);
 });
 
-// API routes (after static)
+fastify.get('/privacy.html', async (request, reply) => {
+  return reply.type('text/html').send(privacyHtml);
+});
+
+fastify.get('/privacy', async (request, reply) => {
+  return reply.type('text/html').send(privacyHtml);
+});
+
+fastify.get('/terms.html', async (request, reply) => {
+  return reply.type('text/html').send(termsHtml);
+});
+
+fastify.get('/terms', async (request, reply) => {
+  return reply.type('text/html').send(termsHtml);
+});
+
 fastify.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString(), api: 'scora' };
 });
