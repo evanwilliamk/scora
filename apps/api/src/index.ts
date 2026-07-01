@@ -114,6 +114,56 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
   }
 });
 
+// Oura OAuth
+const OURA_CLIENT_ID = process.env.OURA_CLIENT_ID || '';
+const OURA_CLIENT_SECRET = process.env.OURA_CLIENT_SECRET || '';
+const OURA_REDIRECT_URI = `${process.env.API_URL || 'https://zonal-prosperity-production-3965.up.railway.app'}/api/auth/oura/callback`;
+
+fastify.get('/api/auth/oura', async (request, reply) => {
+  const redirectUrl = `https://cloud.ouraring.com/oauth/authorize?client_id=${OURA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(OURA_REDIRECT_URI)}&scope=personal`;
+  return reply.redirect(302, redirectUrl);
+});
+
+fastify.get('/api/auth/oura/callback', async (request, reply) => {
+  const { code } = request.query as { code?: string };
+  
+  if (!code) {
+    return reply.code(400).send({ error: 'Missing authorization code' });
+  }
+
+  try {
+    const tokenResponse = await fetch('https://api.ouraring.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: OURA_CLIENT_ID,
+        client_secret: OURA_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      return reply.code(400).send({ error: 'Failed to exchange code' });
+    }
+
+    const tokenData = await tokenResponse.json();
+    const deepLink = `scora://auth/oura/success?access_token=${tokenData.access_token}`;
+    const userAgent = (request.headers['user-agent'] || '').toLowerCase();
+    const isIOS = userAgent.includes('iphone') || userAgent.includes('ipad');
+    
+    if (isIOS) {
+      return reply.redirect(302, deepLink);
+    }
+    
+    const html = `<html><head><meta name="viewport" content="width=device-width"><title>SCORA</title><style>body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); } .container { background: white; padding: 40px; border-radius: 12px; max-width: 400px; text-align: center; } h1 { font-size: 48px; margin: 0; } h2 { margin: 20px 0 10px; } p { margin: 0 0 30px; color: #666; } a { display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; }</style></head><body><div class="container"><h1>✅</h1><h2>Oura Linked</h2><p>Your sleep data is now connected!</p><a href="${deepLink}">Open SCORA</a></div></body></html>`;
+    return reply.type('text/html').send(html);
+  } catch (error) {
+    fastify.log.error(error);
+    return reply.code(500).send({ error: 'Failed to link Oura' });
+  }
+});
+
 const start = async () => {
   try {
     await fastify.listen({ port: 3000, host: '0.0.0.0' });
