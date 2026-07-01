@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --import tsx/esm --watch src/index.ts",
-    "build": "npx tsc",
-    "start": "node --import tsx/esm src/index.ts",
+    "start": "npx tsx src/index.ts",
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
@@ -17,10 +16,10 @@
     "dotenv": "^16.3.1",
     "zod": "^3.22.4",
     "typescript": "^5.3.3",
-    "tsx": "^4.7.0"
+    "tsx": "^4.7.0",
+    "@types/node": "^20.10.6"
   },
   "devDependencies": {
-    "@types/node": "^20.10.6",
     "eslint": "^8.56.0"
   }
 }
