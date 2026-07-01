@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
-import { STRAVA_CLIENT_ID, STRAVA_REDIRECT_URI, exchangeStravaCode, linkStravaAthlete } from './strava';
 
 dotenv.config();
 
@@ -14,6 +13,10 @@ fastify.get('/health', async (request, reply) => {
 });
 
 // Strava OAuth
+const STRAVA_CLIENT_ID = '228067';
+const STRAVA_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET || '';
+const STRAVA_REDIRECT_URI = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/strava/callback';
+
 fastify.get('/api/auth/strava', async (request, reply) => {
   const redirectUrl = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_REDIRECT_URI)}&scope=read,activity:read_all`;
   return reply.redirect(302, redirectUrl);
@@ -27,9 +30,22 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
   }
 
   try {
-    const tokenData = await exchangeStravaCode(code);
-    const userId = tokenData.athlete.id;
-    await linkStravaAthlete(String(userId), tokenData);
+    const tokenResponse = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: STRAVA_CLIENT_ID,
+        client_secret: STRAVA_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      return reply.code(400).send({ error: 'Failed to exchange Strava code' });
+    }
+
+    const tokenData = await tokenResponse.json();
     
     return reply.send({ 
       success: true, 
@@ -40,11 +56,6 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     fastify.log.error(error);
     return reply.code(500).send({ error: 'Failed to link Strava account' });
   }
-});
-
-// Oura OAuth (placeholder)
-fastify.get('/api/auth/oura/callback', async (request, reply) => {
-  return { message: 'Oura OAuth callback (not yet implemented)' };
 });
 
 const start = async () => {
@@ -61,4 +72,3 @@ const start = async () => {
 start();
 
 export default fastify;
-// Updated
