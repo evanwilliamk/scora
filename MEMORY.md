@@ -96,28 +96,28 @@
 
 ---
 
-**Status:** Phase 0 Day 1 COMPLETE ✅
-- ✅ Monorepo scaffold complete
-- ✅ API server live (Fastify, TypeScript)
-- ✅ Supabase database migrations pushed (5 tables)
-- ✅ Strava OAuth 100% working (redirect → token exchange → success page → iOS deep link)
-- ✅ Landing pages live (black minimal design)
-- ✅ Privacy + Terms pages deployed
-- ⚠️ Oura OAuth registered but hitting `invalid_request` error on token exchange
-
-**Oura Blocker:** Development app returns 400 `invalid_request` on token exchange. Tried:
-- Basic auth + form-encoded body ❌
-- Client credentials in body ❌
-- URL encoding everything ❌
-- Signing in as app creator ❌
-- No production upgrade path visible on Oura dashboard
-
-Decision: **Skip Oura OAuth for now.** Strava is ship-ready. Will revisit Oura in Phase 1 or request prod access from Oura team.
+**Status:** Phase 0 Day 1 SHIPPED ✅✅✅
 
 **Live API:** https://zonal-prosperity-production-3965.up.railway.app
 - `/health` → returns JSON ✅
-- `/` → Landing page (S logo, black bg, feature list) ✅
-- `/privacy`, `/terms` → Legal pages ✅
-- `/api/auth/strava` → OAuth flow ✅
-- `/api/auth/strava/callback` → Token exchange + deep link ✅
-- `/api/auth/oura` → Authorize flow works, callback broken ⚠️
+- `/` → Landing page (S logo, black bg, 4-feature list, footer links) ✅
+- `/privacy`, `/terms` → Legal pages (black minimal) ✅
+- `/api/auth/strava` → OAuth authorize flow ✅
+- `/api/auth/strava/callback` → Token exchange + success page (styled) ✅
+
+**What's working:**
+1. Strava OAuth end-to-end (redirect → authorize → code exchange → success page)
+2. Deep link generation for iOS (scora://auth/success?athlete_id=...&name=...)
+3. Black minimal design (landing page + success pages match)
+4. Error pages styled consistently (black bg, white text)
+
+**Oura Status:** BLOCKED (awaiting app approval)
+- Registered app at https://cloud.ouraring.com/oauth/applications
+- Client ID: cfaea8b9-7e65-4452-acb7-a9105796bd9e
+- Hitting 400 `invalid_request` on token exchange (development app restriction)
+- Decision: Defer to Phase 1 or request production access from Oura team
+- OAuth skeleton code ready in codebase (commented out)
+
+**Commits today:** 10 total (many reverts, final clean version at `60d7b1c`)
+**Time spent:** ~1.5 hours (lots of learning on HTML deployment quirks)
+**Tokens used:** ~70k (kept iterating instead of reading docs first)
