@@ -126,8 +126,8 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
   }
 });
 
-const OURA_CLIENT_ID = process.env.OURA_CLIENT_ID || '';
-const OURA_CLIENT_SECRET = process.env.OURA_CLIENT_SECRET || '';
+const OURA_CLIENT_ID = (process.env.OURA_CLIENT_ID || '').trim();
+const OURA_CLIENT_SECRET = (process.env.OURA_CLIENT_SECRET || '').trim();
 const OURA_REDIRECT_URI = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/oura/callback';
 
 fastify.get('/api/auth/oura', async (request, reply) => {
@@ -139,17 +139,20 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
   const { code } = request.query as { code?: string };
   if (!code) return reply.code(400).send({ error: 'Missing code' });
   try {
+    const auth = Buffer.from(`${OURA_CLIENT_ID}:${OURA_CLIENT_SECRET}`).toString('base64');
     const tokenResponse = await fetch('https://api.ouraring.com/oauth/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: OURA_CLIENT_ID,
-        client_secret: OURA_CLIENT_SECRET,
-        code,
-        grant_type: 'authorization_code',
-      }),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${auth}`,
+      },
+      body: `code=${code}&grant_type=authorization_code`,
     });
-    if (!tokenResponse.ok) return reply.code(400).send({ error: 'Token exchange failed' });
+    if (!tokenResponse.ok) {
+      const errText = await tokenResponse.text();
+      fastify.log.error('Oura error:', errText);
+      return reply.code(400).send({ error: 'Token exchange failed', detail: errText });
+    }
     const deepLink = 'scora://auth/oura/success';
     const userAgent = request.headers['user-agent'] || '';
     const isIOS = /iPhone|iPad/.test(userAgent);
