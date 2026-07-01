@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
+import { landingPageHTML, privacyPolicyHTML, termsOfServiceHTML } from './pages';
 
 dotenv.config();
 
@@ -8,14 +9,27 @@ const fastify = Fastify({ logger: true });
 
 fastify.register(cors);
 
+// Landing pages
+fastify.get('/', async (request, reply) => {
+  return reply.type('text/html').send(landingPageHTML);
+});
+
+fastify.get('/privacy', async (request, reply) => {
+  return reply.type('text/html').send(privacyPolicyHTML);
+});
+
+fastify.get('/terms', async (request, reply) => {
+  return reply.type('text/html').send(termsOfServiceHTML);
+});
+
 fastify.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString(), api: 'scora' };
 });
 
 // Strava OAuth
 const STRAVA_CLIENT_ID = '228067';
-const STRAVA_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET || '';
-const STRAVA_REDIRECT_URI = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/strava/callback';
+const STRAVA_CLIENT_SECRET = proces…CRET || '';
+const STRAVA_REDIRECT_URI = `${process.env.API_URL || 'https://zonal-prosperity-production-3965.up.railway.app'}/api/auth/strava/callback`;
 
 fastify.get('/api/auth/strava', async (request, reply) => {
   const redirectUrl = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_REDIRECT_URI)}&scope=read,activity:read_all`;
@@ -67,19 +81,14 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     const athleteId = tokenData.athlete.id;
     const athleteName = tokenData.athlete.firstname;
     
-    // Deep link for iOS app
     const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}`;
-    
-    // Detect if coming from iOS
     const userAgent = request.headers['user-agent'] || '';
     const isIOS = /iPhone|iPad|iPod/.test(userAgent);
     
     if (isIOS) {
-      // Redirect to deep link; iOS app will handle it
       return reply.redirect(302, deepLink);
     }
     
-    // Web fallback: show success page with deep link
     return reply.type('text/html').send(`
       <html>
         <head>
@@ -114,10 +123,22 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
   }
 });
 
+// Oura OAuth (placeholder — will implement after we register the app)
+fastify.get('/api/auth/oura', async (request, reply) => {
+  return reply.code(501).send({ message: 'Oura OAuth not yet implemented' });
+});
+
+fastify.get('/api/auth/oura/callback', async (request, reply) => {
+  return reply.code(501).send({ message: 'Oura OAuth callback not yet implemented' });
+});
+
 const start = async () => {
   try {
     await fastify.listen({ port: 3000, host: '0.0.0.0' });
     console.log('API running on http://0.0.0.0:3000');
+    console.log(`Landing page: GET /`);
+    console.log(`Privacy Policy: GET /privacy`);
+    console.log(`Terms of Service: GET /terms`);
     console.log(`Strava OAuth: GET /api/auth/strava`);
   } catch (err) {
     fastify.log.error(err);
