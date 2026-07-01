@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct ContentView: View {
   @Binding var deepLinkData: DeepLinkData?
@@ -65,7 +66,7 @@ struct ContentView: View {
       }
       .padding(.top, 40)
     }
-    .onChange(of: deepLinkData) { newData in
+    .onReceive(Just(deepLinkData)) { newData in
       if let data = newData {
         athleteName = data.athleteName
         isAuthenticated = true
@@ -73,6 +74,8 @@ struct ContentView: View {
     }
   }
 }
+
+import Combine
 
 struct FeatureRow: View {
   let text: String
