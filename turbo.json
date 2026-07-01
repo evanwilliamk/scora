@@ -1,0 +1,16 @@
+{
+  "globalDependencies": ["**/.env"],
+  "pipeline": {
+    "build": {
+      "outputs": ["dist/**"],
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": ["lint-output/**"]
+    }
+  }
+}
