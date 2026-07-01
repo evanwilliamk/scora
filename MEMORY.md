@@ -35,7 +35,7 @@
 - AI: gpt-4o for voice + workouts, gpt-4o-mini for CDV + adaptation reasons. Validators in app code only.
 - Observability: PostHog + Sentry + custom telemetry (validator catches, banned-phrase hits, adaptation frequency, per-user LLM cost)
 
-**Repository:** Monorepo (apps/ios, apps/api, packages/voice, packages/validator, packages/posture, packages/plan-templates, packages/plan-engine, packages/llm-prompts). Voice + templates versioned independently because they're the moat.
+**Repository:** Monorepo (apps/ios, apps/api, packages structure). Voice + templates versioned independently because they're the moat.
 
 **Feature test (5 questions, updated):** Does it surface voice OR reinforce plan? Feed better data? Extend to new surface? Monetize trust? Stay in sidekick role (voice) AND obey deterministic-template rule (plan)? Fail #5 = cut. Pass none of 1–4 = out of scope.
 
@@ -45,79 +45,135 @@
 
 ---
 
-## 90-Day Execution Plan (v1.4) Summary
+## Phase 0 Day 1 COMPLETE ✅✅✅
 
-### Phase 0 (Days 1–14): Dogfood (Evan on Evan)
-- **Scope:** Free tier features only. iOS app + API + workers + pattern library (20 entries ported).
-- **Exit gates:** 12 of 14 mornings opened, 0 banned-phrase hits, 0 validator fail-throughs, ≥1 "wow" moment.
+**Status:** Backend + iOS shipped. End-to-end auth WORKING.
 
-### Phase 1 (Days 15–35): Free tier alpha, 10 users
-- **Scope:** CDV shipped, card tap-to-expand, Sunday weekly read, reply handler (why/more/pause/resume/stop/help), manual plan entry + Strava scheduled activities ingestion, Twilio BA approved, PostHog + Sentry.
-- **Exit gates:** 7/10 users open ≥10 of 14 days, <0.5% banned-phrase hits, voice-quality signal ≥5/10 "sounds like a person", ≥1 coach-forwarding signal.
-
-### Phase 2 (Days 36–65): Plan tier launch, 100 users → 15 paid
-- **Scope:** Stripe subscriptions, 7 MVP templates (half marathon 3x, marathon 3x, 10K 1x), plan generation, Apple WorkoutKit push, WhatsApp doorbell, inline chart-expansion, race predictions, calorie engine, scora.app marketing site, App Store submission.
-- **Exit gates:** 100 free users, 15 Plan conversions (15%), 70% trial→paid, ≥85% WhatsApp delivery, ≥90% WorkoutKit push success, ≥70% plan adherence, <10% monthly churn.
-
-### Phase 3 (Days 66–85): Coach marketplace launch
-- **Scope:** Stripe Connect setup, 5 curated coaches, coach onboarding, coach directory in-app, coach booking flow, coach-side dashboard v1, in-app messaging, weekly coach notes, coach alerts, coach's plan overrides AI plan.
-- **Exit gates:** 5 coaches active, 10 athlete-coach matches, ≥1 marketplace transaction, coach dashboard usage ≥80%, coach-authored plans for ≥8/10 athletes.
-
-### Phase 4+ (Day 86+): Stabilization
-- **Scope:** Daily SLOs, voice-quality panel (70%+ "sounds like a person"), template library expansion (20 total), paid acquisition test if voice panel passes.
-
----
-
-## Key Decisions & Constraints (locked)
-
-1. **Voice-vs-Plan is load-bearing.** Blur this = product broken.
-2. **All validators in app code, never LLM.** Hallucination guarantee.
-3. **Plans are always template-based.** Never LLM-invented.
-4. **Every adaptation named.** No silent changes.
-5. **Numeric-first design.** Raw drivers first, then interpretation.
-6. **Actualize the voice.** Every driver tappable to a chart.
-7. **Free tier at launch.** No gating later (avoids alienating users).
-8. **Coach marketplace, not acquisition fee.** SCORA takes 15% of athlete-coach transaction; coach gets 85% + free platform.
-9. **Oura in Free tier.** Wedge ICP includes Oura users; free tier includes it.
-10. **No paid acquisition in Phase 2.** Organic growth only (warm intros, Strava clubs, creator partnerships, Reddit, Substack).
-
----
-
-## Next: Clarifying Questions for Evan
-
-(To be asked after full spec review)
-
-1. Team: Just you (Phase 0-1), or do you have eng + design help?
-2. Build strategy: Backend-first (API ready by Day 14) or pair-build iOS in parallel?
-3. Pattern library: 20 entries ported in Phase 0, or full 40-entry v0.1 port?
-4. Plan templates: Evan-authored drafts ready, or start from scratch (Daniels/Pfitzinger)?
-5. Coach recruiting: 5+ coaches pre-scoped, or Phase 2 parallel project?
-6. Locking Phase 1 scope — confirm 10 users, 21 days, no paid features, focus on voice generalization?
-
----
-
-**Status:** Phase 0 Day 1 SHIPPED ✅✅✅
-
-**Live API:** https://zonal-prosperity-production-3965.up.railway.app
+**Backend (Live API):** https://zonal-prosperity-production-3965.up.railway.app
 - `/health` → returns JSON ✅
-- `/` → Landing page (S logo, black bg, 4-feature list, footer links) ✅
+- `/` → Landing page (S logo, black bg, 4-feature list) ✅
 - `/privacy`, `/terms` → Legal pages (black minimal) ✅
-- `/api/auth/strava` → OAuth authorize flow ✅
-- `/api/auth/strava/callback` → Token exchange + success page (styled) ✅
+- `/api/auth/strava` → OAuth authorize ✅
+- `/api/auth/strava/callback` → Token exchange + success page ✅
 
-**What's working:**
-1. Strava OAuth end-to-end (redirect → authorize → code exchange → success page)
-2. Deep link generation for iOS (scora://auth/success?athlete_id=...&name=...)
-3. Black minimal design (landing page + success pages match)
-4. Error pages styled consistently (black bg, white text)
+**iOS App (SwiftUI):**
+- ✅ Landing screen (black, S logo, features, auth button)
+- ✅ Strava auth button (opens Safari)
+- ✅ Deep link handler (processes scora://auth/success?athlete_id=...&name=...)
+- ✅ Success screen (shows athlete name)
+- ✅ **END-TO-END WORKING** (tested on simulator: sign-in → Strava approval → deep link → success screen shows "Welcome, Evan!")
+
+**What shipped:**
+1. Backend: Strava OAuth (redirect → authorize → token exchange → deep link)
+2. iOS: SwiftUI app with Strava auth + deep link handling
+3. **End-to-end integration: WORKING** (tested and verified)
+4. Design: Black minimal (landing + success pages consistent)
 
 **Oura Status:** BLOCKED (awaiting app approval)
 - Registered app at https://cloud.ouraring.com/oauth/applications
 - Client ID: cfaea8b9-7e65-4452-acb7-a9105796bd9e
-- Hitting 400 `invalid_request` on token exchange (development app restriction)
-- Decision: Defer to Phase 1 or request production access from Oura team
-- OAuth skeleton code ready in codebase (commented out)
+- Error: 400 `invalid_request` (development app restriction)
+- **Next:** Check email for approval or request production access from Oura team
 
-**Commits today:** 10 total (many reverts, final clean version at `60d7b1c`)
-**Time spent:** ~1.5 hours (lots of learning on HTML deployment quirks)
-**Tokens used:** ~70k (kept iterating instead of reading docs first)
+**Stats:**
+- Commits: 14 total (clean final state)
+- Time: ~5 hours (backend setup + iOS build + auth testing)
+- Tokens: ~200k (lots of iteration, Xcode troubleshooting)
+
+---
+
+## Phase 1 Launch Checklist (Days 15-35)
+
+**READY (shipped today):**
+- ✅ Backend API (Strava OAuth, landing pages, legal docs)
+- ✅ iOS app (SwiftUI, deep link handler, auth working)
+- ✅ End-to-end auth tested (sign-in → deep link → success screen)
+
+**TODO before Phase 1 starts:**
+- [ ] Check email for Oura app approval (if yes, activate in Railway)
+- [ ] Recruit 10 alpha users (friends, fitness buddies with Strava + iPhone)
+- [ ] Build Dashboard view (iOS) - show athlete info, last activity
+- [ ] Implement CDV endpoint (backend) - chat-driven visualization
+- [ ] Add weekly read feature (backend) - scheduled Sunday morning push
+- [ ] Set up PostHog + Sentry (telemetry)
+
+**Phase 1 scope (locked from PRD v1.4):**
+1. Dashboard screen (athlete info, recent activities)
+2. CDV endpoint (chat-driven analysis)
+3. Weekly read (scheduled, Sunday morning)
+4. Reply handler (why/more/pause/resume/stop/help)
+5. Manual plan entry + Strava activity sync
+6. Telemetry (PostHog + Sentry)
+7. TestFlight submission prep
+
+**Exit gates (Phase 1):**
+- 7/10 users open ≥10 of 14 mornings
+- <0.5% banned-phrase hits
+- Voice quality ≥5/10 "sounds like a person"
+- ≥1 coach-forwarding signal
+
+---
+
+## Next Actions (Evan)
+
+**Immediate (this week):**
+1. Check email for Oura approval → if yes, test Oura OAuth
+2. Start recruiting 10 alpha users (send Strava invite links)
+3. Test iOS app on your iPhone (build for device, not just simulator)
+4. Start Phase 1 planning
+
+**Questions before Phase 1:**
+- Team: Just you coding, or iOS/backend help?
+- Pattern library: Have 20 posture entries ready to port, or build from scratch?
+- Plan templates: Evan-authored drafts ready, or use Daniels/Pfitzinger samples?
+- Coach recruiting: Pre-scoped 5+ coaches, or parallel project?
+
+**Locked in stone:**
+- Phase 1 = 21 days (Days 15-35)
+- Free tier only (no paid gating)
+- 10 alpha users minimum
+- Voice never prescriptive (only interpretive)
+- Plans always template-based (never LLM-invented)
+
+---
+
+## Repositories & Deployment
+
+**GitHub:** https://github.com/evanwilliamk/scora (monorepo)
+- `apps/api/` → Fastify backend (TypeScript)
+- `apps/ios/` → SwiftUI iOS app
+- `packages/` → Reserved for voice engine, validator, etc.
+
+**Deploy:** Railway (auto-deploy on GitHub push)
+- API: https://zonal-prosperity-production-3965.up.railway.app
+- Environment variables:
+  - `STRAVA_CLIENT_SECRET` ✅ (loaded, working)
+  - `OURA_CLIENT_ID` (loaded, awaiting app approval)
+  - `OURA_CLIENT_SECRET` (loaded, awaiting app approval)
+
+**iOS:** Built locally, ready for TestFlight when you're ready
+
+---
+
+## Session Log
+
+**Wed 2026-07-01 (Day 1):**
+- 11:55 AM: Started Phase 0, set up monorepo + API
+- 12:30 PM: Strava OAuth working, landed on landing page HTML deployment issues
+- 1:30 PM: Backend live, Oura blocked on token exchange (development app)
+- 2:45 PM: Started iOS setup (Xcode install)
+- 3:32 PM: **iOS end-to-end auth WORKING** (Strava sign-in → deep link → success screen)
+
+**Key wins:**
+- ✅ Strava OAuth 100% working (backend + iOS)
+- ✅ Deep link handling proven
+- ✅ Black minimal design consistent across web + iOS
+- ✅ Ready for Phase 1 dogfooding
+
+**Blockers resolved:**
+- HTML on Railway (solved with inline hardcoded strings)
+- Xcode version mismatch (installed 15.x for Sonoma 14.5)
+- SafariView sheet issues (switched to UIApplication.shared.open())
+- Swift onChange Optional binding (switched to onReceive)
+
+**Next session:** Phase 1 prep (Dashboard view, CDV endpoint, weekly reads)

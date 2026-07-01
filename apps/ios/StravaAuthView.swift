@@ -1,10 +1,6 @@
 import SwiftUI
-import SafariServices
 
 struct StravaAuthButton: View {
-  @State private var showSafari = false
-  @State private var stravaAuthURL: URL?
-  
   let apiBaseURL = "https://zonal-prosperity-production-3965.up.railway.app"
   
   var body: some View {
@@ -20,11 +16,6 @@ struct StravaAuthButton: View {
       .background(Color.white)
       .cornerRadius(8)
     }
-    .sheet(isPresented: $showSafari) {
-      if let url = stravaAuthURL {
-        SafariView(url: url)
-      }
-    }
   }
   
   func openStravaAuth() {
@@ -33,22 +24,8 @@ struct StravaAuthButton: View {
       return
     }
     print("Opening Strava auth: \(authURL)")
-    stravaAuthURL = authURL
-    showSafari = true
+    UIApplication.shared.open(authURL)
   }
-}
-
-struct SafariView: UIViewControllerRepresentable {
-  let url: URL
-  @Environment(\.dismiss) var dismiss
-  
-  func makeUIViewController(context: UIViewControllerRepresentableContext<SafariView>) -> SFSafariViewController {
-    let safari = SFSafariViewController(url: url)
-    safari.preferredControlTintColor = .white
-    return safari
-  }
-  
-  func updateUIViewController(_ uiViewController: SFSafariViewController, context: UIViewControllerRepresentableContext<SafariView>) {}
 }
 
 #Preview {
