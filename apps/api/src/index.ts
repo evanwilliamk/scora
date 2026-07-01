@@ -15,21 +15,28 @@ const fastify = Fastify({ logger: true });
 
 fastify.register(cors);
 
-const index = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
-const privacy = fs.readFileSync(path.join(publicDir, 'privacy.html'), 'utf8');
-const terms = fs.readFileSync(path.join(publicDir, 'terms.html'), 'utf8');
+// Lazy load HTML files (read on first request, not at startup)
+let indexHtml = '';
+let privacyHtml = '';
+let termsHtml = '';
 
-fastify.get('/', (req, rep) => rep.type('text/html').send(index));
-fastify.get('/index.html', (req, rep) => rep.type('text/html').send(index));
-fastify.get('/privacy.html', (req, rep) => rep.type('text/html').send(privacy));
-fastify.get('/privacy', (req, rep) => rep.type('text/html').send(privacy));
-fastify.get('/terms.html', (req, rep) => rep.type('text/html').send(terms));
-fastify.get('/terms', (req, rep) => rep.type('text/html').send(terms));
+const loadFiles = () => {
+  if (!indexHtml) indexHtml = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
+  if (!privacyHtml) privacyHtml = fs.readFileSync(path.join(publicDir, 'privacy.html'), 'utf8');
+  if (!termsHtml) termsHtml = fs.readFileSync(path.join(publicDir, 'terms.html'), 'utf8');
+};
+
+fastify.get('/', (req, rep) => { loadFiles(); return rep.type('text/html').send(indexHtml); });
+fastify.get('/index.html', (req, rep) => { loadFiles(); return rep.type('text/html').send(indexHtml); });
+fastify.get('/privacy.html', (req, rep) => { loadFiles(); return rep.type('text/html').send(privacyHtml); });
+fastify.get('/privacy', (req, rep) => { loadFiles(); return rep.type('text/html').send(privacyHtml); });
+fastify.get('/terms.html', (req, rep) => { loadFiles(); return rep.type('text/html').send(termsHtml); });
+fastify.get('/terms', (req, rep) => { loadFiles(); return rep.type('text/html').send(termsHtml); });
 
 fastify.get('/health', (req, rep) => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
 const STRAVA_ID = '228067';
-const STRAVA_SECRET = proces…CRET || '';
+const STRAVA_SECRET = *** || '';
 const STRAVA_REDIRECT = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/strava/callback';
 
 fastify.get('/api/auth/strava', (req, rep) => {
@@ -63,7 +70,7 @@ fastify.get('/api/auth/strava/callback', async (req, rep) => {
 });
 
 const OURA_ID = process.env.OURA_CLIENT_ID || '';
-const OURA_SECRET = proces…CRET || '';
+const OURA_SECRET = *** || '';
 const OURA_REDIRECT = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/oura/callback';
 
 fastify.get('/api/auth/oura', (req, rep) => {
