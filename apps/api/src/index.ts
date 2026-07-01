@@ -10,7 +10,7 @@ fastify.register(cors);
 fastify.get('/health', (r, p) => ({ ok: true }));
 
 const SID = '228067';
-const SS = process.env.STRAVA_SECRET || '';
+const SS = (process.env.STRAVA_CLIENT_SECRET || '').trim();
 const SR = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/strava/callback';
 
 fastify.get('/api/auth/strava', (r, p) => p.redirect(302, `https://www.strava.com/oauth/authorize?client_id=${SID}&response_type=code&redirect_uri=${encodeURIComponent(SR)}&scope=read,activity:read_all`));
