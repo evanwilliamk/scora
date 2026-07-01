@@ -33,7 +33,10 @@
 ## Web Frontend (Phase 2+)
 
 ### Landing Pages
-- [ ] `/auth/success` — Success page after OAuth (currently just HTML, needs design)
+- [x] `/` — Landing page with SCORA logo + features (✅ BUILT Phase 0)
+- [x] `/privacy` — Privacy Policy placeholder (✅ BUILT Phase 0)
+- [x] `/terms` — Terms of Service placeholder (✅ BUILT Phase 0)
+- [ ] `/auth/success` — Success page after OAuth (currently just HTML, needs design refinement)
 - [ ] `/dashboard` — Main athlete dashboard
 - [ ] `/settings` — Account settings, linked integrations
 
@@ -54,10 +57,28 @@
 
 **Data visualization:** We'll use Vega-Lite charts (already in tech stack) for activity/health data in CDV tap-expand.
 
+**Landing pages (Phase 0):** Currently served from Railway API as static HTML. When you build a real frontend (Next.js/React), migrate these to proper pages.
+
 ---
 
 ## Timeline
 
-- **Phase 0 (Days 1–14):** HTML success pages only
+- **Phase 0 (Days 1–14):** 
+  - ✅ HTML success pages for OAuth
+  - ✅ Landing page + legal pages (placeholder)
 - **Phase 1 (Days 15–35):** iOS app built, handles deep links
-- **Phase 2 (Days 36–65):** Web dashboard + landing pages
+- **Phase 2 (Days 36–65):** 
+  - Refine landing pages with real design
+  - Build web dashboard
+  - Web analytics/settings pages
+
+## Refinements for Later
+
+When you redesign the landing pages:
+- [ ] Add hero section with better copy
+- [ ] Add pricing tiers (Free, Plan, Coach)
+- [ ] Add social proof / testimonials
+- [ ] Better branding / visual hierarchy with logo
+- [ ] Newsletter signup
+- [ ] FAQ section
+- [ ] Live demo video or walkthrough
