@@ -131,7 +131,7 @@ const OURA_CLIENT_SECRET = (process.env.OURA_CLIENT_SECRET || '').trim();
 const OURA_REDIRECT_URI = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/oura/callback';
 
 fastify.get('/api/auth/oura', async (request, reply) => {
-  const redirectUrl = `https://cloud.ouraring.com/oauth/authorize?client_id=${OURA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(OURA_REDIRECT_URI)}&scope=personal`;
+  const redirectUrl = `https://cloud.ouraring.com/oauth/authorize?client_id=${OURA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(OURA_REDIRECT_URI)}`;
   return reply.redirect(302, redirectUrl);
 });
 
@@ -139,17 +139,13 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
   const { code } = request.query as { code?: string };
   if (!code) return reply.code(400).send({ error: 'Missing code' });
   try {
-    const params = new URLSearchParams();
-    params.append('client_id', OURA_CLIENT_ID);
-    params.append('client_secret', OURA_CLIENT_SECRET);
-    params.append('code', code);
-    params.append('grant_type', 'authorization_code');
+    const body = `client_id=${encodeURIComponent(OURA_CLIENT_ID)}&client_secret=${encodeURIComponent(OURA_CLIENT_SECRET)}&code=${encodeURIComponent(code)}&grant_type=authorization_code`;
     const tokenResponse = await fetch('https://api.ouraring.com/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: params.toString(),
+      body,
     });
 
     if (!tokenResponse.ok) {
@@ -158,15 +154,15 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
       return reply.code(400).send({ error: 'Token exchange failed', detail: errText });
     }
     const tokenData = await tokenResponse.json();
-    fastify.log.info('Oura success:', tokenData);
+    fastify.log.info('Oura token success');
     const deepLink = 'scora://auth/oura/success';
     const userAgent = request.headers['user-agent'] || '';
     const isIOS = /iPhone|iPad/.test(userAgent);
     if (isIOS) return reply.redirect(302, deepLink);
-    return reply.send({ success: true, message: 'Oura linked' });
+    return reply.send({ success: true, message: 'Oura linked', token: tokenData });
   } catch (error) {
-    fastify.log.error(error);
-    return reply.code(500).send({ error: 'Failed' });
+    fastify.log.error('Oura exception:', error);
+    return reply.code(500).send({ error: 'Failed', detail: String(error) });
   }
 });
 
