@@ -2,10 +2,11 @@
   "name": "scora-monorepo",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
     "dev": "turbo run dev --parallel",
-    "build": "cd apps/api && npm run build",
-    "start": "cd apps/api && npm start",
+    "build": "cd apps/api && pnpm run build",
+    "start": "cd apps/api && pnpm start",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
