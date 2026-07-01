@@ -139,6 +139,9 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
   const { code } = request.query as { code?: string };
   if (!code) return reply.code(400).send({ error: 'Missing code' });
   try {
+    const params = new URLSearchParams();
+    params.append('code', code);
+    params.append('grant_type', 'authorization_code');
     const auth = Buffer.from(`${OURA_CLIENT_ID}:${OURA_CLIENT_SECRET}`).toString('base64');
     const tokenResponse = await fetch('https://api.ouraring.com/oauth/token', {
       method: 'POST',
@@ -146,8 +149,9 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${auth}`,
       },
-      body: `code=${code}&grant_type=authorization_code`,
+      body: params.toString(),
     });
+
     if (!tokenResponse.ok) {
       const errText = await tokenResponse.text();
       fastify.log.error('Oura error:', errText);
