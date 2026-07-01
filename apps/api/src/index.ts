@@ -96,25 +96,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     }
     
     // Web fallback: show success page with deep link
-    return reply.type('text/html').send(`
-      <html>
-        <head>
-          <title>SCORA - Strava Linked</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-        </head>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-          <div style="text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); max-width: 400px;">
-            <h1 style="margin: 0; font-size: 48px;">✅</h1>
-            <h2 style="margin: 20px 0 10px; color: #333;">Strava Connected</h2>
-            <p style="margin: 0 0 30px; color: #666; font-size: 16px;">Welcome, ${athleteName}!</p>
-            <a href="${deepLink}" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
-              Open SCORA
-            </a>
-            <p style="margin-top: 20px; color: #999; font-size: 14px;">If you're not redirected, tap the button above.</p>
-          </div>
-        </body>
-      </html>
-    `);
+    return reply.type('text/html').send(`<html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}.container{max-width:400px;text-align:center}.logo{font-size:100px;margin-bottom:20px}h1{font-size:40px;margin:0 0 20px;font-weight:700}p{color:#999;font-size:16px;margin:0 0 30px}a{display:inline-block;padding:14px 32px;background:#fff;color:#000;text-decoration:none;border-radius:4px;font-weight:600}a:hover{opacity:0.9}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #222;font-size:13px;color:#666}</style></head><body><div class="container"><div class="logo">S</div><h1>Strava Linked</h1><p>Welcome, ${athleteName}!</p><a href="${deepLink}">Open SCORA</a><div class="footer"><p>If you're not redirected, tap the button above.</p></div></div></body></html>`);
   } catch (error) {
     fastify.log.error(error);
     return reply.type('text/html').send(`
