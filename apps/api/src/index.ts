@@ -24,6 +24,10 @@ fastify.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString(), api: 'scora' };
 });
 
+fastify.get('/debug/oura', async (request, reply) => {
+  return { oura_id_set: !!OURA_CLIENT_ID, oura_secret_set: !!OURA_CLIENT_SECRET, oura_id_len: OURA_CLIENT_ID.length, secret_len: OURA_CLIENT_SECRET.length };
+});
+
 // Strava OAuth
 const STRAVA_CLIENT_ID = '228067';
 const STRAVA_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET || '';
