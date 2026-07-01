@@ -4,8 +4,8 @@
   "private": true,
 
   "scripts": {
-    "build": "cd apps/api && npm run build",
-    "start": "cd apps/api && npm start"
+    "start": "cd apps/api && npm install && npx tsx src/index.ts"
   },
+  "dependencies": {},
   "devDependencies": {}
 }
