@@ -95,8 +95,8 @@ fastify.post('/api/cdv', async (request, reply) => {
       return reply.code(400).send({ error: 'Missing: message, stravaToken, athleteId' });
     }
 
-    // Fetch Strava data
-    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=20', {
+    // Fetch Strava data (larger window for real trend analysis)
+    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
       headers: { 'Authorization': `Bearer ${stravaToken}` },
     });
 
@@ -105,28 +105,75 @@ fastify.post('/api/cdv', async (request, reply) => {
     }
 
     const activities: any[] = await stravaRes.json();
-    
-    // Calculate weekly stats
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const weekActivities = activities.filter(a => new Date(a.start_date) > sevenDaysAgo);
-    const weeklyMiles = weekActivities
-      .filter(a => a.type === 'Run')
-      .reduce((sum, a) => sum + (a.distance || 0) / 1609.34, 0)
-      .toFixed(1);
-    const runCount = weekActivities.filter(a => a.type === 'Run').length;
 
-    const lastRun = activities.find(a => a.type === 'Run') || {};
-    const lastRunMiles = lastRun.distance ? (lastRun.distance / 1609.34).toFixed(1) : 'N/A';
+    const M = 1609.34;
+    const now = Date.now();
+    const daysAgo = (d: number) => new Date(now - d * 86400000);
+    const paceMinPerMi = (a: any) => {
+      if (!a.distance || !a.moving_time) return null;
+      const secPerMi = a.moving_time / (a.distance / M);
+      const min = Math.floor(secPerMi / 60);
+      const sec = Math.round(secPerMi % 60);
+      return `${min}:${sec.toString().padStart(2, '0')}`;
+    };
 
-    // Build simple prompt
-    const systemPrompt = `You are SCORA, a fitness coach AI. You read athlete data and describe postures: primed, steady, moderate, back-off, rest, taper.
-NEVER prescribe workouts. ONLY describe patterns.
-Response format: 1 line voice + metrics (METRIC: name | VALUE: value | TREND: trend)`;
+    const runs = activities.filter(a => a.type === 'Run');
+    const inWindow = (a: any, from: Date, to: Date) => {
+      const d = new Date(a.start_date);
+      return d > from && d <= to;
+    };
 
-    const userPrompt = `Athlete ${athleteId} asks: "${message}"
-Last 7 days: ${weeklyMiles} miles (${runCount} runs)
-Last run: ${lastRun.name || 'N/A'} (${lastRunMiles} miles)
-Respond with voice + 2-3 metrics.`;
+    // This week vs last week
+    const thisWeek = runs.filter(a => inWindow(a, daysAgo(7), new Date(now)));
+    const lastWeek = runs.filter(a => inWindow(a, daysAgo(14), daysAgo(7)));
+    const miles = (arr: any[]) => arr.reduce((s, a) => s + (a.distance || 0) / M, 0);
+    const thisWeekMiles = miles(thisWeek);
+    const lastWeekMiles = miles(lastWeek);
+    const weekDelta = lastWeekMiles > 0
+      ? `${(((thisWeekMiles - lastWeekMiles) / lastWeekMiles) * 100).toFixed(0)}%`
+      : 'n/a';
+
+    // Per-run detail for the last 10 runs (this is what makes answers vary)
+    const recentRuns = runs.slice(0, 10).map(a => ({
+      name: a.name,
+      date: (a.start_date_local || a.start_date || '').slice(0, 10),
+      miles: a.distance ? +(a.distance / M).toFixed(1) : 0,
+      pace: paceMinPerMi(a),
+      avgHr: a.average_heartrate ? Math.round(a.average_heartrate) : null,
+      maxHr: a.max_heartrate ? Math.round(a.max_heartrate) : null,
+      elevFt: a.total_elevation_gain ? Math.round(a.total_elevation_gain * 3.281) : 0,
+      movingMin: a.moving_time ? Math.round(a.moving_time / 60) : 0,
+    }));
+
+    const dataBlock = {
+      thisWeek: { miles: +thisWeekMiles.toFixed(1), runs: thisWeek.length },
+      lastWeek: { miles: +lastWeekMiles.toFixed(1), runs: lastWeek.length },
+      weekOverWeekMiles: weekDelta,
+      recentRuns,
+    };
+
+    const systemPrompt = `You are SCORA, a voice layer for endurance athletes. You READ and NAME patterns using postures: primed, steady, moderate, back-off, rest, taper.
+HARD RULES:
+- NEVER prescribe workouts, paces, or training. You only interpret what already happened.
+- Every claim must be backed by a specific number in the data provided. Never invent data.
+- Answer the athlete's ACTUAL question using the relevant data. Different questions -> different answers.
+- Numeric-first: lead with the number, then the interpretation.
+- Tone: calm, precise, human. No fitness-bro language. No exclamation-heavy hype.
+OUTPUT FORMAT (exactly):
+- Line 1: one-sentence voice read that directly answers the question.
+- Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <primed|steady|moderate|back-off|rest|taper OR short trend like +12% / flat / down>
+Only cite metrics that exist in the data.`;
+
+    const userPrompt = `Athlete question: "${message}"
+
+Data (JSON):
+${JSON.stringify(dataBlock, null, 2)}
+
+Answer THIS question specifically using the data above. If the data can't answer it (e.g. sleep/HRV not present), say so plainly and pivot to what the run data does show.`;
+
+    const weeklyMiles = thisWeekMiles.toFixed(1);
+    const runCount = thisWeek.length;
+    const lastRun = runs[0] || {};
 
     // Call OpenAI
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -141,8 +188,8 @@ Respond with voice + 2-3 metrics.`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 250,
-        temperature: 0.7,
+        max_tokens: 350,
+        temperature: 0.5,
       }),
     });
 
