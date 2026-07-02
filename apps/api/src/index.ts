@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const fastify = Fastify({ logger: true });
-
 fastify.register(cors);
 
 fastify.get('/', async (request, reply) => {
@@ -24,13 +23,9 @@ fastify.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString(), api: 'scora' };
 });
 
-fastify.get('/debug/oura', async (request, reply) => {
-  return { oura_id_set: !!OURA_CLIENT_ID, oura_secret_set: !!OURA_CLIENT_SECRET, oura_id_len: OURA_CLIENT_ID.length, secret_len: OURA_CLIENT_SECRET.length };
-});
-
 // Strava OAuth
 const STRAVA_CLIENT_ID = '228067';
-const STRAVA_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET || '';
+const STRAVA_CLIENT_SECRET = (process.env.STRAVA_CLIENT_SECRET || '').trim();
 const STRAVA_REDIRECT_URI = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/strava/callback';
 
 fastify.get('/api/auth/strava', async (request, reply) => {
@@ -43,17 +38,12 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
   
   if (!code) {
     return reply.type('text/html').send(`
-      <html>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5;">
-          <div style="text-align: center;">
-            <h1>⚠️ Missing Authorization</h1>
-            <p>No authorization code received. Please try again.</p>
-          </div>
-        </body>
-      </html>
+      <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5;">
+        <div style="text-align: center;"><h1>⚠️ Missing Authorization</h1><p>No authorization code received. Please try again.</p></div>
+      </body></html>
     `);
   }
-
+  
   try {
     const tokenResponse = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
@@ -67,88 +57,132 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     });
 
     if (!tokenResponse.ok) {
-      return reply.type('text/html').send(`
-        <html>
-          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5;">
-            <div style="text-align: center;">
-              <h1>⚠️ Authentication Failed</h1>
-              <p>Could not exchange code with Strava. Please try again.</p>
-            </div>
-          </body>
-        </html>
-      `);
+      const errText = await tokenResponse.text();
+      fastify.log.error('Strava token error:', errText);
+      return reply.code(400).send({ error: 'Token exchange failed', detail: errText });
     }
 
     const tokenData = await tokenResponse.json();
     const athleteId = tokenData.athlete.id;
     const athleteName = tokenData.athlete.firstname;
+    const accessToken = tokenData.access_token;
+
+    const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}&token=${encodeURIComponent(accessToken)}`;
     
-    // Deep link for iOS app
-    const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}`;
-    
-    // Detect if coming from iOS
     const userAgent = request.headers['user-agent'] || '';
     const isIOS = /iPhone|iPad|iPod/.test(userAgent);
-    
+
     if (isIOS) {
-      // Redirect to deep link; iOS app will handle it
       return reply.redirect(302, deepLink);
     }
-    
-    // Web fallback: show success page with deep link
-    return reply.type('text/html').send(`<html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}.container{max-width:400px;text-align:center}.logo{font-size:100px;margin-bottom:20px}h1{font-size:40px;margin:0 0 20px;font-weight:700}p{color:#999;font-size:16px;margin:0 0 30px}a{display:inline-block;padding:14px 32px;background:#fff;color:#000;text-decoration:none;border-radius:4px;font-weight:600}a:hover{opacity:0.9}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #222;font-size:13px;color:#666}</style></head><body><div class="container"><div class="logo">S</div><h1>Strava Linked</h1><p>Welcome, ${athleteName}!</p><a href="${deepLink}">Open SCORA</a><div class="footer"><p>If you're not redirected, tap the button above.</p></div></div></body></html>`);
-  } catch (error) {
-    fastify.log.error(error);
+
     return reply.type('text/html').send(`
-      <html>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5;">
-          <div style="text-align: center;">
-            <h1>⚠️ Error</h1>
-            <p>Failed to link your Strava account. Please try again.</p>
-          </div>
-        </body>
-      </html>
+      <html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}.container{max-width:400px;text-align:center}.logo{font-size:100px;margin-bottom:20px}h1{font-size:40px;margin:0 0 20px;font-weight:700}p{color:#999;font-size:16px;margin:0 0 30px}a{display:inline-block;padding:14px 32px;background:#fff;color:#000;text-decoration:none;border-radius:4px;font-weight:600}a:hover{opacity:0.9}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #222;font-size:13px;color:#666}</style></head><body><div class="container"><div class="logo">S</div><h1>Strava Linked</h1><p>Welcome, ${athleteName}!</p><a href="${deepLink}">Open SCORA</a><div class="footer"><p>If you're not redirected, tap the button above.</p></div></div></body></html>
     `);
+  } catch (error) {
+    fastify.log.error('Strava exception:', error);
+    return reply.code(500).send({ error: 'Failed', detail: String(error) });
   }
 });
 
-const OURA_CLIENT_ID = (process.env.OURA_CLIENT_ID || '').trim();
-const OURA_CLIENT_SECRET = (process.env.OURA_CLIENT_SECRET || '').trim();
-const OURA_REDIRECT_URI = 'https://zonal-prosperity-production-3965.up.railway.app/api/auth/oura/callback';
-
-fastify.get('/api/auth/oura', async (request, reply) => {
-  const redirectUrl = `https://cloud.ouraring.com/oauth/authorize?client_id=${OURA_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(OURA_REDIRECT_URI)}`;
-  return reply.redirect(302, redirectUrl);
-});
-
-fastify.get('/api/auth/oura/callback', async (request, reply) => {
-  const { code } = request.query as { code?: string };
-  if (!code) return reply.code(400).send({ error: 'Missing code' });
+// CDV endpoint - simple and safe
+fastify.post('/api/cdv', async (request, reply) => {
   try {
-    const body = `client_id=${encodeURIComponent(OURA_CLIENT_ID)}&client_secret=${encodeURIComponent(OURA_CLIENT_SECRET)}&code=${encodeURIComponent(code)}&grant_type=authorization_code`;
-    const tokenResponse = await fetch('https://api.ouraring.com/oauth/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body,
+    const body = request.body as any;
+    const { message, stravaToken, athleteId } = body;
+
+    if (!message || !stravaToken || !athleteId) {
+      return reply.code(400).send({ error: 'Missing: message, stravaToken, athleteId' });
+    }
+
+    // Fetch Strava data
+    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=20', {
+      headers: { 'Authorization': `Bearer ${stravaToken}` },
     });
 
-    if (!tokenResponse.ok) {
-      const errText = await tokenResponse.text();
-      fastify.log.error('Oura error:', { status: tokenResponse.status, body: errText });
-      return reply.code(400).send({ error: 'Token exchange failed', detail: errText });
+    if (!stravaRes.ok) {
+      return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const tokenData = await tokenResponse.json();
-    fastify.log.info('Oura token success');
-    const deepLink = 'scora://auth/oura/success';
-    const userAgent = request.headers['user-agent'] || '';
-    const isIOS = /iPhone|iPad/.test(userAgent);
-    if (isIOS) return reply.redirect(302, deepLink);
-    return reply.send({ success: true, message: 'Oura linked', token: tokenData });
+
+    const activities: any[] = await stravaRes.json();
+    
+    // Calculate weekly stats
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weekActivities = activities.filter(a => new Date(a.start_date) > sevenDaysAgo);
+    const weeklyMiles = weekActivities
+      .filter(a => a.type === 'Run')
+      .reduce((sum, a) => sum + (a.distance || 0) / 1609.34, 0)
+      .toFixed(1);
+    const runCount = weekActivities.filter(a => a.type === 'Run').length;
+
+    const lastRun = activities.find(a => a.type === 'Run') || {};
+    const lastRunMiles = lastRun.distance ? (lastRun.distance / 1609.34).toFixed(1) : 'N/A';
+
+    // Build simple prompt
+    const systemPrompt = `You are SCORA, a fitness coach AI. You read athlete data and describe postures: primed, steady, moderate, back-off, rest, taper.
+NEVER prescribe workouts. ONLY describe patterns.
+Response format: 1 line voice + metrics (METRIC: name | VALUE: value | TREND: trend)`;
+
+    const userPrompt = `Athlete ${athleteId} asks: "${message}"
+Last 7 days: ${weeklyMiles} miles (${runCount} runs)
+Last run: ${lastRun.name || 'N/A'} (${lastRunMiles} miles)
+Respond with voice + 2-3 metrics.`;
+
+    // Call OpenAI
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 250,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      const err = await openaiRes.text();
+      fastify.log.error('OpenAI error:', err);
+      return reply.code(500).send({ error: 'LLM failed', detail: err });
+    }
+
+    const llmResult = await openaiRes.json();
+    const responseText = llmResult.choices[0].message.content;
+
+    // Parse voice and drivers
+    const lines = responseText.split('\n');
+    const voice = lines[0] || '';
+
+    const drivers = [];
+    for (const line of lines.slice(1)) {
+      if (line.includes('METRIC:')) {
+        const metric = line.match(/METRIC:\s*([^|]+)/)?.[1]?.trim();
+        const value = line.match(/VALUE:\s*([^|]+)/)?.[1]?.trim();
+        const trend = line.match(/TREND:\s*(.+)$/)?.[1]?.trim();
+        if (metric && value) {
+          drivers.push({ metric, value, trend });
+        }
+      }
+    }
+
+    return reply.send({
+      voice,
+      drivers,
+      data: {
+        weeklyMiles: parseFloat(weeklyMiles),
+        runCount,
+        lastRun: lastRun.name,
+      },
+    });
   } catch (error) {
-    fastify.log.error('Oura exception:', error);
-    return reply.code(500).send({ error: 'Failed', detail: String(error) });
+    fastify.log.error('CDV exception:', error);
+    return reply.code(500).send({ error: 'CDV failed', detail: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -156,6 +190,7 @@ const start = async () => {
   try {
     await fastify.listen({ port: 3000, host: '0.0.0.0' });
     console.log('API running on 0.0.0.0:3000');
+    console.log('POST /api/cdv - Chat-driven analysis');
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
