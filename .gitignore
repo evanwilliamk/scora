@@ -6,3 +6,10 @@ dist/
 *.log
 .turbo/
 .vercel/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+.DS_Store
+build/
+DerivedData/

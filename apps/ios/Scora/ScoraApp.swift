@@ -1,20 +1,22 @@
 import SwiftUI
 
 @main
-struct SCORAApp: App {
+struct ScoraApp: App {
   @StateObject private var tokenManager = TokenManager()
-  @State private var deepLinkPath: String?
   
   var body: some Scene {
     WindowGroup {
       if tokenManager.isAuthenticated {
         ChatView(tokenManager: tokenManager)
+          .onOpenURL { url in
+            handleDeepLink(url)
+          }
       } else {
         ContentView(tokenManager: tokenManager)
+          .onOpenURL { url in
+            handleDeepLink(url)
+          }
       }
-    }
-    .onOpenURL { url in
-      handleDeepLink(url)
     }
   }
   
