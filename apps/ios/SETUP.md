@@ -46,6 +46,11 @@ In Xcode:
    - `ContentView.swift`
    - `StravaAuthView.swift`
    - `DeepLinkHandler.swift`
+   - `TokenStore.swift`
+   - `ChatMessage.swift`
+   - `CDVService.swift`
+   - `ChatViewModel.swift`
+   - `ChatView.swift`
 
 3. Make sure "Copy items if needed" is **checked**
 
@@ -87,13 +92,26 @@ In Xcode:
 **Strava button doesn't open Safari?**
 - Make sure you're running on simulator, not preview
 
+## Step 8: Test Chat + CDV
+
+1. After Strava auth succeeds, the app now shows `ChatView` instead of the static success screen.
+2. Type a message (e.g. "How am I doing?") and tap send.
+3. The app calls `POST /api/cdv` with the token/athleteId `TokenStore` persisted in UserDefaults during the OAuth deep link callback (`scora://auth/success?...&token=...`).
+4. Response renders as a voice line + numeric driver rows (metric, value, trend), matching the numeric-first design principle.
+
+**Verified against live backend (2026-07-01, this session):**
+- `POST /api/cdv` with missing fields → `400 {"error":"Missing: message, stravaToken, athleteId"}` ✅
+- `POST /api/cdv` with an invalid/fake Strava token → `401 {"error":"Strava token invalid or expired"}` ✅ (`CDVService` now surfaces this as "reconnect Strava" in the chat UI)
+- Full success path (valid Strava token → Strava fetch → OpenAI voice + drivers) requires a real, currently-valid Strava OAuth access token, which can only be obtained by running the iOS app through the actual Strava login on-device/simulator. **This dev machine has Xcode Command Line Tools only — no Xcode.app, no iOS Simulator** — so the on-device leg of the test could not be executed in this session. Run this from a Mac with full Xcode installed (see Step 2), or on Evan's iPhone, to get a live token and confirm the full round trip.
+
 ## Next Steps
 
-Once auth flow works end-to-end:
-- [ ] Add Dashboard view (shows athlete info)
-- [ ] Add CDV endpoint integration
-- [ ] Add chart rendering (SwiftUI Charts)
+- [x] Add Dashboard/chat view (shows athlete info + chat) — `ChatView.swift`
+- [x] Add CDV endpoint integration — `CDVService.swift` + `ChatViewModel.swift`
+- [x] Add token persistence (UserDefaults) — `TokenStore.swift`
+- [ ] Add chart rendering (SwiftUI Charts) for tap-to-expand drivers
 - [ ] Add weekly read display
+- [ ] Move token storage from UserDefaults to Keychain (security hardening — UserDefaults is not encrypted at rest)
 - [ ] Deploy to TestFlight
 
 Happy coding! 🚀
