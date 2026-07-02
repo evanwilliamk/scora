@@ -145,22 +145,76 @@ fastify.post('/api/cdv', async (request, reply) => {
       movingMin: a.moving_time ? Math.round(a.moving_time / 60) : 0,
     }));
 
+    // --- Weekday pattern detection (last 6 weeks) ---
+    const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const sixWeeks = runs.filter(a => inWindow(a, daysAgo(42), new Date(now)));
+    // Group runs by weekday
+    const byDay: Record<number, any[]> = {};
+    for (const a of sixWeeks) {
+      const dow = new Date(a.start_date_local || a.start_date).getDay();
+      (byDay[dow] ||= []).push(a);
+    }
+    // Count distinct weeks in window to judge "how many of the last N weeks"
+    const weeksInWindow = 6;
+    const weekdayPatterns = Object.entries(byDay)
+      .map(([dow, arr]) => {
+        const d = Number(dow);
+        const avgMiles = +(miles(arr) / arr.length).toFixed(1);
+        const avgMin = Math.round(arr.reduce((s, a) => s + (a.moving_time || 0), 0) / arr.length / 60);
+        const avgElev = Math.round(arr.reduce((s, a) => s + (a.total_elevation_gain || 0) * 3.281, 0) / arr.length);
+        return {
+          weekday: WEEKDAYS[d],
+          dow: d,
+          occurrences: arr.length,
+          weeksSeen: `${arr.length}/${weeksInWindow}`,
+          avgMiles,
+          avgMin,
+          avgElevFt: avgElev,
+          consistent: arr.length >= 3, // ran this weekday 3+ of last 6 weeks
+        };
+      })
+      .filter(p => p.consistent)
+      .sort((a, b) => b.occurrences - a.occurrences);
+
+    // --- Today's usual signal ---
+    const todayDow = new Date(now).getDay();
+    const todayName = WEEKDAYS[todayDow];
+    const todayPattern = weekdayPatterns.find(p => p.dow === todayDow) || null;
+    const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+    const ranToday = runs.some(a => new Date(a.start_date_local || a.start_date) >= startOfToday);
+    const todaySignal = todayPattern
+      ? {
+          today: todayName,
+          usualSession: `~${todayPattern.avgMiles}mi / ~${todayPattern.avgMin}min${todayPattern.avgElevFt > 300 ? ` / ~${todayPattern.avgElevFt}ft climb` : ''}`,
+          seenPattern: todayPattern.weeksSeen + ' recent weeks',
+          loggedToday: ranToday,
+        }
+      : { today: todayName, usualSession: null, loggedToday: ranToday };
+
     const dataBlock = {
       thisWeek: { miles: +thisWeekMiles.toFixed(1), runs: thisWeek.length },
       lastWeek: { miles: +lastWeekMiles.toFixed(1), runs: lastWeek.length },
       weekOverWeekMiles: weekDelta,
       recentRuns,
+      weekdayPatterns,
+      todaySignal,
     };
 
     const systemPrompt = `You are SCORA, a voice layer for endurance athletes. You READ and NAME patterns using postures: primed, steady, moderate, back-off, rest, taper.
 HARD RULES:
-- NEVER prescribe workouts, paces, or training. You only interpret what already happened.
 - Every claim must be backed by a specific number in the data provided. Never invent data.
 - Answer the athlete's ACTUAL question using the relevant data. Different questions -> different answers.
 - Numeric-first: lead with the number, then the interpretation.
-- Tone: calm, precise, human. No fitness-bro language. No exclamation-heavy hype.
+- Tone: calm, precise, human. No fitness-bro hype, no exclamation spam, no cheerleading ("great job", "amazing", "keep it up" are banned).
+
+PATTERN-AWARENESS (allowed, NOT prescription):
+- You MAY point out recurring patterns the data shows, e.g. "You've run hills every Thursday for the last 4 weeks (~9mi, ~90min). It's Thursday and nothing's logged yet."
+- This is an OBSERVATION of a real pattern + a factual gap. It is allowed.
+- The line you must NOT cross: telling them what to do. Never say "you should", "go do", "time to", "get your run in". State the pattern and the current fact; let them decide.
+- Use weekdayPatterns + todaySignal to surface this ONLY when relevant to the question or when there's a clear, notable pattern-vs-today gap.
+
 OUTPUT FORMAT (exactly):
-- Line 1: one-sentence voice read that directly answers the question.
+- Line 1: one-sentence voice read that directly answers the question (may include a pattern observation if relevant).
 - Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <primed|steady|moderate|back-off|rest|taper OR short trend like +12% / flat / down>
 Only cite metrics that exist in the data.`;
 
