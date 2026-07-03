@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
+import { buildDashboard } from './metrics';
 
 dotenv.config();
 
@@ -36,10 +37,7 @@ fastify.get('/api/auth/strava', async (request, reply) => {
 
 fastify.get('/api/auth/strava/callback', async (request, reply) => {
   const { code } = request.query as { code?: string };
-  const userAgent = request.headers['user-agent'] || 'UNKNOWN';
-  
-  fastify.log.info(`Strava callback: code=${code ? 'present' : 'missing'}, ua=${userAgent.substring(0, 100)}`);
-  
+
   if (!code) {
     return reply.type('text/html').send(`
       <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5;">
@@ -73,15 +71,12 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
 
     // Persist the full token set (access + refresh + expiry) so the backend
     // can auto-refresh later instead of forcing the user to re-auth every ~6h.
-    console.log(`[AUTH] About to store tokens for athlete ${athleteId}`);
+    // If storage fails, fail the auth visibly rather than sending the user
+    // into the app with tokens that were never saved.
     try {
       await storeStravaTokens(athleteId, tokenData);
-      console.log(`[AUTH] Successfully stored tokens for athlete ${athleteId}`);
-      fastify.log.info(`Successfully stored tokens for athlete ${athleteId}`);
     } catch (e) {
-      console.error(`[AUTH] Failed to persist Strava tokens:`, e);
       fastify.log.error('Failed to persist Strava tokens:', e);
-      // Return error immediately so auth fails visibly
       return reply.code(500).send({
         error: 'Token storage failed',
         detail: e instanceof Error ? e.message : String(e),
@@ -90,10 +85,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     }
 
     const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}&token=${encodeURIComponent(accessToken)}`;
-    const isIOS = /iPhone|iPad|iPod/.test(userAgent);
 
-    fastify.log.info(`Auth success: athlete=${athleteName}, isIOS=${isIOS}`);
-    
     // Use location.href in JS to open the deep link, which bypasses Safari's confirmation dialog.
     const html = `
       <html>
@@ -130,7 +122,6 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     `;
     return reply.type('text/html').send(html);
   } catch (error) {
-    console.error(`[AUTH] Outer catch: `, error);
     fastify.log.error('Strava exception:', error);
     return reply.code(500).send({
       error: 'Auth failed',
@@ -350,6 +341,113 @@ Answer THIS question specifically using the data above. If the data can't answer
   } catch (error) {
     fastify.log.error('CDV exception:', error);
     return reply.code(500).send({ error: 'CDV failed', detail: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// Daily read — the free-tier core. Returns Today's Read (the voice) plus the
+// six dashboard cards, all computed from the athlete's real Strava data.
+fastify.post('/api/read', async (request, reply) => {
+  try {
+    const { athleteId } = (request.body as any) || {};
+    if (!athleteId) {
+      return reply.code(400).send({ error: 'Missing: athleteId' });
+    }
+
+    let stravaToken: string;
+    try {
+      stravaToken = await getValidStravaToken(athleteId);
+    } catch (e) {
+      return reply.code(401).send({
+        error: 'Strava not connected or refresh failed — please reconnect Strava.',
+        detail: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
+      headers: { Authorization: `Bearer ${stravaToken}` },
+    });
+    if (!stravaRes.ok) {
+      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    }
+    const activities: any[] = await stravaRes.json();
+
+    // Only Strava is wired today; Oura + HealthKit come back as connect prompts.
+    const { cards, drivers, connections } = buildDashboard(activities, {
+      strava: true,
+      oura: false,
+      healthKit: false,
+    });
+
+    // With no drivers there is nothing the voice can honestly say. Don't invent.
+    if (drivers.length === 0) {
+      return reply.send({
+        read: {
+          voice: 'Not enough recent activity to read yet. Once a few runs land in Strava, the morning read fills in.',
+        },
+        cards,
+        drivers,
+        connections,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+
+    const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
+
+HARD RULES:
+- Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep, HRV, or recovery unless present).
+- Numeric-first: reference the raw value, then say what it means.
+- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". You may name a posture (primed, steady, moderate, back-off, rest, taper) as an observation, not an instruction.
+- Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
+
+OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;
+
+    const driverBlock = drivers
+      .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
+      .join('\n');
+    const userPrompt = `DRIVERS (the only values you may cite):
+${driverBlock}
+
+Write today's read using only these drivers.`;
+
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 200,
+        temperature: 0.5,
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      const err = await openaiRes.text();
+      fastify.log.error('OpenAI error (read):', err);
+      return reply.code(500).send({ error: 'Read generation failed', detail: err });
+    }
+
+    const llmResult = await openaiRes.json();
+    const voice = (llmResult.choices?.[0]?.message?.content || '').trim();
+
+    return reply.send({
+      read: { voice },
+      cards,
+      drivers,
+      connections,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    fastify.log.error('Read exception:', error);
+    return reply.code(500).send({
+      error: 'Read failed',
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 

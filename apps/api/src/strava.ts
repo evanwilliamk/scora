@@ -67,11 +67,7 @@ export async function storeStravaTokens(stravaId: string, tokenData: any) {
     ? `${tokenData.athlete.firstname} ${tokenData.athlete.lastname}`
     : 'Unknown';
 
-  console.log(
-    `storeStravaTokens: strava_id=${stravaId}, name=${athleteName}, access_token=${tokenData.access_token ? 'present' : 'missing'}, refresh_token=${tokenData.refresh_token ? 'present' : 'missing'}`
-  );
-
-  const { data, error } = await getSupabase()
+  const { error } = await getSupabase()
     .from('athletes')
     .upsert(
       {
@@ -82,15 +78,11 @@ export async function storeStravaTokens(stravaId: string, tokenData: any) {
         strava_expires_at: tokenData.expires_at || null, // unix seconds
       },
       { onConflict: 'strava_id' }
-    )
-    .select();
+    );
 
   if (error) {
-    console.error(`storeStravaTokens upsert failed: code=${error.code}, message=${error.message}`);
     throw new Error(`Failed to store Strava tokens: ${error.message}`);
   }
-
-  console.log(`storeStravaTokens: upsert success, returned ${data ? data.length : 0} rows`);
 }
 
 async function refreshStravaToken(refreshToken: string) {

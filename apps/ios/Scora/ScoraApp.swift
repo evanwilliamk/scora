@@ -7,7 +7,7 @@ struct ScoraApp: App {
   var body: some Scene {
     WindowGroup {
       if tokenManager.isAuthenticated {
-        ChatView(tokenManager: tokenManager)
+        DashboardView(tokenManager: tokenManager)
           .onOpenURL { url in
             handleDeepLink(url)
           }
