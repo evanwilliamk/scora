@@ -73,12 +73,20 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
 
     // Persist the full token set (access + refresh + expiry) so the backend
     // can auto-refresh later instead of forcing the user to re-auth every ~6h.
+    console.log(`[AUTH] About to store tokens for athlete ${athleteId}`);
     try {
       await storeStravaTokens(athleteId, tokenData);
+      console.log(`[AUTH] Successfully stored tokens for athlete ${athleteId}`);
       fastify.log.info(`Successfully stored tokens for athlete ${athleteId}`);
     } catch (e) {
+      console.error(`[AUTH] Failed to persist Strava tokens:`, e);
       fastify.log.error('Failed to persist Strava tokens:', e);
-      throw e; // Don't silently fail — auth must not succeed if tokens don't persist
+      // Return error immediately so auth fails visibly
+      return reply.code(500).send({
+        error: 'Token storage failed',
+        detail: e instanceof Error ? e.message : String(e),
+        athleteId,
+      });
     }
 
     const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}&token=${encodeURIComponent(accessToken)}`;
@@ -122,8 +130,12 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     `;
     return reply.type('text/html').send(html);
   } catch (error) {
+    console.error(`[AUTH] Outer catch: `, error);
     fastify.log.error('Strava exception:', error);
-    return reply.code(500).send({ error: 'Failed', detail: String(error) });
+    return reply.code(500).send({
+      error: 'Auth failed',
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 
