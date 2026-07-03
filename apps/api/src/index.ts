@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
+import { storeStravaTokens, getValidStravaToken } from './strava';
 
 dotenv.config();
 
@@ -67,6 +68,14 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     const athleteName = tokenData.athlete.firstname;
     const accessToken = tokenData.access_token;
 
+    // Persist the full token set (access + refresh + expiry) so the backend
+    // can auto-refresh later instead of forcing the user to re-auth every ~6h.
+    try {
+      await storeStravaTokens(athleteId, tokenData);
+    } catch (e) {
+      fastify.log.error('Failed to persist Strava tokens:', e);
+    }
+
     const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}&token=${encodeURIComponent(accessToken)}`;
     
     const userAgent = request.headers['user-agent'] || '';
@@ -89,10 +98,22 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
 fastify.post('/api/cdv', async (request, reply) => {
   try {
     const body = request.body as any;
-    const { message, stravaToken, athleteId } = body;
+    const { message, athleteId } = body;
 
-    if (!message || !stravaToken || !athleteId) {
-      return reply.code(400).send({ error: 'Missing: message, stravaToken, athleteId' });
+    if (!message || !athleteId) {
+      return reply.code(400).send({ error: 'Missing: message, athleteId' });
+    }
+
+    // Resolve a valid token from storage, auto-refreshing if expired.
+    // The app no longer needs to pass (or hold a fresh) token.
+    let stravaToken: string;
+    try {
+      stravaToken = await getValidStravaToken(athleteId);
+    } catch (e) {
+      return reply.code(401).send({
+        error: 'Strava not connected or refresh failed — please reconnect Strava.',
+        detail: e instanceof Error ? e.message : String(e),
+      });
     }
 
     // Fetch Strava data (larger window for real trend analysis)
