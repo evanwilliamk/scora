@@ -36,6 +36,9 @@ fastify.get('/api/auth/strava', async (request, reply) => {
 
 fastify.get('/api/auth/strava/callback', async (request, reply) => {
   const { code } = request.query as { code?: string };
+  const userAgent = request.headers['user-agent'] || 'UNKNOWN';
+  
+  fastify.log.info(`Strava callback: code=${code ? 'present' : 'missing'}, ua=${userAgent.substring(0, 100)}`);
   
   if (!code) {
     return reply.type('text/html').send(`
@@ -77,14 +80,16 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     }
 
     const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}&token=${encodeURIComponent(accessToken)}`;
-    
-    const userAgent = request.headers['user-agent'] || '';
     const isIOS = /iPhone|iPad|iPod/.test(userAgent);
 
+    fastify.log.info(`Auth success: athlete=${athleteName}, isIOS=${isIOS}`);
+    
     if (isIOS) {
+      fastify.log.info(`Redirecting to deep link: ${deepLink.substring(0, 80)}`);
       return reply.redirect(302, deepLink);
     }
 
+    fastify.log.info('Non-iOS fallback, showing HTML page');
     return reply.type('text/html').send(`
       <html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}.container{max-width:400px;text-align:center}.logo{font-size:100px;margin-bottom:20px}h1{font-size:40px;margin:0 0 20px;font-weight:700}p{color:#999;font-size:16px;margin:0 0 30px}a{display:inline-block;padding:14px 32px;background:#fff;color:#000;text-decoration:none;border-radius:4px;font-weight:600}a:hover{opacity:0.9}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #222;font-size:13px;color:#666}</style></head><body><div class="container"><div class="logo">S</div><h1>Strava Linked</h1><p>Welcome, ${athleteName}!</p><a href="${deepLink}">Open SCORA</a><div class="footer"><p>If you're not redirected, tap the button above.</p></div></div></body></html>
     `);
