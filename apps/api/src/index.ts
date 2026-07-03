@@ -84,15 +84,41 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
 
     fastify.log.info(`Auth success: athlete=${athleteName}, isIOS=${isIOS}`);
     
-    if (isIOS) {
-      fastify.log.info(`Redirecting to deep link: ${deepLink.substring(0, 80)}`);
-      return reply.redirect(302, deepLink);
-    }
-
-    fastify.log.info('Non-iOS fallback, showing HTML page');
-    return reply.type('text/html').send(`
-      <html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}.container{max-width:400px;text-align:center}.logo{font-size:100px;margin-bottom:20px}h1{font-size:40px;margin:0 0 20px;font-weight:700}p{color:#999;font-size:16px;margin:0 0 30px}a{display:inline-block;padding:14px 32px;background:#fff;color:#000;text-decoration:none;border-radius:4px;font-weight:600}a:hover{opacity:0.9}.footer{margin-top:40px;padding-top:20px;border-top:1px solid #222;font-size:13px;color:#666}</style></head><body><div class="container"><div class="logo">S</div><h1>Strava Linked</h1><p>Welcome, ${athleteName}!</p><a href="${deepLink}">Open SCORA</a><div class="footer"><p>If you're not redirected, tap the button above.</p></div></div></body></html>
-    `);
+    // Use location.href in JS to open the deep link, which bypasses Safari's confirmation dialog.
+    const html = `
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { background: #000; color: #fff; font-family: system-ui; margin: 0; padding: 40px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+            .container { max-width: 400px; text-align: center; }
+            .logo { font-size: 100px; margin-bottom: 20px; }
+            h1 { font-size: 40px; margin: 0 0 20px; font-weight: 700; }
+            p { color: #999; font-size: 16px; margin: 0 0 30px; }
+            a { display: inline-block; padding: 14px 32px; background: #fff; color: #000; text-decoration: none; border-radius: 4px; font-weight: 600; }
+            a:hover { opacity: 0.9; }
+            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #222; font-size: 13px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo">S</div>
+            <h1>Strava Linked</h1>
+            <p>Welcome, ${athleteName}!</p>
+            <p style="color: #666; font-size: 14px; margin-top: 20px;">Opening SCORA...</p>
+            <a href="#" id="fallback">Open SCORA</a>
+            <div class="footer"><p>If the app doesn't open, tap the button above.</p></div>
+          </div>
+          <script>
+            var deepLink = '${deepLink}';
+            document.getElementById('fallback').href = deepLink;
+            setTimeout(function() { window.location.href = deepLink; }, 100);
+          </script>
+        </body>
+      </html>
+    `;
+    return reply.type('text/html').send(html);
   } catch (error) {
     fastify.log.error('Strava exception:', error);
     return reply.code(500).send({ error: 'Failed', detail: String(error) });
