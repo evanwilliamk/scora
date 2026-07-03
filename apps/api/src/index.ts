@@ -3,6 +3,14 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard } from './metrics';
+import {
+  buildOuraAuthorizeUrl,
+  exchangeOuraCode,
+  storeOuraTokens,
+  getValidOuraToken,
+  fetchOuraSummary,
+  OURA_CLIENT_ID,
+} from './oura';
 
 dotenv.config();
 
@@ -128,6 +136,83 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
       detail: error instanceof Error ? error.message : String(error),
     });
   }
+});
+
+// Oura OAuth. The athlete is already signed in (via Strava), so we thread
+// their athlete id through the `state` param to link the Oura tokens back to
+// the existing athlete row on callback.
+fastify.get('/api/auth/oura', async (request, reply) => {
+  const { athlete_id } = request.query as { athlete_id?: string };
+  if (!athlete_id) {
+    return reply.code(400).send({ error: 'Missing athlete_id — sign in with Strava first.' });
+  }
+  if (!OURA_CLIENT_ID) {
+    return reply.code(500).send({ error: 'Oura not configured (OURA_CLIENT_ID missing).' });
+  }
+  return reply.redirect(302, buildOuraAuthorizeUrl(athlete_id));
+});
+
+fastify.get('/api/auth/oura/callback', async (request, reply) => {
+  const { code, state, error: oauthError } = request.query as {
+    code?: string;
+    state?: string;
+    error?: string;
+  };
+
+  if (oauthError) {
+    return reply.type('text/html').send(
+      `<html><body style="font-family:system-ui;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Oura connection cancelled</h1><p style="color:#999">${oauthError}</p></div></body></html>`
+    );
+  }
+  if (!code || !state) {
+    return reply.code(400).type('text/html').send(
+      `<html><body style="font-family:system-ui;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Missing authorization</h1><p style="color:#999">No code/state received from Oura.</p></div></body></html>`
+    );
+  }
+
+  try {
+    const tokenData = await exchangeOuraCode(code);
+    await storeOuraTokens(state, tokenData); // state === athleteId
+  } catch (e) {
+    fastify.log.error('Oura auth failed:', e);
+    return reply.code(500).send({
+      error: 'Oura connection failed',
+      detail: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // Reopen the app; the dashboard reloads and the Oura cards light up.
+  const deepLink = 'scora://oura/success';
+  const html = `
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body { background: #000; color: #fff; font-family: system-ui; margin: 0; padding: 40px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+          .container { max-width: 400px; text-align: center; }
+          .logo { font-size: 100px; margin-bottom: 20px; }
+          h1 { font-size: 40px; margin: 0 0 20px; font-weight: 700; }
+          p { color: #999; font-size: 16px; margin: 0 0 30px; }
+          a { display: inline-block; padding: 14px 32px; background: #fff; color: #000; text-decoration: none; border-radius: 4px; font-weight: 600; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="logo">S</div>
+          <h1>Oura Connected</h1>
+          <p style="color:#666;font-size:14px;margin-top:20px;">Opening SCORA...</p>
+          <a href="#" id="fallback">Open SCORA</a>
+        </div>
+        <script>
+          var deepLink = '${deepLink}';
+          document.getElementById('fallback').href = deepLink;
+          setTimeout(function() { window.location.href = deepLink; }, 100);
+        </script>
+      </body>
+    </html>
+  `;
+  return reply.type('text/html').send(html);
 });
 
 // CDV endpoint - simple and safe
@@ -371,12 +456,23 @@ fastify.post('/api/read', async (request, reply) => {
     }
     const activities: any[] = await stravaRes.json();
 
-    // Only Strava is wired today; Oura + HealthKit come back as connect prompts.
-    const { cards, drivers, connections } = buildDashboard(activities, {
-      strava: true,
-      oura: false,
-      healthKit: false,
-    });
+    // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
+    // cards fall back to connect prompts. Never blocks the read on Oura errors.
+    let ouraSummary = null;
+    let ouraConnected = false;
+    try {
+      const ouraToken = await getValidOuraToken(athleteId);
+      ouraConnected = true;
+      ouraSummary = await fetchOuraSummary(ouraToken);
+    } catch (e) {
+      fastify.log.info(`Oura not available for ${athleteId}: ${e instanceof Error ? e.message : e}`);
+    }
+
+    const { cards, drivers, connections } = buildDashboard(
+      activities,
+      { strava: true, oura: ouraConnected, healthKit: false },
+      ouraSummary
+    );
 
     // With no drivers there is nothing the voice can honestly say. Don't invent.
     if (drivers.length === 0) {

@@ -28,6 +28,7 @@ struct ReadResponse: Decodable {
 
 struct DashboardView: View {
   @ObservedObject var tokenManager: TokenManager
+  @Environment(\.openURL) private var openURL
 
   @State private var read: DailyRead?
   @State private var cards: [DashboardCard] = []
@@ -77,6 +78,17 @@ struct DashboardView: View {
     .task {
       if read == nil { await loadRead() }
     }
+    .onReceive(NotificationCenter.default.publisher(for: .ouraConnected)) { _ in
+      Task { await loadRead() }
+    }
+  }
+
+  // Kick off the Oura OAuth flow in the browser; on return the app receives a
+  // scora://oura/success deep link and reloads the dashboard.
+  private func connectOura() {
+    guard let url = URL(string: "\(apiBase)/api/auth/oura?athlete_id=\(tokenManager.athleteId)")
+    else { return }
+    openURL(url)
   }
 
   // MARK: Header
@@ -132,9 +144,15 @@ struct DashboardView: View {
 
   // MARK: Card
 
+  // An unavailable card whose data comes from Oura offers a tap-to-connect.
+  private func isOuraConnectable(_ card: DashboardCard) -> Bool {
+    !card.available && (card.source?.contains("Oura") ?? false)
+  }
+
   @ViewBuilder
   private func cardView(_ card: DashboardCard) -> some View {
     let isOpen = expanded.contains(card.id)
+    let connectable = isOuraConnectable(card)
     VStack(alignment: .leading, spacing: 8) {
       Text(card.title)
         .font(.caption.bold())
@@ -162,6 +180,12 @@ struct DashboardView: View {
           .font(.footnote)
           .foregroundColor(.gray)
           .fixedSize(horizontal: false, vertical: true)
+        if connectable {
+          Text("Connect Oura →")
+            .font(.caption.bold())
+            .foregroundColor(.orange)
+            .padding(.top, 2)
+        }
       }
 
       if isOpen, let translation = card.translation, !translation.isEmpty {
@@ -184,6 +208,10 @@ struct DashboardView: View {
     .background(Color(white: 0.11))
     .cornerRadius(12)
     .onTapGesture {
+      if connectable {
+        connectOura()
+        return
+      }
       guard card.available, card.translation != nil else { return }
       withAnimation(.easeInOut(duration: 0.15)) {
         if isOpen { expanded.remove(card.id) } else { expanded.insert(card.id) }

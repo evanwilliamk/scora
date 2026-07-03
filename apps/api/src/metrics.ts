@@ -6,6 +6,8 @@
 // never as invented numbers. This honours the driver-existence rule (§3.2):
 // the voice can only cite drivers that actually exist.
 
+import type { OuraSummary } from './oura';
+
 const M = 1609.34; // metres per mile
 
 export interface Card {
@@ -57,12 +59,19 @@ const pct = (curr: number, prev: number): string => {
   return `${d >= 0 ? '+' : ''}${d.toFixed(0)}%`;
 };
 
+const hoursMin = (seconds: number): string => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return `${h}:${m.toString().padStart(2, '0')}`;
+};
+
 // Build the six free-tier dashboard cards + the driver list the read may cite.
 // `connections` reflects which data sources the athlete has linked; only
 // Strava is wired today, so sleep + recovery come back as connect prompts.
 export function buildDashboard(
   activities: any[],
-  connections: { strava: boolean; oura: boolean; healthKit: boolean }
+  connections: { strava: boolean; oura: boolean; healthKit: boolean },
+  oura?: OuraSummary | null
 ): DashboardData {
   const now = Date.now();
   const day = 86400000;
@@ -79,14 +88,32 @@ export function buildDashboard(
   const cards: Card[] = [];
   const drivers: Driver[] = [];
 
-  // --- Sleep (needs Oura or Apple Health) ---
-  cards.push({
-    id: 'sleep',
-    title: 'Sleep',
-    available: false,
-    source: 'Oura / Apple Health',
-    cta: 'Connect Oura or Apple Health to read your sleep.',
-  });
+  // --- Sleep (from Oura) ---
+  if (oura && oura.sleepSeconds != null) {
+    const dur = hoursMin(oura.sleepSeconds);
+    const scoreTrend = oura.sleepScore != null ? `Oura ${oura.sleepScore}` : undefined;
+    cards.push({
+      id: 'sleep',
+      title: 'Sleep',
+      available: true,
+      value: dur,
+      unit: 'hrs',
+      trend: scoreTrend,
+      source: 'Oura',
+      translation: `Slept ${dur} last night${oura.sleepScore != null ? `, Oura score ${oura.sleepScore}` : ''}.`,
+    });
+    drivers.push({ metric: 'Sleep', value: dur, trend: scoreTrend });
+  } else {
+    cards.push({
+      id: 'sleep',
+      title: 'Sleep',
+      available: false,
+      source: 'Oura / Apple Health',
+      cta: connections.oura
+        ? 'No sleep recorded last night.'
+        : 'Connect Oura or Apple Health to read your sleep.',
+    });
+  }
 
   // --- Training Load: 7-day moving minutes vs the week before ---
   if (thisWeek.length > 0 || lastWeek.length > 0) {
@@ -148,14 +175,35 @@ export function buildDashboard(
     });
   }
 
-  // --- Recovery Signal (needs HRV from Oura) ---
-  cards.push({
-    id: 'recovery_signal',
-    title: 'Recovery Signal',
-    available: false,
-    source: 'Oura',
-    cta: 'Connect Oura to read HRV and resting heart rate.',
-  });
+  // --- Recovery Signal (HRV + resting HR from Oura) ---
+  if (oura && oura.hrvMs != null) {
+    const trend =
+      oura.hrvWeekAvgMs != null ? `${pct(oura.hrvMs, oura.hrvWeekAvgMs)} wk` : undefined;
+    cards.push({
+      id: 'recovery_signal',
+      title: 'Recovery Signal',
+      available: true,
+      value: String(oura.hrvMs),
+      unit: 'ms HRV',
+      trend,
+      source: 'Oura',
+      translation: `HRV ${oura.hrvMs}ms last night${oura.hrvWeekAvgMs != null ? ` (week avg ${oura.hrvWeekAvgMs}ms)` : ''}${oura.restingHr != null ? `, resting HR ${oura.restingHr} bpm` : ''}.`,
+    });
+    drivers.push({ metric: 'HRV', value: `${oura.hrvMs}ms`, trend });
+    if (oura.restingHr != null) {
+      drivers.push({ metric: 'Resting HR', value: `${oura.restingHr} bpm` });
+    }
+  } else {
+    cards.push({
+      id: 'recovery_signal',
+      title: 'Recovery Signal',
+      available: false,
+      source: 'Oura',
+      cta: connections.oura
+        ? 'No HRV recorded last night.'
+        : 'Connect Oura to read HRV and resting heart rate.',
+    });
+  }
 
   // --- Long Effort Recency: longest run in the last 30 days ---
   const last30 = runs.filter((a) => inWindow(a, now - 30 * day, now));
