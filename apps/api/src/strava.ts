@@ -63,28 +63,34 @@ export async function linkStravaAthlete(userId: string, stravaData: any) {
 // Persist the full token set (access + refresh + expiry) so we can renew
 // silently instead of forcing the user to re-auth every ~6 hours.
 export async function storeStravaTokens(stravaId: string, tokenData: any) {
-  console.log(`storeStravaTokens: storing for strava_id=${stravaId}`);
-  
-  const { error } = await getSupabase()
+  const athleteName = tokenData.athlete
+    ? `${tokenData.athlete.firstname} ${tokenData.athlete.lastname}`
+    : 'Unknown';
+
+  console.log(
+    `storeStravaTokens: strava_id=${stravaId}, name=${athleteName}, access_token=${tokenData.access_token ? 'present' : 'missing'}, refresh_token=${tokenData.refresh_token ? 'present' : 'missing'}`
+  );
+
+  const { data, error } = await getSupabase()
     .from('athletes')
     .upsert(
       {
         strava_id: String(stravaId),
-        name: tokenData.athlete
-          ? `${tokenData.athlete.firstname} ${tokenData.athlete.lastname}`
-          : undefined,
-        strava_access_token: tokenData.access_token,
-        strava_refresh_token: tokenData.refresh_token,
-        strava_expires_at: tokenData.expires_at, // unix seconds
+        name: athleteName,
+        strava_access_token: tokenData.access_token || null,
+        strava_refresh_token: tokenData.refresh_token || null,
+        strava_expires_at: tokenData.expires_at || null, // unix seconds
       },
       { onConflict: 'strava_id' }
-    );
+    )
+    .select();
 
   if (error) {
-    console.error(`storeStravaTokens failed: ${error.message}`);
+    console.error(`storeStravaTokens upsert failed: code=${error.code}, message=${error.message}`);
     throw new Error(`Failed to store Strava tokens: ${error.message}`);
   }
-  console.log(`storeStravaTokens: success for strava_id=${stravaId}`);
+
+  console.log(`storeStravaTokens: upsert success, returned ${data ? data.length : 0} rows`);
 }
 
 async function refreshStravaToken(refreshToken: string) {

@@ -75,8 +75,10 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     // can auto-refresh later instead of forcing the user to re-auth every ~6h.
     try {
       await storeStravaTokens(athleteId, tokenData);
+      fastify.log.info(`Successfully stored tokens for athlete ${athleteId}`);
     } catch (e) {
       fastify.log.error('Failed to persist Strava tokens:', e);
+      throw e; // Don't silently fail — auth must not succeed if tokens don't persist
     }
 
     const deepLink = `scora://auth/success?athlete_id=${athleteId}&name=${encodeURIComponent(athleteName)}&token=${encodeURIComponent(accessToken)}`;
