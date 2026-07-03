@@ -63,6 +63,8 @@ export async function linkStravaAthlete(userId: string, stravaData: any) {
 // Persist the full token set (access + refresh + expiry) so we can renew
 // silently instead of forcing the user to re-auth every ~6 hours.
 export async function storeStravaTokens(stravaId: string, tokenData: any) {
+  console.log(`storeStravaTokens: storing for strava_id=${stravaId}`);
+  
   const { error } = await getSupabase()
     .from('athletes')
     .upsert(
@@ -79,8 +81,10 @@ export async function storeStravaTokens(stravaId: string, tokenData: any) {
     );
 
   if (error) {
+    console.error(`storeStravaTokens failed: ${error.message}`);
     throw new Error(`Failed to store Strava tokens: ${error.message}`);
   }
+  console.log(`storeStravaTokens: success for strava_id=${stravaId}`);
 }
 
 async function refreshStravaToken(refreshToken: string) {
