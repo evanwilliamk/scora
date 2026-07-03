@@ -32,8 +32,10 @@ const OURA_API = 'https://api.ouraring.com/v2/usercollection';
 
 // `daily` unlocks daily_sleep / daily_readiness; the detailed `sleep` route
 // (average_hrv, lowest_heart_rate) also lives under `daily`. `personal` gives
-// basic profile. `heartrate` is included for future resting-HR timeseries.
-const OURA_SCOPES = 'personal daily heartrate';
+// basic profile. We only read what these two scopes cover, so nothing more is
+// requested — an unused scope can make the authorize step fail if the app
+// hasn't enabled it.
+const OURA_SCOPES = 'personal daily';
 
 export function buildOuraAuthorizeUrl(athleteId: string): string {
   const params = new URLSearchParams({
