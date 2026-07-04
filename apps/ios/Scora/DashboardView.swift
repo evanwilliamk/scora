@@ -78,7 +78,7 @@ struct DashboardView: View {
     .task {
       if read == nil { await loadRead() }
     }
-    .onReceive(NotificationCenter.default.publisher(for: .ouraConnected)) { _ in
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
       Task { await loadRead() }
     }
   }

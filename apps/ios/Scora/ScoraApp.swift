@@ -1,9 +1,5 @@
 import SwiftUI
 
-extension Notification.Name {
-  static let ouraConnected = Notification.Name("ouraConnected")
-}
-
 @main
 struct ScoraApp: App {
   @StateObject private var tokenManager = TokenManager()
@@ -40,7 +36,7 @@ struct ScoraApp: App {
     // Oura finished linking on the web — tell the dashboard to reload so the
     // Sleep + Recovery cards pick up the new data.
     if url.host == "oura" && url.path == "/success" {
-      NotificationCenter.default.post(name: .ouraConnected, object: nil)
+      NotificationCenter.default.post(name: Notification.Name("ouraConnected"), object: nil)
     }
   }
 }
