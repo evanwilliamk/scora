@@ -69,11 +69,22 @@
 3. **End-to-end integration: WORKING** (tested and verified)
 4. Design: Black minimal (landing + success pages consistent)
 
-**Oura Status:** BLOCKED (awaiting app approval)
+**Oura Status:** ✅ WORKING (end-to-end, tested on device 2026-07-03)
 - Registered app at https://cloud.ouraring.com/oauth/applications
 - Client ID: cfaea8b9-7e65-4452-acb7-a9105796bd9e
-- Error: 400 `invalid_request` (development app restriction)
-- **Next:** Check email for approval or request production access from Oura team
+- **Root cause of the old 400 `invalid_request`:** it was NOT an app-approval /
+  "development app restriction" problem. It was request format — the token
+  exchange must be `application/x-www-form-urlencoded` (Oura rejects JSON, which
+  the Strava code uses). Dev-mode Oura apps work fine for the owner's own account.
+- Implemented in `apps/api/src/oura.ts`: form-encoded token exchange against
+  api.ouraring.com/oauth/token, athlete id threaded through the OAuth `state`
+  param to link tokens to the Strava-keyed athlete row, refresh mirrors Strava.
+  Scopes: `personal daily`. Redirect URI registered:
+  .../api/auth/oura/callback. Migration adds oura_access_token/refresh_token/
+  expires_at to `athletes`.
+- Powers the Sleep + Recovery Signal dashboard cards (sleep duration, Oura
+  score, HRV + week trend, resting HR). Verified live: Sleep 6:25/Oura 75,
+  HRV 35ms.
 
 **Stats:**
 - Commits: 14 total (clean final state)
@@ -90,10 +101,10 @@
 - ✅ End-to-end auth tested (sign-in → deep link → success screen)
 
 **TODO before Phase 1 starts:**
-- [ ] Check email for Oura app approval (if yes, activate in Railway)
+- [x] Oura OAuth working (fix was form-encoded token exchange, not approval)
+- [x] Build Dashboard view (iOS) — Today's Read + 6 cards, tap-to-expand
+- [x] Implement CDV endpoint (backend) — chat-driven analysis
 - [ ] Recruit 10 alpha users (friends, fitness buddies with Strava + iPhone)
-- [ ] Build Dashboard view (iOS) - show athlete info, last activity
-- [ ] Implement CDV endpoint (backend) - chat-driven visualization
 - [ ] Add weekly read feature (backend) - scheduled Sunday morning push
 - [ ] Set up PostHog + Sentry (telemetry)
 
@@ -148,8 +159,8 @@
 - API: https://zonal-prosperity-production-3965.up.railway.app
 - Environment variables:
   - `STRAVA_CLIENT_SECRET` ✅ (loaded, working)
-  - `OURA_CLIENT_ID` (loaded, awaiting app approval)
-  - `OURA_CLIENT_SECRET` (loaded, awaiting app approval)
+  - `OURA_CLIENT_ID` ✅ (loaded, working)
+  - `OURA_CLIENT_SECRET` ✅ (loaded, working)
 
 **iOS:** Built locally, ready for TestFlight when you're ready
 
