@@ -12,6 +12,13 @@ struct Driver: Identifiable, Decodable {
 struct CDVResponse: Decodable {
   let voice: String
   let drivers: [Driver]
+  let remaining: Int?
+  let limit: Int?
+}
+
+// Error body from /api/cdv (e.g. the 429 daily-limit message).
+struct CDVError: Decodable {
+  let error: String
 }
 
 struct ChatMessage: Identifiable {
@@ -26,7 +33,9 @@ struct ChatView: View {
   @State private var messages: [ChatMessage] = []
   @State private var input: String = ""
   @State private var isLoading = false
-  
+  @State private var remaining: Int?
+  @State private var limitReached = false
+
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
   
   var body: some View {
@@ -37,6 +46,12 @@ struct ChatView: View {
           .font(.headline.bold())
           .foregroundColor(.white)
         Spacer()
+        if let remaining {
+          Text("\(remaining) left today")
+            .font(.caption)
+            .foregroundColor(remaining == 0 ? .orange : .gray)
+            .padding(.trailing, 8)
+        }
         Button("Sign Out") { tokenManager.logout() }
           .font(.subheadline)
           .foregroundColor(.orange)
@@ -78,19 +93,20 @@ struct ChatView: View {
       
       // Input
       HStack(spacing: 12) {
-        TextField("Message", text: $input)
+        TextField(limitReached ? "Daily limit reached — resets tomorrow" : "Message", text: $input)
           .padding(12)
           .background(Color(white: 0.15))
           .foregroundColor(.white)
           .cornerRadius(20)
           .onSubmit(send)
-        
+          .disabled(limitReached)
+
         Button(action: send) {
           Image(systemName: "arrow.up.circle.fill")
             .font(.system(size: 32))
-            .foregroundColor(input.isEmpty ? .gray : .orange)
+            .foregroundColor(input.isEmpty || limitReached ? .gray : .orange)
         }
-        .disabled(input.isEmpty || isLoading)
+        .disabled(input.isEmpty || isLoading || limitReached)
       }
       .padding()
       .background(Color.black)
@@ -174,17 +190,24 @@ struct ChatView: View {
       let (data, resp) = try await URLSession.shared.data(for: req)
       
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        let errText = String(data: data, encoding: .utf8) ?? "Unknown error"
+        // Prefer the server's `error` message (e.g. the daily-limit text);
+        // fall back to the raw body only if it isn't the expected shape.
+        let msg = (try? JSONDecoder().decode(CDVError.self, from: data))?.error
+          ?? String(data: data, encoding: .utf8) ?? "Unknown error"
+        let isLimit = http.statusCode == 429
         await MainActor.run {
-          messages.append(ChatMessage(isUser: false, text: "⚠️ \(errText)", drivers: []))
+          messages.append(ChatMessage(isUser: false, text: msg, drivers: []))
+          if isLimit { remaining = 0; limitReached = true }
           isLoading = false
         }
         return
       }
-      
+
       let decoded = try JSONDecoder().decode(CDVResponse.self, from: data)
       await MainActor.run {
         messages.append(ChatMessage(isUser: false, text: decoded.voice, drivers: decoded.drivers))
+        remaining = decoded.remaining
+        limitReached = (decoded.remaining ?? 1) <= 0
         isLoading = false
       }
     } catch {

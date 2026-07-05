@@ -11,6 +11,7 @@ import {
   fetchOuraSummary,
   OURA_CLIENT_ID,
 } from './oura';
+import { consumeCdvQuota } from './usage';
 
 dotenv.config();
 
@@ -371,6 +372,27 @@ Answer THIS question specifically using the data above. If the data can't answer
     const runCount = thisWeek.length;
     const lastRun = runs[0] || {};
 
+    // Free-tier gate: 3 CDV queries/day (§5.1). Consumed here, after the data
+    // is in hand, so infra failures (bad token, etc.) don't burn a query but
+    // the expensive LLM call is never made once the daily limit is hit.
+    let quota;
+    try {
+      quota = await consumeCdvQuota(athleteId);
+    } catch (e) {
+      return reply.code(500).send({
+        error: 'Usage check failed',
+        detail: e instanceof Error ? e.message : String(e),
+      });
+    }
+    if (!quota.allowed) {
+      return reply.code(429).send({
+        error: `You've used your ${quota.limit} chats for today. Resets tomorrow.`,
+        used: quota.used,
+        limit: quota.limit,
+        remaining: 0,
+      });
+    }
+
     // Call OpenAI
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -422,6 +444,8 @@ Answer THIS question specifically using the data above. If the data can't answer
         runCount,
         lastRun: lastRun.name,
       },
+      remaining: quota.remaining,
+      limit: quota.limit,
     });
   } catch (error) {
     fastify.log.error('CDV exception:', error);
