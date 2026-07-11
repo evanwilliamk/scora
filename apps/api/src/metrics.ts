@@ -256,3 +256,90 @@ export function buildDashboard(
 
   return { cards, drivers, connections };
 }
+
+export interface WeeklyStat {
+  label: string;
+  value: string;
+  trend?: string;
+}
+
+export interface WeeklySummary {
+  stats: WeeklyStat[]; // compact tiles for the weekly view
+  drivers: Driver[]; // the only values the weekly read may cite
+  hasData: boolean;
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Reduce the last 7 days (vs the prior 7) into a weekly review: the stats the
+// weekly view shows and the drivers the weekly read is allowed to cite. Same
+// discipline as buildDashboard — every number is real; Oura fields only appear
+// when a summary is passed.
+export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null): WeeklySummary {
+  const now = Date.now();
+  const day = 86400000;
+  const runs = activities.filter((a) => a.type === 'Run');
+
+  const thisWeek = runs.filter((a) => inWindow(a, now - 7 * day, now));
+  const lastWeek = runs.filter((a) => inWindow(a, now - 14 * day, now - 7 * day));
+
+  const stats: WeeklyStat[] = [];
+  const drivers: Driver[] = [];
+
+  if (thisWeek.length === 0) {
+    return { stats, drivers, hasData: false };
+  }
+
+  // Volume + load, week over week.
+  const miles = +totalMiles(thisWeek).toFixed(1);
+  const lastMiles = +totalMiles(lastWeek).toFixed(1);
+  const min = totalMovingMin(thisWeek);
+  const lastMin = totalMovingMin(lastWeek);
+  const volTrend = `${pct(miles, lastMiles)} wk`;
+  const loadTrend = `${pct(min, lastMin)} wk`;
+
+  stats.push({ label: 'Volume', value: `${miles} mi`, trend: volTrend });
+  stats.push({ label: 'Load', value: `${min} min`, trend: loadTrend });
+  drivers.push({ metric: 'Weekly volume', value: `${miles} mi`, trend: volTrend });
+  drivers.push({ metric: 'Load', value: `${min} min`, trend: loadTrend });
+
+  // Distinct days trained.
+  const days = new Set(
+    thisWeek.map((a) => new Date(a.start_date_local || a.start_date).toDateString())
+  ).size;
+  stats.push({ label: 'Days run', value: `${days}/7` });
+  drivers.push({ metric: 'Days trained', value: `${days} of 7` });
+
+  // Longest run of the week.
+  const longest = thisWeek.reduce((m, a) => ((a.distance || 0) > (m.distance || 0) ? a : m));
+  const longMiles = +((longest.distance || 0) / M).toFixed(1);
+  const longDay = WEEKDAYS[new Date(longest.start_date_local || longest.start_date).getDay()];
+  stats.push({ label: 'Long run', value: `${longMiles} mi`, trend: longDay });
+  drivers.push({ metric: 'Long run', value: `${longMiles} mi`, trend: longDay });
+
+  // Hardest session (avg HR), if HR present.
+  const withHr = thisWeek.filter((a) => a.average_heartrate);
+  if (withHr.length > 0) {
+    const hardest = withHr.reduce((m, a) => (a.average_heartrate > m.average_heartrate ? a : m));
+    const hr = Math.round(hardest.average_heartrate);
+    const pace = paceMinPerMi(hardest);
+    stats.push({ label: 'Peak HR', value: `${hr} bpm`, trend: pace ? `${pace}/mi` : undefined });
+    drivers.push({ metric: 'Peak avg HR', value: `${hr} bpm`, trend: pace ? `${pace}/mi` : undefined });
+  }
+
+  // Oura weekly context (last night as the reference point + week HRV trend).
+  if (oura) {
+    if (oura.sleepSeconds != null) {
+      const dur = hoursMin(oura.sleepSeconds);
+      stats.push({ label: 'Sleep', value: dur, trend: oura.sleepScore != null ? `Oura ${oura.sleepScore}` : undefined });
+      drivers.push({ metric: 'Sleep (last night)', value: dur, trend: oura.sleepScore != null ? `Oura ${oura.sleepScore}` : undefined });
+    }
+    if (oura.hrvMs != null) {
+      const trend = oura.hrvWeekAvgMs != null ? `${pct(oura.hrvMs, oura.hrvWeekAvgMs)} vs wk avg` : undefined;
+      stats.push({ label: 'HRV', value: `${oura.hrvMs} ms`, trend });
+      drivers.push({ metric: 'HRV', value: `${oura.hrvMs}ms`, trend });
+    }
+  }
+
+  return { stats, drivers, hasData: true };
+}

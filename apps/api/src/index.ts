@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
-import { buildDashboard } from './metrics';
+import { buildDashboard, buildWeeklySummary } from './metrics';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -567,6 +567,118 @@ Write today's read using only these drivers.`;
     fastify.log.error('Read exception:', error);
     return reply.code(500).send({
       error: 'Read failed',
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Weekly read — the Sunday review. Reflects on the past 7 days (vs the prior 7)
+// and names the week's shape in the voice. Same rules as the daily read:
+// non-prescriptive, numeric-first, only cites drivers that exist.
+//
+// This is the generation half. Scheduled delivery (Sunday/Mon morning push)
+// is future work, gated on APNS + a scheduler.
+fastify.post('/api/weekly', async (request, reply) => {
+  try {
+    const { athleteId } = (request.body as any) || {};
+    if (!athleteId) {
+      return reply.code(400).send({ error: 'Missing: athleteId' });
+    }
+
+    let stravaToken: string;
+    try {
+      stravaToken = await getValidStravaToken(athleteId);
+    } catch (e) {
+      return reply.code(401).send({
+        error: 'Strava not connected or refresh failed — please reconnect Strava.',
+        detail: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
+      headers: { Authorization: `Bearer ${stravaToken}` },
+    });
+    if (!stravaRes.ok) {
+      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    }
+    const activities: any[] = await stravaRes.json();
+
+    let ouraSummary = null;
+    try {
+      const ouraToken = await getValidOuraToken(athleteId);
+      ouraSummary = await fetchOuraSummary(ouraToken);
+    } catch {
+      // Oura optional — weekly read works on Strava alone.
+    }
+
+    const { stats, drivers, hasData } = buildWeeklySummary(activities, ouraSummary);
+
+    if (!hasData) {
+      return reply.send({
+        read: {
+          voice: 'No runs logged in the last week. Once the week has some training in it, the Sunday review has something to reflect on.',
+        },
+        stats,
+        drivers,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+
+    const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes, writing the Sunday weekly review. You READ and NAME the shape of the past week. You are NOT a coach and you never prescribe.
+
+HARD RULES:
+- Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep/HRV unless present).
+- Numeric-first: reference the raw value, then say what it means.
+- Non-prescriptive: never tell the athlete what to do next week, never use "you should / you need to / do a / go for". You may name a posture (primed, steady, moderate, back-off, rest, taper) as an observation.
+- Reflect across the week — connect the numbers into the week's story (e.g. volume + long run + how it sat relative to last week). This is where patterns get named.
+- Tone: calm, considered, plain English. No exclamation points, no emoji, no hype. No "coach".
+
+OUTPUT: 4-6 sentences of plain prose. No headers, no bullets, no metric lines — just the review.`;
+
+    const driverBlock = drivers
+      .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
+      .join('\n');
+    const userPrompt = `DRIVERS (the only values you may cite):
+${driverBlock}
+
+Write this week's review using only these drivers.`;
+
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 320,
+        temperature: 0.5,
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      const err = await openaiRes.text();
+      fastify.log.error('OpenAI error (weekly):', err);
+      return reply.code(500).send({ error: 'Weekly read generation failed', detail: err });
+    }
+
+    const llmResult = await openaiRes.json();
+    const voice = (llmResult.choices?.[0]?.message?.content || '').trim();
+
+    return reply.send({
+      read: { voice },
+      stats,
+      drivers,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    fastify.log.error('Weekly exception:', error);
+    return reply.code(500).send({
+      error: 'Weekly read failed',
       detail: error instanceof Error ? error.message : String(error),
     });
   }

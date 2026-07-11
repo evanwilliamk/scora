@@ -36,6 +36,7 @@ struct DashboardView: View {
   @State private var errorText: String?
   @State private var expanded: Set<String> = []
   @State private var showChat = false
+  @State private var showWeekly = false
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -75,6 +76,9 @@ struct DashboardView: View {
     .sheet(isPresented: $showChat) {
       ChatView(tokenManager: tokenManager)
     }
+    .sheet(isPresented: $showWeekly) {
+      WeeklyView(tokenManager: tokenManager)
+    }
     .task {
       if read == nil { await loadRead() }
     }
@@ -99,6 +103,11 @@ struct DashboardView: View {
         .font(.headline.bold())
         .foregroundColor(.white)
       Spacer()
+      Button(action: { showWeekly = true }) {
+        Image(systemName: "calendar")
+          .foregroundColor(.orange)
+      }
+      .padding(.trailing, 4)
       Button(action: { showChat = true }) {
         Image(systemName: "bubble.left.and.bubble.right")
           .foregroundColor(.orange)

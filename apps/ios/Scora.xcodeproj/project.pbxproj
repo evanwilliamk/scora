@@ -10,6 +10,7 @@
 		841077012FF6BF3900E8AC69 /* TokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 841076FF2FF6BF3900E8AC69 /* TokenManager.swift */; };
 		841077022FF6BF3900E8AC69 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 841077002FF6BF3900E8AC69 /* ChatView.swift */; };
 		84D45B012FF6BF3900E8AC69 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B002FF6BF3900E8AC69 /* DashboardView.swift */; };
+		84D45B032FF6BF3900E8AC69 /* WeeklyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */; };
 		AA1077032FF6BF3900E8AC69 /* ScoraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1077012FF6BF3900E8AC69 /* ScoraApp.swift */; };
 		AA1077042FF6BF3900E8AC69 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1077022FF6BF3900E8AC69 /* ContentView.swift */; };
 		8496DF112FF6B90900A67915 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8496DF102FF6B90900A67915 /* Assets.xcassets */; };
@@ -40,6 +41,7 @@
 		841076FF2FF6BF3900E8AC69 /* TokenManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TokenManager.swift; sourceTree = "<group>"; };
 		841077002FF6BF3900E8AC69 /* ChatView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		84D45B002FF6BF3900E8AC69 /* DashboardView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WeeklyView.swift; sourceTree = "<group>"; };
 		AA1077012FF6BF3900E8AC69 /* ScoraApp.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScoraApp.swift; sourceTree = "<group>"; };
 		AA1077022FF6BF3900E8AC69 /* ContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		8496DF092FF6B90500A67915 /* Scora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scora.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -104,6 +106,7 @@
 				AA1077022FF6BF3900E8AC69 /* ContentView.swift */,
 				841077002FF6BF3900E8AC69 /* ChatView.swift */,
 				84D45B002FF6BF3900E8AC69 /* DashboardView.swift */,
+				84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */,
 				841076FF2FF6BF3900E8AC69 /* TokenManager.swift */,
 				8496DF102FF6B90900A67915 /* Assets.xcassets */,
 				8496DF122FF6B90900A67915 /* Preview Content */,
@@ -270,6 +273,7 @@
 				AA1077042FF6BF3900E8AC69 /* ContentView.swift in Sources */,
 				841077022FF6BF3900E8AC69 /* ChatView.swift in Sources */,
 				84D45B012FF6BF3900E8AC69 /* DashboardView.swift in Sources */,
+				84D45B032FF6BF3900E8AC69 /* WeeklyView.swift in Sources */,
 				841077012FF6BF3900E8AC69 /* TokenManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
