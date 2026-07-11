@@ -375,16 +375,17 @@ Answer THIS question specifically using the data above. If the data can't answer
     // Free-tier gate: 3 CDV queries/day (§5.1). Consumed here, after the data
     // is in hand, so infra failures (bad token, etc.) don't burn a query but
     // the expensive LLM call is never made once the daily limit is hit.
-    let quota;
+    //
+    // Fail-open: if the usage lookup errors (e.g. the migration hasn't run yet,
+    // or a transient DB issue), log it and let the query through rather than
+    // breaking the chat. A soft cap must never take down core functionality.
+    let quota = null;
     try {
       quota = await consumeCdvQuota(athleteId);
     } catch (e) {
-      return reply.code(500).send({
-        error: 'Usage check failed',
-        detail: e instanceof Error ? e.message : String(e),
-      });
+      fastify.log.error('CDV quota check failed — allowing query (fail-open):', e);
     }
-    if (!quota.allowed) {
+    if (quota && !quota.allowed) {
       return reply.code(429).send({
         error: `You've used your ${quota.limit} chats for today. Resets tomorrow.`,
         used: quota.used,
@@ -444,8 +445,8 @@ Answer THIS question specifically using the data above. If the data can't answer
         runCount,
         lastRun: lastRun.name,
       },
-      remaining: quota.remaining,
-      limit: quota.limit,
+      remaining: quota?.remaining,
+      limit: quota?.limit,
     });
   } catch (error) {
     fastify.log.error('CDV exception:', error);
