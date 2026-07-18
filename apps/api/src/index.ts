@@ -12,6 +12,8 @@ import {
   OURA_CLIENT_ID,
 } from './oura';
 import { consumeCdvQuota } from './usage';
+import { generateValidatedVoice } from './voice';
+import { validateVoice, buildFallbackVoice } from './validator';
 
 dotenv.config();
 
@@ -437,8 +439,18 @@ Answer THIS question specifically using the data above. If the data can't answer
       }
     }
 
+    // Banned-phrase check on the CDV voice line. (Number-existence isn't checked
+    // here: the drivers are parsed from the same output, so it would be circular
+    // — the voice legitimately cites data-block values not in the METRIC lines.)
+    let safeVoice = voice;
+    const banned = validateVoice(voice, drivers).bannedHits;
+    if (banned.length > 0) {
+      fastify.log.warn(`CDV voice banned-phrase catch (${banned.join(', ')}) — using fallback`);
+      safeVoice = buildFallbackVoice(drivers, 'Here');
+    }
+
     return reply.send({
-      voice,
+      voice: safeVoice,
       drivers,
       data: {
         weeklyMiles: parseFloat(weeklyMiles),
@@ -530,31 +542,24 @@ ${driverBlock}
 
 Write today's read using only these drivers.`;
 
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 200,
-        temperature: 0.5,
-      }),
-    });
-
-    if (!openaiRes.ok) {
-      const err = await openaiRes.text();
-      fastify.log.error('OpenAI error (read):', err);
-      return reply.code(500).send({ error: 'Read generation failed', detail: err });
+    let voice: string;
+    try {
+      const result = await generateValidatedVoice({
+        systemPrompt,
+        userPrompt,
+        drivers,
+        maxTokens: 200,
+        leadIn: "Today's numbers",
+        log: fastify.log,
+      });
+      voice = result.voice;
+    } catch (e) {
+      fastify.log.error('OpenAI error (read):');
+      return reply.code(500).send({
+        error: 'Read generation failed',
+        detail: e instanceof Error ? e.message : String(e),
+      });
     }
-
-    const llmResult = await openaiRes.json();
-    const voice = (llmResult.choices?.[0]?.message?.content || '').trim();
 
     return reply.send({
       read: { voice },
@@ -643,31 +648,24 @@ ${driverBlock}
 
 Write this week's review using only these drivers.`;
 
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 320,
-        temperature: 0.5,
-      }),
-    });
-
-    if (!openaiRes.ok) {
-      const err = await openaiRes.text();
-      fastify.log.error('OpenAI error (weekly):', err);
-      return reply.code(500).send({ error: 'Weekly read generation failed', detail: err });
+    let voice: string;
+    try {
+      const result = await generateValidatedVoice({
+        systemPrompt,
+        userPrompt,
+        drivers,
+        maxTokens: 320,
+        leadIn: 'This week',
+        log: fastify.log,
+      });
+      voice = result.voice;
+    } catch (e) {
+      fastify.log.error('OpenAI error (weekly):');
+      return reply.code(500).send({
+        error: 'Weekly read generation failed',
+        detail: e instanceof Error ? e.message : String(e),
+      });
     }
-
-    const llmResult = await openaiRes.json();
-    const voice = (llmResult.choices?.[0]?.message?.content || '').trim();
 
     return reply.send({
       read: { voice },
