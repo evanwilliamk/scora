@@ -512,10 +512,30 @@ fastify.post('/api/read', async (request, reply) => {
       fastify.log.info(`Oura not available for ${athleteId}: ${e instanceof Error ? e.message : e}`);
     }
 
+    // HealthKit lives on-device, so the client sends a summary in the request.
+    // Oura wins when both exist; HealthKit fills Sleep + Recovery otherwise.
+    const health = (request.body as any)?.health;
+    let recovery = ouraSummary;
+    let recoverySource = 'Oura';
+    let healthKitUsed = false;
+    if (!ouraConnected && health && typeof health === 'object') {
+      recovery = {
+        sleepSeconds: health.sleepSeconds ?? null,
+        sleepScore: null, // HealthKit has no Oura-style score
+        hrvMs: health.hrvMs != null ? Math.round(health.hrvMs) : null,
+        restingHr: health.restingHr != null ? Math.round(health.restingHr) : null,
+        readinessScore: null,
+        hrvWeekAvgMs: health.hrvWeekAvgMs != null ? Math.round(health.hrvWeekAvgMs) : null,
+      };
+      recoverySource = 'Apple Health';
+      healthKitUsed = true;
+    }
+
     const { cards, drivers, connections } = buildDashboard(
       activities,
-      { strava: true, oura: ouraConnected, healthKit: false },
-      ouraSummary
+      { strava: true, oura: ouraConnected, healthKit: healthKitUsed },
+      recovery,
+      recoverySource
     );
 
     // With no drivers there is nothing the voice can honestly say. Don't invent.

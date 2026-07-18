@@ -80,7 +80,10 @@ struct DashboardView: View {
       WeeklyView(tokenManager: tokenManager)
     }
     .task {
-      if read == nil { await loadRead() }
+      if read == nil {
+        _ = await HealthManager.shared.requestAuthorization()
+        await loadRead()
+      }
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
       Task { await loadRead() }
@@ -234,10 +237,19 @@ struct DashboardView: View {
     guard let url = URL(string: "\(apiBase)/api/read") else { return }
     await MainActor.run { isLoading = true; errorText = nil }
 
+    // HealthKit is on-device: read a summary and send it up so the backend can
+    // fill Sleep + Recovery when Oura isn't connected.
+    var payload: [String: Any] = ["athleteId": tokenManager.athleteId]
+    if let health = await HealthManager.shared.fetchSummary(),
+       let encoded = try? JSONEncoder().encode(health),
+       let dict = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any] {
+      payload["health"] = dict
+    }
+
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId])
+    req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
     do {
       let (data, resp) = try await URLSession.shared.data(for: req)

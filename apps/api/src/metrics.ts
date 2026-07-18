@@ -71,7 +71,8 @@ const hoursMin = (seconds: number): string => {
 export function buildDashboard(
   activities: any[],
   connections: { strava: boolean; oura: boolean; healthKit: boolean },
-  oura?: OuraSummary | null
+  oura?: OuraSummary | null,
+  recoverySource: string = 'Oura'
 ): DashboardData {
   const now = Date.now();
   const day = 86400000;
@@ -99,7 +100,7 @@ export function buildDashboard(
       value: dur,
       unit: 'hrs',
       trend: scoreTrend,
-      source: 'Oura',
+      source: recoverySource,
       translation: `Slept ${dur} last night${oura.sleepScore != null ? `, Oura score ${oura.sleepScore}` : ''}.`,
     });
     drivers.push({ metric: 'Sleep', value: dur, trend: scoreTrend });
@@ -186,7 +187,7 @@ export function buildDashboard(
       value: String(oura.hrvMs),
       unit: 'ms HRV',
       trend,
-      source: 'Oura',
+      source: recoverySource,
       translation: `HRV ${oura.hrvMs}ms last night${oura.hrvWeekAvgMs != null ? ` (week avg ${oura.hrvWeekAvgMs}ms)` : ''}${oura.restingHr != null ? `, resting HR ${oura.restingHr} bpm` : ''}.`,
     });
     drivers.push({ metric: 'HRV', value: `${oura.hrvMs}ms`, trend });
