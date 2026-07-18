@@ -150,3 +150,11 @@ export async function getDeviceTokens(athleteId: string): Promise<string[]> {
 export async function removeDeviceToken(token: string): Promise<void> {
   await getSupabase().from('device_tokens').delete().eq('token', token);
 }
+
+// Distinct athlete ids that have at least one registered device — the audience
+// for scheduled pushes.
+export async function getAthletesWithDevices(): Promise<string[]> {
+  const { data, error } = await getSupabase().from('device_tokens').select('athlete_id');
+  if (error) throw new Error(`Failed to list device athletes: ${error.message}`);
+  return [...new Set((data || []).map((r: any) => String(r.athlete_id)))];
+}

@@ -21,6 +21,7 @@ import {
   sendPush,
   apnsConfigured,
 } from './push';
+import { startScheduler } from './scheduler';
 
 dotenv.config();
 
@@ -769,6 +770,8 @@ const start = async () => {
     await fastify.listen({ port: 3000, host: '0.0.0.0' });
     console.log('API running on 0.0.0.0:3000');
     console.log('POST /api/cdv - Chat-driven analysis');
+    // Push scheduler (daily + weekly). No-op until APNS_* env is configured.
+    startScheduler(3000, fastify.log);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
