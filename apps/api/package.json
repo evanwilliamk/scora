@@ -10,6 +10,7 @@
     "dev": "node --import tsx/esm --watch src/index.ts",
     "build": "echo 'No build needed, using tsx runtime'",
     "start": "npx tsx src/index.ts",
+    "test": "node --import tsx --test test/*.test.ts",
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
