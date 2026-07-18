@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct ScoraApp: App {
+  @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var tokenManager = TokenManager()
   
   var body: some Scene {

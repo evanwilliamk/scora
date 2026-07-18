@@ -30,6 +30,9 @@ class TokenManager: ObservableObject {
       self.isAuthenticated = true
       self.athleteName = athleteName
     }
+    // A device token may already be waiting from launch — register it now that
+    // we have an athlete id.
+    PushManager.shared.onAuthenticated()
   }
   
   func logout() {

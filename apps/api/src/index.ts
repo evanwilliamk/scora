@@ -14,6 +14,13 @@ import {
 import { consumeCdvQuota } from './usage';
 import { generateValidatedVoice } from './voice';
 import { validateVoice, buildFallbackVoice } from './validator';
+import {
+  registerDeviceToken,
+  getDeviceTokens,
+  removeDeviceToken,
+  sendPush,
+  apnsConfigured,
+} from './push';
 
 dotenv.config();
 
@@ -678,6 +685,61 @@ Write this week's review using only these drivers.`;
     return reply.code(500).send({
       error: 'Weekly read failed',
       detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Register an APNs device token for the athlete so we can push the daily read.
+fastify.post('/api/register-device', async (request, reply) => {
+  const { athleteId, deviceToken } = (request.body as any) || {};
+  if (!athleteId || !deviceToken) {
+    return reply.code(400).send({ error: 'Missing: athleteId, deviceToken' });
+  }
+  try {
+    await registerDeviceToken(athleteId, deviceToken);
+    return reply.send({ ok: true });
+  } catch (e) {
+    fastify.log.error('register-device failed:', e);
+    return reply.code(500).send({
+      error: 'Failed to register device',
+      detail: e instanceof Error ? e.message : String(e),
+    });
+  }
+});
+
+// Manual test push — send a sample alert to all of an athlete's devices.
+// Used to verify APNs end-to-end before the scheduler is wired.
+fastify.post('/api/push/test', async (request, reply) => {
+  const { athleteId } = (request.body as any) || {};
+  if (!athleteId) {
+    return reply.code(400).send({ error: 'Missing: athleteId' });
+  }
+  if (!apnsConfigured()) {
+    return reply.code(503).send({ error: 'APNs not configured (missing APNS_* env).' });
+  }
+  try {
+    const tokens = await getDeviceTokens(athleteId);
+    if (tokens.length === 0) {
+      return reply.code(404).send({ error: 'No devices registered for this athlete.' });
+    }
+    const results = [];
+    for (const token of tokens) {
+      const r = await sendPush(token, {
+        title: 'SCORA',
+        body: 'Your morning read is ready.',
+      });
+      // Prune tokens APNs says are dead so they don't linger.
+      if (r.reason === 'BadDeviceToken' || r.reason === 'Unregistered') {
+        await removeDeviceToken(token);
+      }
+      results.push({ token: token.slice(0, 8) + '…', ...r });
+    }
+    return reply.send({ sent: results.filter((r) => r.ok).length, results });
+  } catch (e) {
+    fastify.log.error('push test failed:', e);
+    return reply.code(500).send({
+      error: 'Push test failed',
+      detail: e instanceof Error ? e.message : String(e),
     });
   }
 });
