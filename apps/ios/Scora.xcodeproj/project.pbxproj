@@ -9,17 +9,17 @@
 /* Begin PBXBuildFile section */
 		841077012FF6BF3900E8AC69 /* TokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 841076FF2FF6BF3900E8AC69 /* TokenManager.swift */; };
 		841077022FF6BF3900E8AC69 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 841077002FF6BF3900E8AC69 /* ChatView.swift */; };
+		8496DF112FF6B90900A67915 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8496DF102FF6B90900A67915 /* Assets.xcassets */; };
+		8496DF142FF6B90900A67915 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8496DF132FF6B90900A67915 /* Preview Assets.xcassets */; };
+		8496DF1E2FF6B90A00A67915 /* ScoraTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF1D2FF6B90A00A67915 /* ScoraTests.swift */; };
+		8496DF282FF6B90A00A67915 /* ScoraUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF272FF6B90A00A67915 /* ScoraUITests.swift */; };
+		8496DF2A2FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF292FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift */; };
 		84D45B012FF6BF3900E8AC69 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B002FF6BF3900E8AC69 /* DashboardView.swift */; };
 		84D45B032FF6BF3900E8AC69 /* WeeklyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */; };
 		84D45B052FF6BF3900E8AC69 /* PushManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B042FF6BF3900E8AC69 /* PushManager.swift */; };
 		84D45B072FF6BF3900E8AC69 /* HealthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B062FF6BF3900E8AC69 /* HealthManager.swift */; };
 		AA1077032FF6BF3900E8AC69 /* ScoraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1077012FF6BF3900E8AC69 /* ScoraApp.swift */; };
 		AA1077042FF6BF3900E8AC69 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1077022FF6BF3900E8AC69 /* ContentView.swift */; };
-		8496DF112FF6B90900A67915 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8496DF102FF6B90900A67915 /* Assets.xcassets */; };
-		8496DF142FF6B90900A67915 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8496DF132FF6B90900A67915 /* Preview Assets.xcassets */; };
-		8496DF1E2FF6B90A00A67915 /* ScoraTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF1D2FF6B90A00A67915 /* ScoraTests.swift */; };
-		8496DF282FF6B90A00A67915 /* ScoraUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF272FF6B90A00A67915 /* ScoraUITests.swift */; };
-		8496DF2A2FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF292FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,12 +42,6 @@
 /* Begin PBXFileReference section */
 		841076FF2FF6BF3900E8AC69 /* TokenManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TokenManager.swift; sourceTree = "<group>"; };
 		841077002FF6BF3900E8AC69 /* ChatView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
-		84D45B002FF6BF3900E8AC69 /* DashboardView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
-		84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WeeklyView.swift; sourceTree = "<group>"; };
-		84D45B042FF6BF3900E8AC69 /* PushManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PushManager.swift; sourceTree = "<group>"; };
-		84D45B062FF6BF3900E8AC69 /* HealthManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HealthManager.swift; sourceTree = "<group>"; };
-		AA1077012FF6BF3900E8AC69 /* ScoraApp.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScoraApp.swift; sourceTree = "<group>"; };
-		AA1077022FF6BF3900E8AC69 /* ContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		8496DF092FF6B90500A67915 /* Scora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scora.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8496DF102FF6B90900A67915 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8496DF132FF6B90900A67915 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
@@ -56,6 +50,13 @@
 		8496DF232FF6B90A00A67915 /* ScoraUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScoraUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8496DF272FF6B90A00A67915 /* ScoraUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoraUITests.swift; sourceTree = "<group>"; };
 		8496DF292FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoraUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		84D45B002FF6BF3900E8AC69 /* DashboardView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WeeklyView.swift; sourceTree = "<group>"; };
+		84D45B042FF6BF3900E8AC69 /* PushManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PushManager.swift; sourceTree = "<group>"; };
+		84D45B062FF6BF3900E8AC69 /* HealthManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HealthManager.swift; sourceTree = "<group>"; };
+		84E13FEF300C910600E844CE /* Scora.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Scora.entitlements; sourceTree = "<group>"; };
+		AA1077012FF6BF3900E8AC69 /* ScoraApp.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScoraApp.swift; sourceTree = "<group>"; };
+		AA1077022FF6BF3900E8AC69 /* ContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,6 +107,7 @@
 		8496DF0B2FF6B90500A67915 /* Scora */ = {
 			isa = PBXGroup;
 			children = (
+				84E13FEF300C910600E844CE /* Scora.entitlements */,
 				AA1077012FF6BF3900E8AC69 /* ScoraApp.swift */,
 				AA1077022FF6BF3900E8AC69 /* ContentView.swift */,
 				841077002FF6BF3900E8AC69 /* ChatView.swift */,
@@ -443,9 +445,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Scora/Scora.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Scora/Preview Content\"";
+				DEVELOPMENT_TEAM = 6HFZ6GU7A6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Scora/Info.plist;
@@ -459,7 +463,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Scora.Scora;
+				PRODUCT_BUNDLE_IDENTIFIER = com.evankosowski.Scora;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -472,9 +476,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Scora/Scora.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"Scora/Preview Content\"";
+				DEVELOPMENT_TEAM = 6HFZ6GU7A6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Scora/Info.plist;
@@ -488,7 +494,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Scora.Scora;
+				PRODUCT_BUNDLE_IDENTIFIER = com.evankosowski.Scora;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
