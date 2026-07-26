@@ -17,6 +17,17 @@ function getSupabase(): SupabaseClient {
   return _supabase;
 }
 
+// Trivial query to generate Supabase activity (keeps the free-tier project from
+// pausing after 7 idle days). Returns whether the DB responded; never throws.
+export async function pingDatabase(): Promise<boolean> {
+  try {
+    const { error } = await getSupabase().from('athletes').select('id').limit(1);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 export interface CdvQuota {
   allowed: boolean;
   used: number; // queries used today, including this one when allowed

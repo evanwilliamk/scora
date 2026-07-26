@@ -11,7 +11,7 @@ import {
   fetchOuraSummary,
   OURA_CLIENT_ID,
 } from './oura';
-import { consumeCdvQuota } from './usage';
+import { consumeCdvQuota, pingDatabase } from './usage';
 import { generateValidatedVoice } from './voice';
 import { validateVoice, buildFallbackVoice } from './validator';
 import {
@@ -42,6 +42,14 @@ fastify.get('/terms', async (request, reply) => {
 
 fastify.get('/health', async (request, reply) => {
   return { status: 'ok', timestamp: new Date().toISOString(), api: 'scora' };
+});
+
+// Keep-alive: serving this request keeps Railway warm, and the trivial DB query
+// keeps the Supabase free-tier project from pausing after 7 idle days. Hit once
+// a day by the GitHub Actions keepalive workflow.
+fastify.get('/api/keepalive', async (request, reply) => {
+  const supabase = await pingDatabase();
+  return { ok: true, railway: true, supabase, timestamp: new Date().toISOString() };
 });
 
 // Strava OAuth
