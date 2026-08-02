@@ -1,8 +1,19 @@
 name: keepalive
 
-# Keeps the free-tier services warm: one daily request wakes Railway (by
-# serving it) and generates Supabase activity (the endpoint runs a trivial
-# query), so neither pauses after 7 idle days.
+# Keeps the free-tier services warm. Two INDEPENDENT jobs so one service going
+# down can't drag the other with it:
+#
+#   supabase — hits Supabase's REST API directly (a real select on `athletes`),
+#              so it keeps the DB warm even if Railway is down. This is the
+#              critical one: free-tier Supabase idle-pauses after 7 days and
+#              holds all our data.
+#   railway  — hits the API's /api/keepalive as an uptime check. On the paid
+#              Hobby plan Railway no longer idle-pauses, so this is now just a
+#              health signal — a red X here means the API is actually down.
+#
+# Earlier version routed the Supabase ping THROUGH Railway; when the Railway
+# trial expired, Supabase lost its only pinger and drifted toward pausing. Never
+# again — the two are decoupled.
 
 on:
   schedule:
@@ -12,10 +23,32 @@ on:
   workflow_dispatch: {} # allow manual "Run workflow" from the Actions tab
 
 jobs:
-  ping:
+  supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Railway + Supabase
+      - name: Ping Supabase directly (keeps the DB warm)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          curl -fsS --retry 3 --retry-delay 10 --max-time 30 \
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set."
+            exit 1
+          fi
+          # A real select on `athletes` generates genuine DB activity. -f makes
+          # curl exit non-zero on any 4xx/5xx (e.g. a paused/unreachable project
+          # or a bad key), so a silent DB failure turns this run RED instead of
+          # green. --fail-with-body prints the error payload for debugging.
+          curl -fsS --fail-with-body --retry 3 --retry-delay 10 --max-time 30 \
+            "$SUPABASE_URL/rest/v1/athletes?select=id&limit=1" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+          echo "Supabase responded OK."
+
+  railway:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Railway API (uptime check)
+        run: |
+          curl -fsS --fail-with-body --retry 3 --retry-delay 10 --max-time 30 \
             https://zonal-prosperity-production-3965.up.railway.app/api/keepalive
