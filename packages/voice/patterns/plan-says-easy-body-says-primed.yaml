@@ -1,0 +1,27 @@
+# Pattern Library v0.3 — doc 06 §6.3
+# Body is ready but the plan says easy. Voice respects the plan; never tempts
+# the athlete to push (that would break the plan and cross into prescription).
+id: plan-says-easy-body-says-primed-v1
+priority: 70
+posture_filter: [primed]
+requires_scheduled_workout: true
+scheduled_workout_intensity_filter: [easy, recovery, rest]
+driver_rule: |
+  hrv_7d_avg_delta >= 3 AND consecutive_hard_days = 0
+min_data_completeness: 0.4
+voice_version: v0.3.0
+tone_notes: |
+  The "you're ready, but the plan knows what it's doing" moment. Athletes often
+  push through easy days when they feel good — and that breaks the plan. Voice
+  respects the plan without moralizing.
+slot_drivers:
+  - hrv_7d_avg_delta
+  - scheduled_workout.planned_intensity
+numeric_slots:
+  - hrv_pct_change
+template: |
+  Body is primed — HRV up {{hrv_pct_change}}% from last week. The plan calls for {{scheduled_workout.planned_intensity}} today, and it knows what it's doing. Easy days are what let the hard days work.
+llm_hint: |
+  "Easy days are what let the hard days work" is a training truth that can
+  appear when this fires. Never say "push through" or "you can do more."
+exclude_if_recently_fired: 3
