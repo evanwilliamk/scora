@@ -1,0 +1,28 @@
+# Pattern Library v0.3 — doc 06 §6.2
+# The confirmation pattern. Body's ready, plan says push, everything aligns.
+id: plan-says-hard-body-says-primed-v1
+priority: 82
+posture_filter: [primed, steady]
+requires_scheduled_workout: true
+scheduled_workout_intensity_filter: [hard, threshold, intervals, tempo, long]
+driver_rule: |
+  hrv_7d_avg_delta >= 3 AND consecutive_hard_days = 0
+  AND (sleep_7d_avg_delta >= -1 OR sleep_last_night_score >= 75)
+min_data_completeness: 0.5
+voice_version: v0.3.0
+tone_notes: |
+  Quiet confidence, not hype. Body and plan agree. Athletes appreciate being
+  told "this looks good" without cheerleading.
+slot_drivers:
+  - hrv_7d_avg_delta
+  - sleep_7d_avg_delta
+  - scheduled_workout.planned_intensity
+numeric_slots:
+  - hrv_pct_change
+  - sleep_hours_minutes
+template: |
+  HRV up {{hrv_pct_change}}% and sleep held. The plan lines up with the body this morning — {{scheduled_workout.planned_intensity}} will land on a rested system.
+llm_hint: |
+  Never "crush it" or "get after it." Just: the alignment is real. Athletes
+  reading this will feel seen without being pumped up.
+exclude_if_recently_fired: 1

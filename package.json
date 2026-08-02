@@ -3,8 +3,14 @@
   "version": "0.1.0",
   "private": true,
 
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+
   "scripts": {
-    "start": "cd apps/api && npm install && npx tsx src/index.ts"
+    "start": "cd apps/api && npm install && npx tsx src/index.ts",
+    "test": "npm test --workspaces --if-present"
   },
   "dependencies": {},
   "devDependencies": {}

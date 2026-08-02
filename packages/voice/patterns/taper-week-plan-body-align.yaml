@@ -1,0 +1,31 @@
+# Pattern Library v0.3 — doc 06 §6.6
+# Race week, body coming around. Highest-stakes voice moment of the year.
+# Nothing loud — confirmation only.
+id: taper-week-plan-body-align-v1
+priority: 96
+posture_filter: [taper]
+requires_scheduled_workout: true
+driver_rule: |
+  race_in_next_7d = true
+  AND load_7d < (load_28d / 4) * 0.85
+  AND hrv_7d_avg_delta >= 0
+min_data_completeness: 0.5
+voice_version: v0.3.0
+tone_notes: |
+  Highest-stakes voice moment of the year for the athlete. Nothing loud.
+  Confirmation only.
+slot_drivers:
+  - race_in_next_7d
+  - load_7d
+  - load_28d
+  - hrv_7d_avg_delta
+  - next_race_date
+numeric_slots:
+  - hrv_pct_change
+  - days_to_race
+template: |
+  {{days_to_race}} days out. Load is easing into race day, HRV steady. The taper is doing what it's supposed to.
+llm_hint: |
+  Never "trust the process" or "you got this." Just name the alignment. Athletes
+  read this and settle.
+exclude_if_recently_fired: 1
