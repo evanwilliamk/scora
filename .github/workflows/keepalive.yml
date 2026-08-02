@@ -35,11 +35,12 @@ jobs:
             echo "::error::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set."
             exit 1
           fi
-          # A real select on `athletes` generates genuine DB activity. -f makes
-          # curl exit non-zero on any 4xx/5xx (e.g. a paused/unreachable project
-          # or a bad key), so a silent DB failure turns this run RED instead of
-          # green. --fail-with-body prints the error payload for debugging.
-          curl -fsS --fail-with-body --retry 3 --retry-delay 10 --max-time 30 \
+          # A real select on `athletes` generates genuine DB activity.
+          # --fail-with-body makes curl exit non-zero on any 4xx/5xx (e.g. a
+          # paused/unreachable project or a bad key) AND print the error payload,
+          # so a silent DB failure turns this run RED instead of green. (Don't
+          # add -f: it's mutually exclusive with --fail-with-body.)
+          curl -sS --fail-with-body --retry 3 --retry-delay 10 --max-time 30 \
             "$SUPABASE_URL/rest/v1/athletes?select=id&limit=1" \
             -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
@@ -50,5 +51,5 @@ jobs:
     steps:
       - name: Ping Railway API (uptime check)
         run: |
-          curl -fsS --fail-with-body --retry 3 --retry-delay 10 --max-time 30 \
+          curl -sS --fail-with-body --retry 3 --retry-delay 10 --max-time 30 \
             https://zonal-prosperity-production-3965.up.railway.app/api/keepalive
