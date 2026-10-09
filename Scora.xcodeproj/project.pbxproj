@@ -1,0 +1,433 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA000032AA000032AA000032 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000031AA000031AA000031 /* HealthKit.framework */; };
+		AA000041AA000041AA000041 /* ScoraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000040AA000040AA000040 /* ScoraApp.swift */; };
+		AA000043AA000043AA000043 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000042AA000042AA000042 /* ContentView.swift */; };
+		AA000063AA000063AA000063 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000062AA000062AA000062 /* Extensions.swift */; };
+		AA000045AA000045AA000045 /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000044AA000044AA000044 /* UserProfile.swift */; };
+		AA000047AA000047AA000047 /* DailyBurnRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000046AA000046AA000046 /* DailyBurnRecord.swift */; };
+		AA000049AA000049AA000049 /* CalibrationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000048AA000048AA000048 /* CalibrationState.swift */; };
+		AA00004BAA00004BAA00004B /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00004AAA00004AAA00004A /* HealthKitManager.swift */; };
+		AA00004DAA00004DAA00004D /* PersistenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00004CAA00004CAA00004C /* PersistenceManager.swift */; };
+		AA00004FAA00004FAA00004F /* EnergyCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00004EAA00004EAA00004E /* EnergyCalculator.swift */; };
+		AA000051AA000051AA000051 /* CalibrationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000050AA000050AA000050 /* CalibrationEngine.swift */; };
+		AA000053AA000053AA000053 /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000052AA000052AA000052 /* HomeViewModel.swift */; };
+		AA000055AA000055AA000055 /* TrendsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000054AA000054AA000054 /* TrendsViewModel.swift */; };
+		AA000057AA000057AA000057 /* CheckInViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000056AA000056AA000056 /* CheckInViewModel.swift */; };
+		AA000059AA000059AA000059 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000058AA000058AA000058 /* HomeView.swift */; };
+		AA00005BAA00005BAA00005B /* TrendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00005AAA00005AAA00005A /* TrendsView.swift */; };
+		AA00005DAA00005DAA00005D /* CheckInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00005CAA00005CAA00005C /* CheckInView.swift */; };
+		AA00005FAA00005FAA00005F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00005EAA00005EAA00005E /* OnboardingView.swift */; };
+		AA000061AA000061AA000061 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000060AA000060AA000060 /* ProfileView.swift */; };
+		AA000065AA000065AA000065 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000064AA000064AA000064 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA000030AA000030AA000030 /* Scora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scora.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA000031AA000031AA000031 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		AA000040AA000040AA000040 /* ScoraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoraApp.swift; sourceTree = "<group>"; };
+		AA000042AA000042AA000042 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AA000062AA000062AA000062 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
+		AA000044AA000044AA000044 /* UserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfile.swift; sourceTree = "<group>"; };
+		AA000046AA000046AA000046 /* DailyBurnRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyBurnRecord.swift; sourceTree = "<group>"; };
+		AA000048AA000048AA000048 /* CalibrationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationState.swift; sourceTree = "<group>"; };
+		AA00004AAA00004AAA00004A /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
+		AA00004CAA00004CAA00004C /* PersistenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceManager.swift; sourceTree = "<group>"; };
+		AA00004EAA00004EAA00004E /* EnergyCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnergyCalculator.swift; sourceTree = "<group>"; };
+		AA000050AA000050AA000050 /* CalibrationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalibrationEngine.swift; sourceTree = "<group>"; };
+		AA000052AA000052AA000052 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
+		AA000054AA000054AA000054 /* TrendsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendsViewModel.swift; sourceTree = "<group>"; };
+		AA000056AA000056AA000056 /* CheckInViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInViewModel.swift; sourceTree = "<group>"; };
+		AA000058AA000058AA000058 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		AA00005AAA00005AAA00005A /* TrendsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendsView.swift; sourceTree = "<group>"; };
+		AA00005CAA00005CAA00005C /* CheckInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInView.swift; sourceTree = "<group>"; };
+		AA00005EAA00005EAA00005E /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		AA000060AA000060AA000060 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		AA000064AA000064AA000064 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AA000066AA000066AA000066 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA000067AA000067AA000067 /* Scora.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Scora.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA000021AA000021AA000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000032AA000032AA000032 /* HealthKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA000001AA000001AA000001 = {
+			isa = PBXGroup;
+			children = (
+				AA000004AA000004AA000004 /* Scora */,
+				AA00000AAA00000AAA00000A /* Frameworks */,
+				AA000003AA000003AA000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA000003AA000003AA000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA000030AA000030AA000030 /* Scora.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AA000004AA000004AA000004 /* Scora */ = {
+			isa = PBXGroup;
+			children = (
+				AA000040AA000040AA000040 /* ScoraApp.swift */,
+				AA000042AA000042AA000042 /* ContentView.swift */,
+				AA000062AA000062AA000062 /* Extensions.swift */,
+				AA000005AA000005AA000005 /* Models */,
+				AA000006AA000006AA000006 /* Managers */,
+				AA000007AA000007AA000007 /* Engines */,
+				AA000008AA000008AA000008 /* ViewModels */,
+				AA000009AA000009AA000009 /* Views */,
+				AA000064AA000064AA000064 /* Assets.xcassets */,
+				AA000066AA000066AA000066 /* Info.plist */,
+				AA000067AA000067AA000067 /* Scora.entitlements */,
+			);
+			path = Scora;
+			sourceTree = "<group>";
+		};
+		AA000005AA000005AA000005 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AA000044AA000044AA000044 /* UserProfile.swift */,
+				AA000046AA000046AA000046 /* DailyBurnRecord.swift */,
+				AA000048AA000048AA000048 /* CalibrationState.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AA000006AA000006AA000006 /* Managers */ = {
+			isa = PBXGroup;
+			children = (
+				AA00004AAA00004AAA00004A /* HealthKitManager.swift */,
+				AA00004CAA00004CAA00004C /* PersistenceManager.swift */,
+			);
+			path = Managers;
+			sourceTree = "<group>";
+		};
+		AA000007AA000007AA000007 /* Engines */ = {
+			isa = PBXGroup;
+			children = (
+				AA00004EAA00004EAA00004E /* EnergyCalculator.swift */,
+				AA000050AA000050AA000050 /* CalibrationEngine.swift */,
+			);
+			path = Engines;
+			sourceTree = "<group>";
+		};
+		AA000008AA000008AA000008 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				AA000052AA000052AA000052 /* HomeViewModel.swift */,
+				AA000054AA000054AA000054 /* TrendsViewModel.swift */,
+				AA000056AA000056AA000056 /* CheckInViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		AA000009AA000009AA000009 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AA000058AA000058AA000058 /* HomeView.swift */,
+				AA00005AAA00005AAA00005A /* TrendsView.swift */,
+				AA00005CAA00005CAA00005C /* CheckInView.swift */,
+				AA00005EAA00005EAA00005E /* OnboardingView.swift */,
+				AA000060AA000060AA000060 /* ProfileView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		AA00000AAA00000AAA00000A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AA000031AA000031AA000031 /* HealthKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA000010AA000010AA000010 /* Scora */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA000012AA000012AA000012 /* Build configuration list for PBXNativeTarget "Scora" */;
+			buildPhases = (
+				AA000020AA000020AA000020 /* Sources */,
+				AA000021AA000021AA000021 /* Frameworks */,
+				AA000022AA000022AA000022 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Scora;
+			productName = Scora;
+			productReference = AA000030AA000030AA000030 /* Scora.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA000002AA000002AA000002 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					AA000010AA000010AA000010 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = AA000011AA000011AA000011 /* Build configuration list for PBXProject "Scora" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AA000001AA000001AA000001;
+			productRefGroup = AA000003AA000003AA000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA000010AA000010AA000010 /* Scora */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA000022AA000022AA000022 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000065AA000065AA000065 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA000020AA000020AA000020 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000041AA000041AA000041 /* ScoraApp.swift in Sources */,
+				AA000043AA000043AA000043 /* ContentView.swift in Sources */,
+				AA000063AA000063AA000063 /* Extensions.swift in Sources */,
+				AA000045AA000045AA000045 /* UserProfile.swift in Sources */,
+				AA000047AA000047AA000047 /* DailyBurnRecord.swift in Sources */,
+				AA000049AA000049AA000049 /* CalibrationState.swift in Sources */,
+				AA00004BAA00004BAA00004B /* HealthKitManager.swift in Sources */,
+				AA00004DAA00004DAA00004D /* PersistenceManager.swift in Sources */,
+				AA00004FAA00004FAA00004F /* EnergyCalculator.swift in Sources */,
+				AA000051AA000051AA000051 /* CalibrationEngine.swift in Sources */,
+				AA000053AA000053AA000053 /* HomeViewModel.swift in Sources */,
+				AA000055AA000055AA000055 /* TrendsViewModel.swift in Sources */,
+				AA000057AA000057AA000057 /* CheckInViewModel.swift in Sources */,
+				AA000059AA000059AA000059 /* HomeView.swift in Sources */,
+				AA00005BAA00005BAA00005B /* TrendsView.swift in Sources */,
+				AA00005DAA00005DAA00005D /* CheckInView.swift in Sources */,
+				AA00005FAA00005FAA00005F /* OnboardingView.swift in Sources */,
+				AA000061AA000061AA000061 /* ProfileView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA000013AA000013AA000013 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AA000014AA000014AA000014 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA000015AA000015AA000015 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Scora/Scora.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Scora/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scora.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		AA000016AA000016AA000016 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Scora/Scora.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Scora/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.scora.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA000011AA000011AA000011 /* Build configuration list for PBXProject "Scora" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA000013AA000013AA000013 /* Debug */,
+				AA000014AA000014AA000014 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA000012AA000012AA000012 /* Build configuration list for PBXNativeTarget "Scora" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA000015AA000015AA000015 /* Debug */,
+				AA000016AA000016AA000016 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = AA000002AA000002AA000002 /* Project object */;
+}

@@ -1,0 +1,13 @@
+# Secrets
+.env
+.env.*
+*.secrets
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+build/
+
+# macOS
+.DS_Store
