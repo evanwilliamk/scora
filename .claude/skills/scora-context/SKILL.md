@@ -12,9 +12,13 @@ These two define what the product is and the rules the codebase lives by — rea
 - **`CLAUDE.md`** — standing orders: voice-vs-plan distinction, tier scope, banned phrases, tech stack, out-of-scope list.
 - **`docs/scora-master-context-rev5.md`** — canonical positioning (Rev 5): the calibrated-forecaster thesis (predict → verify → calibrate → restraint), the Daily Call, feel-before-reveal, the third witness, the named Score, exit-to-Strava. **This ENRICHES CLAUDE.md, not replaces it** — read the reconciliation note at the top for Evan's standing clarifications (free tier kept for now; not road-only; Strava stays integrated; "paid-only" is analysis, not a locked decision).
 
-## 2. Surface current state from memory
-Read the memory index and the files it points to (recent decisions, open items, blockers):
-- `/Users/everettkosowski/.claude/projects/-Users-everettkosowski-Documents-scora/memory/MEMORY.md`
+## 2. Surface current state from the repo's shared files
+These are shared by every agent and machine (CLAUDE.md §9.1). Read the ones that exist:
+- `PLAN.md`: the working checklist (open, ready for review, blocked).
+- `DECISIONS.md`: decisions made on Evan's behalf and ones waiting on him.
+- `MEMORY.md` plus the most recent `memory/YYYY-MM-DD.md`: project log and session notes.
+
+Per-tool private memory (for example `~/.claude/projects/...`) is machine-specific. Use it only as a supplement, never as the source of truth.
 
 ## 3. Check where we left off (git)
 Run: `git status --short` and `git log --oneline -6`. Note branch, uncommitted changes, and recent commits.
@@ -41,8 +45,8 @@ Run: `git status --short` and `git log --oneline -6`. Note branch, uncommitted c
 ## 5. Brief the user
 After loading 1-3, give a tight briefing:
 - **What SCORA is** — 2 lines (native iOS calibrated forecaster; multi-source readiness verdict with a visible accuracy record; north star = acquisition by Strava).
-- **Where we left off** — from memory + git (recent work, current branch, uncommitted changes).
-- **Open decisions / blockers** — from memory (e.g. Apple Developer enrollment gate; the intervention-threshold design question; which Rev 5 elements to formally adopt).
+- **Where we left off** — from PLAN.md, memory + git (recent work, current branch, uncommitted changes).
+- **Open decisions / blockers** — from DECISIONS.md and memory (e.g. Apple Developer enrollment gate; the intervention-threshold design question; which Rev 5 elements to formally adopt).
 - **Offer the doc menu** — mention "say 'load everything' for a full read of the PRD, architecture, LLM spec, canon, and lenses."
 
 ## Full read (only if asked)
