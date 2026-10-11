@@ -341,7 +341,7 @@ More than one agent works on this repo, from more than one machine. Git is the o
 - **Start:** `git fetch` and start from an up-to-date `main`. Read `PLAN.md` and `DECISIONS.md`.
 - **Branches:** never commit to `main`. One branch per plan item: `claude/<task>` for Claude Code, `openclaw/<task>` for OpenClaw. Only one agent works on a branch at a time.
 - **Commits:** small, one working step each. Tests pass (`cd apps/api && npm test`) before a branch is marked ready.
-- **Pushing and merging:** Evan merges to `main`. Who pushes branches is an open decision in `DECISIONS.md`; until it is settled, Claude Code does not push.
+- **Pushing and merging:** agents push their own branches to `origin` when an item is ready for review. Nobody but Evan pushes to or merges into `main`; he merges on GitHub. Never force-push.
 - **Shared state lives in the repo, not in either tool's private memory:**
   - `PLAN.md`: the checklist. Mark items `[~]` with the branch name when ready for review.
   - `DECISIONS.md`: anything Evan might want to change later, or needs to decide.
