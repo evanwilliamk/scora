@@ -19,7 +19,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 ## Agent workflow
 
-- [~] Shared workflow rules, PLAN.md, DECISIONS.md (`claude/agent-workflow-docs`)
+- [x] Shared workflow rules, PLAN.md, DECISIONS.md
 - [~] Point `/scora-context` at repo files instead of a machine-specific memory path (`claude/scora-context-paths`)
 - [!] Decide whether OpenClaw keeps pushing on its own, and whether its workspace files stay in the repo (see DECISIONS.md)
 
