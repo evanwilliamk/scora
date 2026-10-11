@@ -21,7 +21,8 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 - [x] Shared workflow rules, PLAN.md, DECISIONS.md
 - [~] Point `/scora-context` at repo files instead of a machine-specific memory path (`claude/scora-context-paths`)
-- [!] Decide whether OpenClaw keeps pushing on its own, and whether its workspace files stay in the repo (see DECISIONS.md)
+- [~] Push policy: agents push branches, Evan merges (`claude/push-policy`)
+- [!] OpenClaw: align its AGENTS.md with CLAUDE.md §9.1, decide where its workspace files live (Evan)
 
 ## Phase 0 / Phase 1 remaining
 
