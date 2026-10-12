@@ -28,7 +28,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key)
 - [!] Sign in with Apple (auth: needs Evan)
-- [ ] Review and land `origin/feat/voice-pattern-library` (pattern engine + 7 ported v0.3 entries)
+- [~] Review and land `origin/feat/voice-pattern-library` (pattern engine + 7 ported v0.3 entries) (`claude/voice-pattern-library`)
 - [ ] Posture engine as its own module with unit tests (today it lives inline in `index.ts`)
 - [ ] Port remaining pattern library entries to reach 20+
 - [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)

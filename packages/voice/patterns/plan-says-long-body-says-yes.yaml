@@ -1,0 +1,30 @@
+# Pattern Library v0.3 — doc 06 §6.5
+# Long run/ride day, body settled, space since the last long effort.
+id: plan-says-long-body-says-yes-v1
+priority: 78
+posture_filter: [primed, steady]
+requires_scheduled_workout: true
+scheduled_workout_intensity_filter: [long]
+driver_rule: |
+  sleep_7d_avg_delta >= -1
+  AND hrv_7d_avg_delta >= 0
+  AND consecutive_hard_days = 0
+  AND days_since_long_effort >= 5
+min_data_completeness: 0.5
+voice_version: v0.3.0
+tone_notes: |
+  Long day. Name the readiness and the accumulated space since the last long
+  effort. No hype.
+slot_drivers:
+  - days_since_long_effort
+  - sleep_7d_avg_delta
+  - scheduled_workout.planned_distance_km
+numeric_slots:
+  - days_since_long_effort
+  - long_distance_km
+template: |
+  {{days_since_long_effort}} days since your last long effort, sleep is holding, body is settled. Today's {{long_distance_km}}k long lines up cleanly.
+llm_hint: |
+  Athletes appreciate acknowledgment that they've built to this long effort.
+  Numeric context earns trust.
+exclude_if_recently_fired: 3

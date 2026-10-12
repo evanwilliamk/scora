@@ -1,0 +1,28 @@
+# Pattern Library v0.3 — doc 06 §6.7
+# Race week but the body is stubborn. Name it plainly, without alarm.
+id: taper-week-body-not-coming-around-v1
+priority: 97
+posture_filter: [taper, moderate, back-off]
+requires_scheduled_workout: true
+driver_rule: |
+  race_in_next_7d = true
+  AND (hrv_7d_avg_delta < -3 OR sleep_7d_avg_delta < -3 OR rhr_7d_avg_delta > 2)
+min_data_completeness: 0.5
+voice_version: v0.3.0
+tone_notes: |
+  Race week and the body isn't cooperating. Athletes get anxious here. Voice
+  does NOT add drama. Names what's true and lets the taper do its job.
+slot_drivers:
+  - race_in_next_7d
+  - hrv_7d_avg_delta
+  - sleep_7d_avg_delta
+  - rhr_7d_avg_delta
+numeric_slots:
+  - hrv_pct_change
+  - days_to_race
+template: |
+  {{days_to_race}} days out and HRV is still {{hrv_pct_change}}% below baseline. The body is stubborn this week — the plan gives it time.
+llm_hint: |
+  Never say "you'll be fine" or "this will pass." "The plan gives it time"
+  acknowledges the taper without predicting the future.
+exclude_if_recently_fired: 1
