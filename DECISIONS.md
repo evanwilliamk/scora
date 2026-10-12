@@ -2,6 +2,15 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-11: Posture rules ported from doc 07 v1
+- Status: DECIDED (review when you can)
+- Branch: claude/posture-engine
+- Context: no posture engine existed (the LLM picked posture), and doc 07 v2 dropped the rules.
+- Choice: ported doc 07 v1 §8.3 thresholds as written into packages/posture. Missing drivers make a clause false, so no data reads steady.
+- Open questions: (1) taper fires only while load_7d is still above 0.8x weekly chronic, which reads backwards for a taper; (2) PRD v1 says taper window is 14 days, doc 07 says 7.
+- Why: the v1 doc is the only written spec.
+- To reverse: edit packages/posture/src/constants.ts and bump POSTURE_ENGINE_VERSION.
+
 ### 2026-10-11: Agents push branches, Evan merges to main
 - Status: DECIDED (by Evan)
 - Branch: claude/push-policy
