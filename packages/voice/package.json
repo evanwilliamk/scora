@@ -1,0 +1,27 @@
+{
+  "name": "@scora/voice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SCORA voice: the curated pattern library + deterministic matcher (the moat). Interpretation-only, non-prescriptive (CLAUDE.md §1, §9).",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./patterns": "./src/loader.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}
