@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-12: Port of remaining voice patterns waits for Node on the Studio
+- Status: NEEDS EVAN
+- Branch: none yet
+- Context: the night worker on Mac-Studio has no Node or npm, so it cannot run the @scora/voice tests; it took the ChatView emoji item instead.
+- Options: install Node on the Studio (Homebrew `node@20`), or leave voice work to the MacBook.
+- Why: nothing ships untested. Also, doc 06 holds only 12 v0.3 entries (7 ported); the 40 v0.1 and 5 v0.2 entries needed to reach 20+ are not in the repo.
+- To reverse: n/a.
+
 ### 2026-10-11: Agents push branches, Evan merges to main
 - Status: DECIDED (by Evan)
 - Branch: claude/push-policy

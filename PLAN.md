@@ -33,7 +33,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [ ] Port remaining pattern library entries to reach 20+
 - [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
 - [ ] CDV charts: Vega-Lite WebView in ChatView
-- [ ] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7)
+- [~] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7) (`claude/chatview-no-emoji`)
 - [ ] Oura success page + deep link landing (design-todos)
 - [ ] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md)
 - [ ] Manual plan entry + plan parsing (plan-aware reads)
