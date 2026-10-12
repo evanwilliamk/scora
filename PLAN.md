@@ -29,7 +29,8 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key)
 - [!] Sign in with Apple (auth: needs Evan)
 - [ ] Review and land `origin/feat/voice-pattern-library` (pattern engine + 7 ported v0.3 entries)
-- [ ] Posture engine as its own module with unit tests (today it lives inline in `index.ts`)
+- [~] Posture engine as its own module with unit tests (`claude/posture-engine`; not wired into the API yet)
+- [ ] Compute the per-user driver record (doc 07 v1 §8.2) and wire posture + voice into the daily read
 - [ ] Port remaining pattern library entries to reach 20+
 - [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
 - [ ] CDV charts: Vega-Lite WebView in ChatView
