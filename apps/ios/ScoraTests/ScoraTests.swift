@@ -26,6 +26,17 @@ final class ScoraTests: XCTestCase {
         // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
     }
 
+    func testErrorBubbleIsPlainText() throws {
+        let message = ChatMessage.error("The network connection was lost.")
+        XCTAssertFalse(message.isUser)
+        XCTAssertTrue(message.drivers.isEmpty)
+        XCTAssertEqual(message.text, "The network connection was lost.")
+        let hasGlyph = message.text.unicodeScalars.contains {
+            $0.properties.isEmojiPresentation || $0.value == 0x26A0
+        }
+        XCTAssertFalse(hasGlyph, "error bubbles carry no emoji (CLAUDE.md 3.7)")
+    }
+
     func testPerformanceExample() throws {
         // This is an example of a performance test case.
         self.measure {

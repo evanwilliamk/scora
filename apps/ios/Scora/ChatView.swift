@@ -28,6 +28,14 @@ struct ChatMessage: Identifiable {
   let drivers: [Driver]
 }
 
+extension ChatMessage {
+  /// A non-user bubble for a failed request. Plain text only: no emoji or
+  /// warning glyphs in anything SCORA renders (CLAUDE.md §3.7).
+  static func error(_ text: String) -> ChatMessage {
+    ChatMessage(isUser: false, text: text, drivers: [])
+  }
+}
+
 struct ChatView: View {
   @ObservedObject var tokenManager: TokenManager
   @State private var messages: [ChatMessage] = []
@@ -196,7 +204,7 @@ struct ChatView: View {
           ?? String(data: data, encoding: .utf8) ?? "Unknown error"
         let isLimit = http.statusCode == 429
         await MainActor.run {
-          messages.append(ChatMessage(isUser: false, text: msg, drivers: []))
+          messages.append(.error(msg))
           if isLimit { remaining = 0; limitReached = true }
           isLoading = false
         }
@@ -212,7 +220,7 @@ struct ChatView: View {
       }
     } catch {
       await MainActor.run {
-        messages.append(ChatMessage(isUser: false, text: "⚠️ \(error.localizedDescription)", drivers: []))
+        messages.append(.error(error.localizedDescription))
         isLoading = false
       }
     }
