@@ -33,4 +33,48 @@ final class ScoraTests: XCTestCase {
         }
     }
 
+    // MARK: - CDV chart
+
+    private func decode(_ json: String) throws -> CDVResponse {
+        try JSONDecoder().decode(CDVResponse.self, from: Data(json.utf8))
+    }
+
+    func testCDVResponseWithoutChartDecodes() throws {
+        let r = try decode(#"{"voice":"Load is steady.","drivers":[],"remaining":2,"limit":3}"#)
+        XCTAssertNil(r.chart)
+    }
+
+    func testCDVResponseWithInlineChartBuildsHTML() throws {
+        let r = try decode(#"""
+        {"voice":"Load is steady.","drivers":[],"chart":{"mark":"line",
+         "data":{"values":[{"d":"2026-10-01","km":8},{"d":"2026-10-02","km":12.5}]},
+         "encoding":{"x":{"field":"d","type":"temporal"},"y":{"field":"km","type":"quantitative"}}}}
+        """#)
+        let spec = try XCTUnwrap(r.chart)
+        let html = try XCTUnwrap(CDVChart.html(for: spec))
+        XCTAssertTrue(html.contains("vegaEmbed"))
+        XCTAssertTrue(html.contains("12.5"))
+    }
+
+    func testChartWithExternalDataURLIsRejected() throws {
+        let r = try decode(#"{"voice":"x","drivers":[],"chart":{"mark":"bar","data":{"url":"https://example.com/d.json"}}}"#)
+        XCTAssertNil(CDVChart.html(for: try XCTUnwrap(r.chart)))
+    }
+
+    func testChartWithNestedHrefIsRejected() throws {
+        let r = try decode(#"{"voice":"x","drivers":[],"chart":{"layer":[{"mark":"point","encoding":{"HREF":{"field":"a"}}}]}}"#)
+        XCTAssertNil(CDVChart.html(for: try XCTUnwrap(r.chart)))
+    }
+
+    func testNonObjectChartIsRejected() throws {
+        XCTAssertNil(CDVChart.html(for: .array([.number(1)])))
+    }
+
+    func testChartStringsCannotCloseScriptTag() throws {
+        let spec = JSONValue.object(["title": .string("</script><script>alert(1)</script>"), "mark": .string("bar")])
+        let html = try XCTUnwrap(CDVChart.html(for: spec))
+        XCTAssertFalse(html.contains("</script><script>alert"))
+        XCTAssertTrue(html.contains("\\u003c"))
+    }
+
 }
