@@ -52,6 +52,10 @@ Read these in order before writing any code.
 
 │
 
+├── 11_SCORA_Knowledge_Library_Spec_v0_1.md          ← NEW 2026-10-13 (fixed-source library, coaching phase direction)
+
+│
+
 ├── 03_SCORA_Feature_Roadmap_12mo.md                 ← PARTIAL STALE
 
 ├── 03_SCORA_Feature_Roadmap_12mo.docx               ← export

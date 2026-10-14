@@ -2,6 +2,24 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-13: Knowledge library: SCORA reasons over fixed sources (RAG)
+- Status: DECIDED (by Evan); spec details open for review
+- Branch: claude/knowledge-library-spec
+- Context: Pattern library v0.3 is 12 hand-written entries; Evan wants interpretations that adapt, grounded in trusted books and coaches captured in FieldCopy, not the internet.
+- Choice: Retrieval over a fixed source library (NotebookLM-style), stored in pgvector on Supabase, embedded with OpenAI `text-embedding-3-small`. Pattern library stays as fallback and voice examples. Spec: `11_SCORA_Knowledge_Library_Spec_v0_1.md`.
+- Cost: embeddings approved by Evan 2026-10-13 (cents to a few dollars for the whole library). Anything larger is a new decision.
+- Why: Canned responses cannot adapt; open-web answers are not trustworthy. A closed library gives adaptation plus credibility.
+- To reverse: feature flag off in the read pipeline; reads fall back to the pattern library.
+
+### 2026-10-13: SCORA becomes a coaching app in a later phase
+- Status: DECIDED as direction (by Evan); not Phase 1, details NEEDS EVAN when that phase starts
+- Branch: claude/knowledge-library-spec
+- Context: v1.4 says the voice is never prescriptive and SCORA is not an AI coach. Evan: it has to be a coaching app to monetize.
+- Choice: Document the direction now. Phase 1 rules are unchanged. The bans on a prescriptive voice (CLAUDE.md §1, §2.2, §11) are no longer permanent; they hold until Evan starts the coaching phase.
+- Open when that phase starts: relation to Plan tier templates and the human coach marketplace, pricing, safety and liability position.
+- Why: Evan's call on the business model.
+- To reverse: restore "Permanently" in CLAUDE.md §11 and remove the notes in §0 and §2.2.
+
 ### 2026-10-11: Agents push branches, Evan merges to main
 - Status: DECIDED (by Evan)
 - Branch: claude/push-policy

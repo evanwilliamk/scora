@@ -18,6 +18,10 @@ SCORA is a tiered lifecycle product for endurance athletes with three athlete ti
 
 The voice is the moat. The plan tier and coach marketplace are how the moat monetizes.
 
+**Direction changes (Evan, 2026-10-13).** See DECISIONS.md and `11_SCORA_Knowledge_Library_Spec_v0_1.md`.
+- Interpretations will be grounded in a fixed library of trusted sources (books, credible coaches) via retrieval, not only the hand-written pattern library and never the open web.
+- SCORA will become a coaching app in a later phase. Until Evan starts that phase, every rule below about a non-prescriptive voice still applies in full.
+
 ---
 
 ## 1. Voice-vs-Plan distinction (LOAD-BEARING)
@@ -75,7 +79,7 @@ The voice can *observe* that an adaptation happened, since the plan engine alrea
 
 ### 2.2 IS NOT
 
-- In the voice: an AI coach. Never describe SCORA's voice as a coach. Never let the voice prescribe workouts, override plans, flip on user pushback, or fabricate data.
+- In the voice: an AI coach (through Phase 1; a later coaching phase is planned, see §0). Never describe SCORA's voice as a coach. Never let the voice prescribe workouts, override plans, flip on user pushback, or fabricate data.
 - A Strava replacement (SCORA reads Strava; it doesn't compete with the social feed).
 - A medical or diagnostic tool.
 - A hardware company (no SCORA band, ring, or watch).
@@ -364,7 +368,9 @@ If a feature fails #5, cut it even if it passes 1–4.
 
 ---
 
-## 11. Permanently out of scope
+## 11. Out of scope
+
+The first two items hold until the coaching phase (Evan, 2026-10-13; see §0). The rest are permanent.
 
 - Voice prescribing workouts (voice-level ban).
 - LLM-invented workout structures in plan generation.

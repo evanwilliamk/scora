@@ -30,7 +30,12 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [!] Sign in with Apple (auth: needs Evan)
 - [ ] Review and land `origin/feat/voice-pattern-library` (pattern engine + 7 ported v0.3 entries)
 - [ ] Posture engine as its own module with unit tests (today it lives inline in `index.ts`)
-- [ ] Port remaining pattern library entries to reach 20+
+- [ ] Port the 5 remaining v0.3 pattern entries (12 total). Stopgap only: the knowledge library replaces the "20+ entries" goal (Evan, 2026-10-13)
+- [~] Knowledge library spec `11_SCORA_Knowledge_Library_Spec_v0_1.md` (`claude/knowledge-library-spec`)
+- [ ] Knowledge library: pgvector migration + `knowledge_sources`, `knowledge_chunks`, `read_citations` tables (spec §3; local or mocks only)
+- [ ] Knowledge library: ingest script for FieldCopy JSON exports, embedding call mocked in tests (spec §2.3)
+- [ ] Knowledge library: retrieval step in the read pipeline behind a flag, pattern library as fallback (spec §2.4 to §2.6)
+- [!] Knowledge library: starter source list (5 to 10 books or coaches) and the open questions in spec §6 (Evan)
 - [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
 - [ ] CDV charts: Vega-Lite WebView in ChatView
 - [ ] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7)
@@ -44,4 +49,5 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 - Phase 2: Stripe subscriptions, plan engine + templates, WorkoutKit, WhatsApp doorbell, inline chart-expansion
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
+- Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`
