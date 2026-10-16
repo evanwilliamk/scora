@@ -6,6 +6,9 @@ Version: 1.4 Date: 2026-04-26 Author: Evan Kosowski Status: v1 spec, locked for 
 The proprietary work is the voice — the library of interpretations, the tone, the way you catch patterns across a week and render them as a sentence. That's taste and data combined. The data gets copied in a week. The voice takes months to clone.
 
 SCORA is a three-tier lifecycle product with a coach platform underneath. The voice is the moat. The Plan tier and Coach marketplace are how the moat monetizes.
+0.0 Direction changes after v1.4 (Evan, 2026-10-13)
+Knowledge library: the voice will interpret from a fixed library of trusted sources (books, credible coaches captured in FieldCopy) via retrieval, so reads adapt instead of picking canned patterns. Spec: 11_SCORA_Knowledge_Library_Spec_v0_1.md.
+Coaching app: SCORA will become a coaching app (prescriptive) in a later phase to monetize. Not Phase 1. Phase 1 stays non-prescriptive. See DECISIONS.md 2026-10-13.
 0.1 What changed in v1.4
 Three-tier ladder replaces single-tier $8/mo. Free / $14 Plan / $200-300 Coach (marketplace with 15% take).
 Free tier is the acquisition surface. Interpretation layer + Oura connection included. Meaningful taste; not a stripped experience.
