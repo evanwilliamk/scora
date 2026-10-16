@@ -1,0 +1,31 @@
+# Pattern Library v0.3 — doc 06 §6.1
+# The most important entry in the library. Plan says push; body shows
+# accumulated load or recovery debt. Voice names the tension, never prescribes.
+id: plan-says-hard-body-says-back-off-v1
+priority: 92
+posture_filter: [back-off, moderate]
+requires_scheduled_workout: true
+scheduled_workout_intensity_filter: [hard, threshold, intervals, tempo]
+driver_rule: |
+  (acwr > 1.2 OR consecutive_hard_days >= 2)
+  AND (sleep_7d_avg_delta < -3 OR hrv_7d_avg_delta < -5)
+min_data_completeness: 0.5
+voice_version: v0.3.0
+tone_notes: |
+  Name the tension. Don't tell them what to do. The plan is on their calendar,
+  the body is what it is. Adult conversation.
+slot_drivers:
+  - acwr
+  - sleep_7d_avg_delta
+  - hrv_7d_avg_delta
+  - consecutive_hard_days
+  - scheduled_workout.planned_intensity
+numeric_slots:
+  - sleep_hours_minutes
+  - hrv_pct_change
+template: |
+  Sleep {{sleep_hours}}:{{sleep_minutes_padded}} and HRV down {{hrv_pct_change}}% from last week. The plan calls for {{scheduled_workout.planned_intensity}} today — a call worth thinking about consciously.
+llm_hint: |
+  Numeric first. Never prescriptive. "A call worth thinking about" is the
+  intervention ceiling.
+exclude_if_recently_fired: 2

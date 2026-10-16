@@ -1,0 +1,26 @@
+# Pattern Library v0.3 — doc 06 §6.4
+# Plan calls for rest, body confirms. Make the rest feel earned, not lazy.
+id: plan-says-rest-body-agrees-v1
+priority: 65
+posture_filter: [rest, back-off]
+requires_scheduled_workout: true
+scheduled_workout_intensity_filter: [rest, recovery]
+driver_rule: |
+  consecutive_hard_days >= 2 OR sleep_7d_avg_delta < -3 OR hrv_7d_avg_delta < -5
+min_data_completeness: 0.4
+voice_version: v0.3.0
+tone_notes: |
+  Rest days are underrated. Make them feel like the smart move, not the default.
+  Athletes sometimes feel guilty resting; name the accumulated work that earned
+  this day.
+slot_drivers:
+  - consecutive_hard_days
+  - sleep_7d_avg_delta
+numeric_slots:
+  - sleep_hours_minutes
+template: |
+  Sleep {{sleep_hours}}:{{sleep_minutes_padded}} after {{consecutive_hard_days}} hard days. The plan says rest today, and the body's cashing the check.
+llm_hint: |
+  "Cashing the check" means the rest was earned by the earlier work. Don't
+  over-explain it.
+exclude_if_recently_fired: 3
