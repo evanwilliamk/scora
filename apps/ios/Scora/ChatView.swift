@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 struct Driver: Identifiable, Decodable {
   var id = UUID()
@@ -14,6 +15,123 @@ struct CDVResponse: Decodable {
   let drivers: [Driver]
   let remaining: Int?
   let limit: Int?
+  // Optional Vega-Lite spec for the answer's chart. Older API builds omit it.
+  let chart: JSONValue?
+}
+
+// Arbitrary JSON, so a Vega-Lite spec can pass through Codable untouched.
+enum JSONValue: Codable, Equatable {
+  case string(String)
+  case number(Double)
+  case bool(Bool)
+  case object([String: JSONValue])
+  case array([JSONValue])
+  case null
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.singleValueContainer()
+    if c.decodeNil() { self = .null }
+    else if let b = try? c.decode(Bool.self) { self = .bool(b) }
+    else if let n = try? c.decode(Double.self) { self = .number(n) }
+    else if let s = try? c.decode(String.self) { self = .string(s) }
+    else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
+    else { self = .object(try c.decode([String: JSONValue].self)) }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.singleValueContainer()
+    switch self {
+    case .string(let s): try c.encode(s)
+    case .number(let n): try c.encode(n)
+    case .bool(let b): try c.encode(b)
+    case .object(let o): try c.encode(o)
+    case .array(let a): try c.encode(a)
+    case .null: try c.encodeNil()
+    }
+  }
+}
+
+// Builds the WebView page for a CDV chart. The spec comes from an LLM, so it
+// must carry its data inline: any `url` or `href` key (external data, image
+// marks, link channels) rejects the whole chart rather than fetching anything.
+enum CDVChart {
+  static let blockedKeys: Set<String> = ["url", "href"]
+
+  static func isSafe(_ spec: JSONValue) -> Bool {
+    switch spec {
+    case .object(let o):
+      return o.allSatisfy { !blockedKeys.contains($0.key.lowercased()) && isSafe($0.value) }
+    case .array(let a):
+      return a.allSatisfy(isSafe)
+    default:
+      return true
+    }
+  }
+
+  // Spec JSON safe to inline inside a <script> tag.
+  static func scriptJSON(_ spec: JSONValue) -> String? {
+    guard let data = try? JSONEncoder().encode(spec),
+          let json = String(data: data, encoding: .utf8) else { return nil }
+    return json
+      .replacingOccurrences(of: "<", with: "\\u003c")
+      .replacingOccurrences(of: ">", with: "\\u003e")
+      .replacingOccurrences(of: "&", with: "\\u0026")
+  }
+
+  static func html(for spec: JSONValue) -> String? {
+    guard case .object = spec, isSafe(spec), let json = scriptJSON(spec) else { return nil }
+    return """
+    <!doctype html>
+    <html><head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>html,body{margin:0;background:transparent;}#chart{width:100%;}</style>
+    <script src="https://cdn.jsdelivr.net/npm/vega@5.30.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5.21.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.26.0"></script>
+    </head><body><div id="chart"></div>
+    <script>
+    var spec = \(json);
+    spec.width = "container";
+    spec.background = "transparent";
+    spec.config = Object.assign({
+      axis: {labelColor: "#999", titleColor: "#999", gridColor: "#333", domainColor: "#555"},
+      legend: {labelColor: "#999", titleColor: "#999"},
+      title: {color: "#fff"},
+      view: {stroke: null},
+      range: {category: ["#FF9500", "#8E8E93", "#FFFFFF"]}
+    }, spec.config || {});
+    vegaEmbed("#chart", spec, {actions: false, renderer: "svg"});
+    </script>
+    </body></html>
+    """
+  }
+}
+
+// WebView host for a CDV chart. Static: no links, no navigation after load.
+struct CDVChartView: UIViewRepresentable {
+  let html: String
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  func makeUIView(context: Context) -> WKWebView {
+    let web = WKWebView()
+    web.isOpaque = false
+    web.backgroundColor = .clear
+    web.scrollView.isScrollEnabled = false
+    web.navigationDelegate = context.coordinator
+    web.loadHTMLString(html, baseURL: nil)
+    return web
+  }
+
+  func updateUIView(_ web: WKWebView, context: Context) {}
+
+  final class Coordinator: NSObject, WKNavigationDelegate {
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+      decisionHandler(action.navigationType == .other ? .allow : .cancel)
+    }
+  }
 }
 
 // Error body from /api/cdv (e.g. the 429 daily-limit message).
@@ -26,6 +144,7 @@ struct ChatMessage: Identifiable {
   let isUser: Bool
   let text: String
   let drivers: [Driver]
+  var chartHTML: String? = nil
 }
 
 struct ChatView: View {
@@ -134,6 +253,13 @@ struct ChatView: View {
           .padding(12)
           .background(Color(white: 0.15))
           .cornerRadius(16)
+
+        if let html = msg.chartHTML {
+          CDVChartView(html: html)
+            .frame(height: 220)
+            .background(Color(white: 0.1))
+            .cornerRadius(12)
+        }
         
         ForEach(msg.drivers) { d in
           HStack {
@@ -205,7 +331,12 @@ struct ChatView: View {
 
       let decoded = try JSONDecoder().decode(CDVResponse.self, from: data)
       await MainActor.run {
-        messages.append(ChatMessage(isUser: false, text: decoded.voice, drivers: decoded.drivers))
+        messages.append(ChatMessage(
+          isUser: false,
+          text: decoded.voice,
+          drivers: decoded.drivers,
+          chartHTML: decoded.chart.flatMap(CDVChart.html(for:))
+        ))
         remaining = decoded.remaining
         limitReached = (decoded.remaining ?? 1) <= 0
         isLoading = false

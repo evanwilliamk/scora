@@ -38,6 +38,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Open when that phase starts: relation to Plan tier templates and the human coach marketplace, pricing, safety and liability position.
 - Why: Evan's call on the business model.
 - To reverse: restore "Permanently" in CLAUDE.md §11 and remove the notes in §0 and §2.2.
+### 2026-10-13: CDV chart WebView loads Vega from a pinned CDN
+- Status: DECIDED
+- Branch: claude/cdv-chart-webview
+- Context: ChatView needs Vega-Lite to render CDV charts; the night worker does not download files, so the libraries are not bundled.
+- Choice: the chart page loads vega 5.30.0, vega-lite 5.21.0 and vega-embed 6.26.0 from cdn.jsdelivr.net. Specs with any `url` or `href` key are rejected, so charts only use inline data. API contract: optional `chart` field (a Vega-Lite object) on the /api/cdv response.
+- Why: smallest change that works today. Alternative: bundle the three JS files in the app so charts render offline and nothing loads from a third party.
+- To reverse: swap the three script tags in `CDVChart.html(for:)` for bundled files.
 
 ### 2026-10-11: Agents push branches, Evan merges to main
 - Status: DECIDED (by Evan)
