@@ -45,6 +45,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: the chart page loads vega 5.30.0, vega-lite 5.21.0 and vega-embed 6.26.0 from cdn.jsdelivr.net. Specs with any `url` or `href` key are rejected, so charts only use inline data. API contract: optional `chart` field (a Vega-Lite object) on the /api/cdv response.
 - Why: smallest change that works today. Alternative: bundle the three JS files in the app so charts render offline and nothing loads from a third party.
 - To reverse: swap the three script tags in `CDVChart.html(for:)` for bundled files.
+### 2026-10-12: Port of remaining voice patterns waits for Node on the Studio
+- Status: NEEDS EVAN
+- Branch: none yet
+- Context: the night worker on Mac-Studio has no Node or npm, so it cannot run the @scora/voice tests; it took the ChatView emoji item instead.
+- Options: install Node on the Studio (Homebrew `node@20`), or leave voice work to the MacBook.
+- Why: nothing ships untested. Also, doc 06 holds only 12 v0.3 entries (7 ported); the 40 v0.1 and 5 v0.2 entries needed to reach 20+ are not in the repo.
+- To reverse: n/a.
 
 ### 2026-10-11: Agents push branches, Evan merges to main
 - Status: DECIDED (by Evan)
