@@ -43,12 +43,14 @@ const todayStr = () => new Date().toISOString().slice(0, 10); // UTC calendar da
 // Read-modify-write (not atomic). At single-user scale a race could at worst
 // permit an occasional extra query — acceptable for a soft free-tier cap. If
 // this ever needs to be strict, move the increment into a Postgres RPC.
+// `supabase` and `today` are injectable for tests; production uses the
+// defaults.
 export async function consumeCdvQuota(
   athleteId: string,
-  limit: number = FREE_CDV_DAILY_LIMIT
+  limit: number = FREE_CDV_DAILY_LIMIT,
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+  today: string = todayStr()
 ): Promise<CdvQuota> {
-  const supabase = getSupabase();
-  const today = todayStr();
 
   const { data: athlete, error } = await supabase
     .from('athletes')
