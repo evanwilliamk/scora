@@ -25,6 +25,7 @@ import {
   apnsConfigured,
 } from './push';
 import { startScheduler } from './scheduler';
+import { resultPage, escapeHtml, scriptString, oauthErrorMessage } from './pages';
 
 dotenv.config();
 
@@ -140,13 +141,13 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
           <div class="container">
             <div class="logo">S</div>
             <h1>Strava Linked</h1>
-            <p>Welcome, ${athleteName}!</p>
+            <p>Welcome, ${escapeHtml(String(athleteName))}.</p>
             <p style="color: #666; font-size: 14px; margin-top: 20px;">Opening SCORA...</p>
             <a href="#" id="fallback">Open SCORA</a>
             <div class="footer"><p>If the app doesn't open, tap the button above.</p></div>
           </div>
           <script>
-            var deepLink = '${deepLink}';
+            var deepLink = ${scriptString(deepLink)};
             document.getElementById('fallback').href = deepLink;
             setTimeout(function() { window.location.href = deepLink; }, 100);
           </script>
@@ -184,60 +185,43 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
     error?: string;
   };
 
+  // Every outcome hands back to the app, which says what happened.
   if (oauthError) {
-    return reply.type('text/html').send(
-      `<html><body style="font-family:system-ui;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Oura connection cancelled</h1><p style="color:#999">${oauthError}</p></div></body></html>`
-    );
+    return reply.type('text/html').send(resultPage({
+      title: 'Oura not connected',
+      lines: [oauthErrorMessage(oauthError)],
+      deepLink: 'scora://oura/failed?reason=cancelled',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
   if (!code || !state) {
-    return reply.code(400).type('text/html').send(
-      `<html><body style="font-family:system-ui;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Missing authorization</h1><p style="color:#999">No code/state received from Oura.</p></div></body></html>`
-    );
+    return reply.code(400).type('text/html').send(resultPage({
+      title: 'Oura not connected',
+      lines: ['No authorization came back from Oura.'],
+      deepLink: 'scora://oura/failed?reason=missing',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
 
   try {
     const tokenData = await exchangeOuraCode(code);
     await storeOuraTokens(state, tokenData); // state === athleteId
   } catch (e) {
-    fastify.log.error('Oura auth failed:', e);
-    return reply.code(500).send({
-      error: 'Oura connection failed',
-      detail: e instanceof Error ? e.message : String(e),
-    });
+    fastify.log.error(`Oura auth failed: ${e instanceof Error ? e.message : String(e)}`);
+    return reply.code(500).type('text/html').send(resultPage({
+      title: 'Oura not connected',
+      lines: ['Something went wrong linking Oura. Nothing was saved.'],
+      deepLink: 'scora://oura/failed?reason=exchange',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
 
   // Reopen the app; the dashboard reloads and the Oura cards light up.
-  const deepLink = 'scora://oura/success';
-  const html = `
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          body { background: #000; color: #fff; font-family: system-ui; margin: 0; padding: 40px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-          .container { max-width: 400px; text-align: center; }
-          .logo { font-size: 100px; margin-bottom: 20px; }
-          h1 { font-size: 40px; margin: 0 0 20px; font-weight: 700; }
-          p { color: #999; font-size: 16px; margin: 0 0 30px; }
-          a { display: inline-block; padding: 14px 32px; background: #fff; color: #000; text-decoration: none; border-radius: 4px; font-weight: 600; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="logo">S</div>
-          <h1>Oura Connected</h1>
-          <p style="color:#666;font-size:14px;margin-top:20px;">Opening SCORA...</p>
-          <a href="#" id="fallback">Open SCORA</a>
-        </div>
-        <script>
-          var deepLink = '${deepLink}';
-          document.getElementById('fallback').href = deepLink;
-          setTimeout(function() { window.location.href = deepLink; }, 100);
-        </script>
-      </body>
-    </html>
-  `;
-  return reply.type('text/html').send(html);
+  return reply.type('text/html').send(resultPage({
+    title: 'Oura connected',
+    lines: ['Opening SCORA...'],
+    deepLink: 'scora://oura/success',
+  }));
 });
 
 // CDV endpoint - simple and safe
