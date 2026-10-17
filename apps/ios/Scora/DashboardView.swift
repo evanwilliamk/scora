@@ -37,6 +37,7 @@ struct DashboardView: View {
   @State private var expanded: Set<String> = []
   @State private var showChat = false
   @State private var showWeekly = false
+  @State private var showPlan = false
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -79,6 +80,9 @@ struct DashboardView: View {
     .sheet(isPresented: $showWeekly) {
       WeeklyView(tokenManager: tokenManager)
     }
+    .sheet(isPresented: $showPlan) {
+      PlanView(tokenManager: tokenManager)
+    }
     .task {
       if read == nil {
         _ = await HealthManager.shared.requestAuthorization()
@@ -106,6 +110,12 @@ struct DashboardView: View {
         .font(.headline.bold())
         .foregroundColor(.white)
       Spacer()
+      Button(action: { showPlan = true }) {
+        Image(systemName: "list.bullet.rectangle")
+          .foregroundColor(.orange)
+      }
+      .accessibilityLabel("Your plan")
+      .padding(.trailing, 4)
       Button(action: { showWeekly = true }) {
         Image(systemName: "calendar")
           .foregroundColor(.orange)
