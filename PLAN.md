@@ -43,7 +43,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [ ] Oura success page + deep link landing (design-todos)
 - [ ] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md)
 - [ ] Manual plan entry + plan parsing (plan-aware reads)
-- [ ] Strava scheduled activities ingestion
+- [!] Strava scheduled activities ingestion: not possible, Strava API v3 has no planned-workout endpoint (checked 2026-10-17). Proposed replacement: iCal feed import (Q17 in Evan's questions)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys)
 
 ## Later phases (not started, see the 90-day plan)
