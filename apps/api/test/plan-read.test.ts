@@ -30,7 +30,8 @@ test('no plan at all adds nothing; a plan with nothing today says so', () => {
 test('the plan line lets the voice name the plan, never change it', () => {
   const p = planForRead([w(TODAY, 'tempo', { planned_duration_min: 45, planned_description: '45 min tempo, 3x8 at threshold' })], TODAY);
   assert.match(p.promptLine, /never change, move or add to it/);
-  assert.match(p.promptLine, /tempo, 45 min \("45 min tempo, 3x8 at threshold"\)$/);
+  assert.match(p.promptLine, /: tempo, 45 min$/);
+  assert.doesNotMatch(p.promptLine, /3x8/, 'description numbers are not drivers, so they stay out');
   assert.deepEqual(p.scheduled, { planned_intensity: 'tempo', planned_description: '45 min tempo, 3x8 at threshold', planned_distance_km: undefined });
 });
 
@@ -59,4 +60,26 @@ test('the plan driver lets the voice cite the planned minutes and nothing else',
   const voice = "Load is 412 min, up 8% on the week. Today's 45 min tempo is on the plan and the body reads settled.";
   assert.equal(validateVoice(voice, base).ok, false, '45 is unbacked without the plan driver');
   assert.equal(validateVoice(voice, [...base, p.driver!]).ok, true);
+});
+
+test('voice that talks the athlete out of the plan fails validation (review finding)', () => {
+  const drivers = [{ metric: 'Load', value: '412 min' }, { metric: 'Plan today', value: 'tempo, 45 min' }];
+  for (const v of [
+    "Today's tempo can wait, and an easier day fits better.",
+    'Load is 412 min, so skip the tempo.',
+    'The 45 min tempo could move. Push it to Thursday.',
+    'Hold off on the tempo until sleep comes back.',
+    'Ease off today; the body is behind.',
+  ]) {
+    assert.equal(validateVoice(v, drivers).bannedHits.includes('plan override'), true, v);
+  }
+  // Naming both sides is fine.
+  const ok = "Today's 45 min tempo is on the plan, and load sits at 412 min. Body and plan disagree this morning.";
+  assert.equal(validateVoice(ok, drivers).ok, true);
+  assert.equal(validateVoice('Your plan has rest today, and load sits at 412 min.', drivers).ok, true);
+});
+
+test('a plan with nothing today says so', () => {
+  const p = planForRead([w('2026-10-22', 'easy')], TODAY);
+  assert.equal(p.promptLine, 'PLAN TODAY: nothing scheduled.');
 });

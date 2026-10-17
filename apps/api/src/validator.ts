@@ -33,6 +33,12 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\byou'?re right,? i\b/i, label: 'sycophantic flip' },
   { re: /\b(medical|diagnos|prescrib)/i, label: 'clinical claim' },
   { re: /\btake a rest day\b/i, label: 'rest-day imperative' },
+  // Talking the athlete out of their plan (CLAUDE.md §1.3): the voice may name
+  // a session and the body's state, never change the session.
+  {
+    re: /\b(can wait|could wait|skip (it|today|the|this|that)|hold off|save (it|the \w+) for|swap (it|the|today)|(move|push|shift) (it|today'?s \w+|the \w+) to|an easier (day|session) (fits|would|makes)|ease off|take it easy today|cut (it|the \w+) short|shorten (it|the|today))\b/i,
+    label: 'plan override',
+  },
   {
     re: /\b(crush it|smash|beast mode|let'?s go|keep it up|great job|amazing|you'?ve got this|nailed it|let'?s crush)\b/i,
     label: 'hype',

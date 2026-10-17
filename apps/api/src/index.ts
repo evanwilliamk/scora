@@ -585,11 +585,11 @@ fastify.post('/api/read', async (request, reply) => {
     const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
     let plan = planForRead([], today);
     try {
-      plan = planForRead(await planStore().workoutsBetween(String(athleteId), today, today), today);
+      // A week ahead, so "nothing scheduled today" is known when a plan exists.
+      plan = planForRead(await planStore().workoutsBetween(String(athleteId), today, addDays(today, 6)), today);
     } catch (e) {
       fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
     }
-    const readDrivers = plan.driver ? [...drivers, plan.driver] : drivers;
 
     // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
     // else the curated pattern library, else nothing. Never blocks the read.
@@ -605,7 +605,9 @@ fastify.post('/api/read', async (request, reply) => {
     );
 
     // The numbers behind the posture are drivers too, so naming it is backed.
-    const readDrivers = [...drivers, ...posture.evidence];
+    // The numbers behind the posture and today's planned session are drivers
+    // too, so naming either is backed.
+    const readDrivers = [...drivers, ...posture.evidence, ...(plan.driver ? [plan.driver] : [])];
 
     const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
 
@@ -613,6 +615,7 @@ HARD RULES:
 - Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep, HRV, or recovery unless present).
 - Numeric-first: reference the raw value, then say what it means.
 - Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction.
+- The athlete's plan is theirs: never suggest skipping, moving, shortening, delaying or easing a planned session, even when the posture and the plan disagree. Name both and stop.
 - Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
 
 OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;

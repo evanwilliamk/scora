@@ -52,8 +52,8 @@ export function planForRead(rows: StoredWorkout[], today: string): PlanForRead {
     workout,
     scheduled: toScheduledWorkout(workout),
     driver,
-    promptLine: `PLAN TODAY (the athlete's own plan; you may name it, never change, move or add to it): ${driver.value}${
-      workout.planned_description ? ` ("${workout.planned_description.slice(0, 160)}")` : ''
-    }`,
+    // The free-text description stays out: its numbers are not drivers, so a
+    // read that cited them would fail validation.
+    promptLine: `PLAN TODAY (the athlete's own plan; you may name it, never change, move or add to it): ${driver.value}`,
   };
 }
