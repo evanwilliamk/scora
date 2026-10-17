@@ -62,3 +62,19 @@ test('a failing route leaves its fields null and never throws', async () => {
   assert.equal(s.readinessScore, null);
   assert.equal(s.restingHrHistory, undefined);
 });
+
+test('a night split into long_sleep plus a short sleep counts once, by its longest period', async () => {
+  const sleep = [
+    { day: day(17), type: 'long_sleep', total_sleep_duration: 26000, average_hrv: 50, lowest_heart_rate: 48 },
+    { day: day(17), type: 'sleep', total_sleep_duration: 1800, average_hrv: 30, lowest_heart_rate: 60 },
+    { day: day(16), type: 'long_sleep', total_sleep_duration: 25000, average_hrv: 52, lowest_heart_rate: 49 },
+    { day: day(15), type: 'sleep', total_sleep_duration: 900, average_hrv: 20, lowest_heart_rate: 70 },
+    { day: day(15), type: 'long_sleep', total_sleep_duration: 24000, average_hrv: 54, lowest_heart_rate: 50 },
+  ];
+  stubOura({ sleep: { data: sleep }, daily_sleep: { data: [] }, daily_readiness: { data: [] } });
+  const s = await fetchOuraSummary('token');
+  assert.equal(s.sleepSeconds, 26000);
+  assert.equal(s.restingHr, 48);
+  assert.deepEqual(s.restingHrHistory, [49, 50]);
+  assert.equal(s.hrvWeekAvgMs, 53);
+});

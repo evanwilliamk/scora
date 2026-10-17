@@ -161,3 +161,53 @@ test('postureForRead decides the posture and gives the prompt one line to name',
   // No prescriptive language sneaks into the line the LLM sees.
   assert.doesNotMatch(p.promptLine, /should|need to|do a|go for/i);
 });
+
+// ---- review findings (2026-10-17) ----
+
+test('ACWR uses the days actually covered: 22 steady days read ~1.0, not moderate', () => {
+  const acts = Array.from({ length: 22 }, (_, i) => run(i, 30, 140));
+  const { drivers } = computeDriverRecord(acts, null, { now });
+  assert.equal(drivers.acwr, 1);
+  assert.equal(computePosture(drivers).posture, 'steady');
+});
+
+test('a Sydney morning run counts today (start_date is UTC, start_date_local is not)', () => {
+  // 06:00 in Sydney (UTC+11) on Oct 18 is 19:00 UTC on Oct 17; read at 07:30 local.
+  const readAt = Date.UTC(2026, 9, 17, 20, 30);
+  const sydney = {
+    type: 'Run', start_date: '2026-10-17T19:00:00Z', start_date_local: '2026-10-18T06:00:00Z',
+    utc_offset: 39600, distance: 15000, moving_time: 93 * 60, average_heartrate: 150,
+  };
+  const { drivers } = computeDriverRecord([sydney], null, { now: readAt });
+  assert.equal(drivers.load_7d, 93);
+  assert.equal(drivers.days_since_long_effort, 0);
+});
+
+test('hard-day streak counts local calendar days, not 24h blocks', () => {
+  // Hard on Oct 14 08:00, Oct 15 20:00, Oct 16 06:00; read Oct 17 07:00.
+  const at = (iso: string, hr: number) => ({
+    type: 'Run', start_date: iso, start_date_local: iso, distance: 8000, moving_time: 2700, average_heartrate: hr,
+  });
+  const acts = [
+    at('2026-10-14T08:00:00Z', 175), at('2026-10-15T20:00:00Z', 176), at('2026-10-16T06:00:00Z', 177),
+    ...Array.from({ length: 12 }, (_, i) => at(`2026-10-${String(12 - i).padStart(2, '0')}T08:00:00Z`, 140)),
+  ];
+  const { drivers } = computeDriverRecord(acts, null, { now: Date.UTC(2026, 9, 17, 7, 0) });
+  assert.equal(drivers.consecutive_hard_days, 3);
+});
+
+test('a fired posture brings its evidence as citable drivers; steady brings none', () => {
+  const spike = postureForRead([...steadyWeeks(), run(0, 120, 140), run(2, 120, 140)], null, { now });
+  assert.equal(spike.result.posture, 'back-off');
+  assert.deepEqual(spike.evidence.map((d) => d.metric), ['Acute:chronic load']);
+  assert.equal(spike.evidence[0].value, String(spike.record.drivers.acwr));
+
+  const rest = postureForRead([], oura({ hrvMs: 44, hrvWeekAvgMs: 50, restingHr: 56 }), { now });
+  assert.equal(rest.result.posture, 'rest');
+  assert.deepEqual(rest.evidence, [
+    { metric: 'HRV vs week', value: '-12%' },
+    { metric: 'Resting HR vs week', value: '+6 bpm' },
+  ]);
+
+  assert.deepEqual(postureForRead(steadyWeeks(), null, { now }).evidence, []);
+});
