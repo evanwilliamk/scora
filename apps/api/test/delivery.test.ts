@@ -53,44 +53,73 @@ test('input validation', () => {
   assert.equal(isValidDeliveryMinute(6.5), false);
 });
 
-test('runTick delivers what is due, marks it sent, and skips the rest', async () => {
-  const marked: string[] = [];
+test('runTick delivers what is due, claims it first, and releases a failed delivery', async () => {
+  const claimed: string[] = [];
+  const released: string[] = [];
   const delivered: string[] = [];
   const store = new Map([
     ['ny', prefs()],
     ['la', prefs({ timezone: 'America/Los_Angeles' })],
     ['done', prefs({ last_daily_sent_on: '2026-10-19', last_weekly_sent_on: '2026-10-19' })],
-    ['fails', prefs()],
+    ['fails', prefs({ last_daily_sent_on: '2026-10-18' })],
   ]);
   const sent = await runTick(new Date(Date.UTC(2026, 9, 19, 10, 15)), {
     listAthletes: async () => ['ny', 'la', 'done', 'fails'],
     prefs: {
       getMany: async (ids) => new Map(ids.map((id) => [id, { athlete_id: id, onboarded_at: null, ...store.get(id)! }])),
-      markSent: async (id, kind, date) => { marked.push(`${id}:${kind}:${date}`); },
+      claim: async (id, kind, date) => { claimed.push(`${id}:${kind}:${date}`); return true; },
+      release: async (id, kind, _date, previous) => { released.push(`${id}:${kind}:${previous}`); },
     },
     deliver: async (id, kind) => { delivered.push(`${id}:${kind}`); return id !== 'fails'; },
     log: quiet,
   });
   assert.deepEqual(delivered, ['ny:daily', 'ny:weekly', 'fails:daily', 'fails:weekly']);
-  assert.deepEqual(marked, ['ny:daily:2026-10-19', 'ny:weekly:2026-10-19']);
+  assert.deepEqual(claimed, ['ny:daily:2026-10-19', 'ny:weekly:2026-10-19', 'fails:daily:2026-10-19', 'fails:weekly:2026-10-19']);
+  assert.deepEqual(released, ['fails:daily:2026-10-18', 'fails:weekly:null'], 'failed deliveries restore the previous date');
   assert.deepEqual(sent, { daily: 1, weekly: 1 });
 });
 
-test('runTick survives a listing failure and a throwing delivery', async () => {
+test('a lost claim skips delivery', async () => {
+  let delivered = 0;
+  await runTick(new Date(Date.UTC(2026, 9, 20, 10, 15)), {
+    listAthletes: async () => ['a'],
+    prefs: {
+      getMany: async () => new Map([['a', { athlete_id: 'a', onboarded_at: null, ...prefs() }]]),
+      claim: async () => false,
+      release: async () => {},
+    },
+    deliver: async () => { delivered++; return true; },
+    log: quiet,
+  });
+  assert.equal(delivered, 0);
+});
+
+test('runTick survives listing, preference and delivery failures', async () => {
+  const noPrefs = { getMany: async () => new Map(), claim: async () => true, release: async () => {} };
   assert.deepEqual(await runTick(new Date(), {
-    listAthletes: async () => { throw new Error('db down'); },
-    prefs: { getMany: async () => new Map(), markSent: async () => {} },
+    listAthletes: async () => { throw new Error('db down'); }, prefs: noPrefs, deliver: async () => true, log: quiet,
+  }), { daily: 0, weekly: 0 });
+
+  assert.deepEqual(await runTick(new Date(), {
+    listAthletes: async () => ['a'],
+    prefs: { ...noPrefs, getMany: async () => { throw new Error('503'); } },
     deliver: async () => true,
     log: quiet,
   }), { daily: 0, weekly: 0 });
 
+  let released = 0;
   const r = await runTick(new Date(Date.UTC(2026, 9, 20, 10, 15)), {
     listAthletes: async () => ['a'],
-    prefs: { getMany: async () => new Map([['a', { athlete_id: 'a', onboarded_at: null, ...prefs() }]]), markSent: async () => {} },
+    prefs: {
+      getMany: async () => new Map([['a', { athlete_id: 'a', onboarded_at: null, ...prefs() }]]),
+      claim: async () => true,
+      release: async () => { released++; },
+    },
     deliver: async () => { throw new Error('boom'); },
     log: quiet,
   });
   assert.deepEqual(r, { daily: 0, weekly: 0 });
+  assert.equal(released, 1, 'a throwing delivery is released for retry');
 });
 
 // ---- preferences on PGlite ----
@@ -132,4 +161,28 @@ test('markSent records the local date and getMany fills defaults', async () => {
   assert.equal(m.get('a2')!.last_weekly_sent_on, '2026-10-19');
   assert.equal(m.get('a3')!.timezone, 'America/New_York');
   assert.equal(m.get('a1')!.delivery_minute, 300);
+});
+
+test('two ticks at once on the same store send each read once', async () => {
+  const s = sqlPrefsStore(db);
+  await s.update('dup', {});
+  const delivered: string[] = [];
+  const deps = {
+    listAthletes: async () => ['dup'],
+    prefs: s,
+    deliver: async (id: string, kind: string) => { delivered.push(`${id}:${kind}`); await new Promise((r) => setTimeout(r, 5)); return true; },
+    log: quiet,
+  };
+  const monday = new Date(Date.UTC(2026, 9, 19, 10, 15));
+  await Promise.all([runTick(monday, deps), runTick(monday, deps)]);
+  assert.deepEqual(delivered.sort(), ['dup:daily', 'dup:weekly']);
+});
+
+test('claim is single-winner and release restores the previous date', async () => {
+  const s = sqlPrefsStore(db);
+  assert.equal(await s.claim('c1', 'daily', '2026-10-19'), true);
+  assert.equal(await s.claim('c1', 'daily', '2026-10-19'), false);
+  await s.release('c1', 'daily', '2026-10-19', null);
+  assert.equal((await s.get('c1')).last_daily_sent_on, null);
+  assert.equal(await s.claim('c1', 'daily', '2026-10-19'), true);
 });

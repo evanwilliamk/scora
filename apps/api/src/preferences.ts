@@ -19,6 +19,11 @@ export interface PrefsStore {
   getMany(athleteIds: string[]): Promise<Map<string, AthletePrefs>>;
   update(athleteId: string, u: PrefsUpdate): Promise<AthletePrefs>;
   markSent(athleteId: string, kind: 'daily' | 'weekly', localDate: string): Promise<void>;
+  // Atomically mark today as sent unless it already is. True means this
+  // caller owns the delivery; false means another tick or server got there.
+  claim(athleteId: string, kind: 'daily' | 'weekly', localDate: string): Promise<boolean>;
+  // Undo a claim whose delivery failed, so a later tick can retry.
+  release(athleteId: string, kind: 'daily' | 'weekly', localDate: string, previous: string | null): Promise<void>;
 }
 
 const withDefaults = (athleteId: string, row?: Partial<AthletePrefs> | null): AthletePrefs => ({
@@ -81,6 +86,23 @@ export function sqlPrefsStore(db: Db): PrefsStore {
         [id, date]
       );
     },
+    async claim(id, kind, date) {
+      const col = kind === 'daily' ? 'last_daily_sent_on' : 'last_weekly_sent_on';
+      await db.query('insert into athlete_preferences (athlete_id) values ($1) on conflict (athlete_id) do nothing', [id]);
+      const r = await db.query(
+        `update athlete_preferences set ${col} = $2, updated_at = now()
+         where athlete_id = $1 and ${col} is distinct from $2::date returning athlete_id`,
+        [id, date]
+      );
+      return r.rows.length === 1;
+    },
+    async release(id, kind, date, previous) {
+      const col = kind === 'daily' ? 'last_daily_sent_on' : 'last_weekly_sent_on';
+      await db.query(
+        `update athlete_preferences set ${col} = $3 where athlete_id = $1 and ${col} = $2::date`,
+        [id, date, previous]
+      );
+    },
   };
   return store;
 }
@@ -119,6 +141,22 @@ export function supabasePrefsStore(sb: { from: (t: string) => any }): PrefsStore
     async markSent(id, kind, date) {
       const col = kind === 'daily' ? 'last_daily_sent_on' : 'last_weekly_sent_on';
       check(await sb.from('athlete_preferences').upsert({ athlete_id: id, [col]: date }, { onConflict: 'athlete_id' }), 'Mark sent');
+    },
+    async claim(id, kind, date) {
+      const col = kind === 'daily' ? 'last_daily_sent_on' : 'last_weekly_sent_on';
+      check(await sb.from('athlete_preferences').upsert({ athlete_id: id }, { onConflict: 'athlete_id', ignoreDuplicates: true }), 'Ensure preferences');
+      // Conditional update: only one caller sees the row come back.
+      const r = await sb.from('athlete_preferences')
+        .update({ [col]: date, updated_at: new Date().toISOString() })
+        .eq('athlete_id', id)
+        .or(`${col}.is.null,${col}.neq.${date}`)
+        .select('athlete_id');
+      check(r, 'Claim delivery');
+      return (r.data ?? []).length === 1;
+    },
+    async release(id, kind, date, previous) {
+      const col = kind === 'daily' ? 'last_daily_sent_on' : 'last_weekly_sent_on';
+      check(await sb.from('athlete_preferences').update({ [col]: previous }).eq('athlete_id', id).eq(col, date), 'Release delivery');
     },
   };
   return store;

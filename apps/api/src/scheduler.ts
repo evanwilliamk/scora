@@ -66,7 +66,7 @@ async function pushToAthlete(
 
 export interface TickDeps {
   listAthletes(): Promise<string[]>;
-  prefs: Pick<PrefsStore, 'getMany' | 'markSent'>;
+  prefs: Pick<PrefsStore, 'getMany' | 'claim' | 'release'>;
   deliver(athleteId: string, kind: 'daily' | 'weekly', localDate: string): Promise<boolean>;
   log: Logger;
 }
@@ -75,24 +75,33 @@ export interface TickDeps {
 // who has not had today's read gets it; Monday also brings the weekly review.
 export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: number; weekly: number }> {
   let athletes: string[];
+  let prefs: Awaited<ReturnType<PrefsStore['getMany']>>;
   try {
     athletes = await deps.listAthletes();
+    if (athletes.length === 0) return { daily: 0, weekly: 0 };
+    prefs = await deps.prefs.getMany(athletes);
   } catch (e) {
-    deps.log.error(`scheduler: failed to list athletes: ${e instanceof Error ? e.message : e}`);
+    deps.log.error(`scheduler: failed to load athletes: ${e instanceof Error ? e.message : e}`);
     return { daily: 0, weekly: 0 };
   }
-  if (athletes.length === 0) return { daily: 0, weekly: 0 };
-  const prefs = await deps.prefs.getMany(athletes);
   const sent = { daily: 0, weekly: 0 };
   for (const athleteId of athletes) {
-    const due = dueDeliveries(prefs.get(athleteId)!, now);
+    const p = prefs.get(athleteId)!;
+    const due = dueDeliveries(p, now);
     for (const kind of ['daily', 'weekly'] as const) {
       if (!due[kind]) continue;
+      const previous = kind === 'daily' ? p.last_daily_sent_on : p.last_weekly_sent_on;
       try {
-        if (await deps.deliver(athleteId, kind, due.localDate)) {
-          await deps.prefs.markSent(athleteId, kind, due.localDate);
-          sent[kind]++;
+        // Claim first: a slow tick, an overlapping tick or a second server
+        // cannot send the same read twice.
+        if (!(await deps.prefs.claim(athleteId, kind, due.localDate))) continue;
+        let delivered = false;
+        try {
+          delivered = await deps.deliver(athleteId, kind, due.localDate);
+        } finally {
+          if (!delivered) await deps.prefs.release(athleteId, kind, due.localDate, previous);
         }
+        if (delivered) sent[kind]++;
       } catch (e) {
         deps.log.error(`scheduler: ${kind} for ${athleteId} threw: ${e instanceof Error ? e.message : e}`);
       }
@@ -119,6 +128,15 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
         : pushToAthlete(baseUrl, athleteId, '/api/weekly', 'This week', localDate, log),
     log,
   };
-  cron.schedule('*/15 * * * *', () => { runTick(new Date(), deps); });
+  // Skip a tick while the last one is still running; never let a rejection
+  // escape the cron callback (an unhandled rejection kills the process).
+  let running = false;
+  cron.schedule('*/15 * * * *', () => {
+    if (running) return;
+    running = true;
+    runTick(new Date(), deps)
+      .catch((e) => log.error(`scheduler: tick failed: ${e instanceof Error ? e.message : e}`))
+      .finally(() => { running = false; });
+  });
   log.info('scheduler: push scheduler started (every 15 min, per-athlete delivery time)');
 }
