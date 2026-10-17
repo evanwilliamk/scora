@@ -38,7 +38,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [ ] Knowledge library: ingest script for FieldCopy JSON exports, embedding call mocked in tests (spec §2.3)
 - [ ] Knowledge library: retrieval step in the read pipeline behind a flag, pattern library as fallback (spec §2.4 to §2.6)
 - [!] Knowledge library: starter source list (5 to 10 books or coaches) and the open questions in spec §6 (Evan)
-- [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
+- [~] Card tap-to-expand with a card-expansion prompt (Free tier, card level only) (`claude/card-expand`, stacked on `claude/driver-record`; API + iOS, needs a deploy to try on device)
 - [~] CDV charts: Vega-Lite WebView in ChatView. iOS side merged 2026-10-15 (`claude/cdv-chart-webview`); API still needs to return `chart` (gpt-4o-mini CDV spec)
 - [x] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7) (merged 2026-10-15 from `claude/chatview-no-emoji`)
 - [ ] Oura success page + deep link landing (design-todos)

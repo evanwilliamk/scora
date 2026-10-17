@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-17: Card expansion reads from a 10 minute snapshot of the last read
+- Status: DECIDED (review when you can)
+- Branch: claude/card-expand
+- Context: a tap needs the same numbers the card showed. Recomputing means a Strava (and Oura) call per tap, and Strava's app-wide rate limit is tight.
+- Choice: /api/read keeps an in-memory snapshot per athlete (cards, drivers, posture) for 10 minutes; /api/card-expand interprets from it. No snapshot (expired or a server restart): 409, and the app keeps the card's translation. Plain-text reply through generateValidatedVoice (same validators and fallback as the read), not doc 08's JSON shape, since Free tier has no chart-link target. Related drivers per card are a fixed map in apps/api/src/card-expand.ts.
+- Alternative: persist reads in Postgres (also what read_citations wants eventually), or recompute per tap.
+- Why: one LLM call per tap, nothing new to store.
+- To reverse: replace SnapshotCache with a reads table, or recompute in the route.
 ### 2026-10-17: Driver record definitions for the posture engine
 - Status: DECIDED (review when you can)
 - Branch: claude/driver-record
