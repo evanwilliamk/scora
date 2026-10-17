@@ -67,6 +67,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: retrieval on by default; showing sources in the response.
 - Why: keeps today's behavior until you have a starter library to test against (spec §8 step 5).
 - To reverse: unset the env var, or remove the knowledgeForRead call in /api/read.
+### 2026-10-17: Manual plan parsing and storage
+- Status: DECIDED (review when you can)
+- Branch: claude/manual-plan
+- Context: doc 09 says the backend LLM-parses a pasted plan into scheduled_workouts; doc 07 keys plans by users.id.
+- Choice: gpt-4o-mini (JSON mode, temperature 0) only transcribes. Code keeps a row only if its date resolves (yesterday to 26 weeks out), type and intensity are in closed lists, and every duration and distance appears in the pasted text (hours to minutes and miles to km allowed). Rejected rows come back as reasons. Tables keyed by athlete_id (strava_id) like the live API, Plan-tier columns left out. Added `tempo` to the intensity list (doc 07 omits it; the pattern library uses it). A new paste marks the old plan `replaced` and keeps its rows. iOS: "Your Plan" sheet from a header button; copy follows doc 09 ("Have a training plan?", "Paste plan here...", "Save plan"), minus the Strava-scheduled sentence since that source does not exist yet.
+- Cost: one gpt-4o-mini call per paste (fractions of a cent).
+- To reverse: drop the two tables; remove the routes and PlanView.
 ### 2026-10-17: Knowledge library schema shape
 - Status: DECIDED (review when you can)
 - Branch: claude/knowledge-schema
