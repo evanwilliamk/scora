@@ -19,33 +19,45 @@ export const CHART_MENU = `- weekly_miles: total run miles per week, last 8 week
 - weekday_runs: how many runs fell on each weekday, last 6 weeks
 - none: no chart helps this question`;
 
-// Finds a `CHART: <kind>` line. Unknown kinds and `none` give null.
+// `CHART: <kind>` anywhere in the reply, with or without markdown around the
+// label ("**CHART:** weekly_miles").
+const CHART_TAG = /[*_`]*\bCHART\b[*_`]*\s*:\s*[*_`]*\s*([a-z_]+)[*_`]*/i;
+
+// Unknown kinds and `none` give null.
 export function parseChartKind(text: string): ChartKind | null {
-  const m = /^\s*CHART:\s*([a-z_]+)\s*$/im.exec(text);
+  const m = CHART_TAG.exec(text);
   if (!m) return null;
   const k = m[1].toLowerCase();
   return (CHART_KINDS as readonly string[]).includes(k) ? (k as ChartKind) : null;
 }
 
-// Drops the CHART: line so it never reaches the voice or driver parsing.
+// Removes the chart tag wherever it sits so it never reaches the voice or
+// driver parsing; a line left empty is dropped.
 export function stripChartLine(text: string): string {
-  return text.split('\n').filter((l) => !/^\s*CHART:/i.test(l)).join('\n');
+  const out: string[] = [];
+  for (const line of text.split('\n')) {
+    if (!CHART_TAG.test(line)) { out.push(line); continue; }
+    const rest = line.replace(new RegExp(CHART_TAG.source, 'gi'), '').trimEnd();
+    if (rest.trim() !== '') out.push(rest);
+  }
+  return out.join('\n');
 }
 
-const startMs = (a: any) => new Date(a.start_date_local || a.start_date).getTime();
+// start_date is true UTC (windows); start_date_local is the athlete's wall
+// clock with a misleading Z (labels and weekdays, read with UTC getters).
+const startMs = (a: any) => new Date(a.start_date || a.start_date_local).getTime();
+const localDate = (a: any) => new Date(a.start_date_local || a.start_date);
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const dayLabel = (a: any) => { const d = localDate(a); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };
 
-// Shared look: transparent, system font, no actions. The app supplies the frame.
+// Layout only. Colors and fonts come from the app's own Vega config (a server
+// config.axis would replace it wholesale and drop the iOS label colors).
 const base = (title: string) => ({
-  title: { text: title, anchor: 'start', fontSize: 13, fontWeight: 600 },
+  title: { text: title, anchor: 'start' },
   width: 'container',
   height: 160,
   background: 'transparent',
-  config: {
-    font: '-apple-system, system-ui, sans-serif',
-    view: { stroke: null },
-    axis: { labelFontSize: 11, titleFontSize: 11, grid: false },
-  },
 });
 
 export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.now()): Record<string, unknown> | null {
@@ -54,13 +66,19 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
     .sort((a, b) => startMs(b) - startMs(a)); // newest first
 
   if (kind === 'weekly_miles') {
+    // Weeks older than the oldest fetched activity are unknown, not zero.
+    const times = activities.map(startMs).filter(Number.isFinite);
+    const oldest = times.length ? Math.min(...times) : now;
     const weeks = Array.from({ length: 8 }, (_, i) => {
       const to = now - i * 7 * DAY;
       const from = to - 7 * DAY;
       const mi = runs.filter((a) => startMs(a) > from && startMs(a) <= to)
         .reduce((s, a) => s + (a.distance || 0) / M, 0);
-      return { week: i === 0 ? 'This wk' : `${i} wk ago`, order: 8 - i, miles: +mi.toFixed(1) };
-    }).reverse();
+      return { week: i === 0 ? 'This wk' : `${i} wk ago`, order: 8 - i, miles: +mi.toFixed(1), to };
+    })
+      .filter((w) => w.to > oldest) // the fetched data reaches into this week
+      .map(({ to: _t, ...w }) => w)
+      .reverse();
     if (weeks.filter((w) => w.miles > 0).length < 2) return null;
     return {
       ...base('Weekly miles'),
@@ -77,15 +95,15 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
   if (kind === 'recent_pace' || kind === 'recent_hr') {
     const last = runs.slice(0, 10).reverse();
     const values = last
-      .map((a) => {
-        const date = new Date(startMs(a)).toISOString().slice(0, 10);
+      .map((a, order) => {
+        const date = dayLabel(a);
         if (kind === 'recent_hr') {
-          return typeof a.average_heartrate === 'number' ? { date, value: Math.round(a.average_heartrate) } : null;
+          return typeof a.average_heartrate === 'number' ? { date, order, value: Math.round(a.average_heartrate) } : null;
         }
         if (!a.distance || !a.moving_time) return null;
-        return { date, value: +((a.moving_time / 60) / (a.distance / M)).toFixed(2) }; // min per mile
+        return { date, order, value: +((a.moving_time / 60) / (a.distance / M)).toFixed(2) }; // min per mile
       })
-      .filter((v): v is { date: string; value: number } => v !== null);
+      .filter((v): v is { date: string; order: number; value: number } => v !== null);
     if (values.length < 2) return null;
     const pace = kind === 'recent_pace';
     return {
@@ -93,13 +111,14 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
       data: { values },
       mark: { type: 'line', point: true },
       encoding: {
-        x: { field: 'date', type: 'temporal', title: null, axis: { format: '%b %d' } },
+        // Preformatted local dates: no time zone shift in the WebView.
+        x: { field: 'date', type: 'ordinal', sort: { field: 'order' }, title: null },
         // Faster pace reads as higher on the chart.
         y: {
           field: 'value', type: 'quantitative', title: pace ? 'min/mi' : 'bpm',
           scale: { zero: false, ...(pace ? { reverse: true } : {}) },
         },
-        tooltip: [{ field: 'date', type: 'temporal' }, { field: 'value', title: pace ? 'min/mi' : 'bpm' }],
+        tooltip: [{ field: 'date' }, { field: 'value', title: pace ? 'min/mi' : 'bpm' }],
       },
     };
   }
@@ -108,7 +127,7 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
   const six = runs.filter((a) => startMs(a) > now - 42 * DAY);
   if (six.length < 2) return null;
   const counts = WEEKDAYS.map((day, i) => ({
-    day, order: i, runs: six.filter((a) => new Date(startMs(a)).getDay() === i).length,
+    day, order: i, runs: six.filter((a) => localDate(a).getUTCDay() === i).length,
   }));
   return {
     ...base('Runs by weekday, last 6 weeks'),
