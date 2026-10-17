@@ -27,6 +27,8 @@
   },
   "devDependencies": {
     "eslint": "^8.56.0",
-    "@types/node-cron": "^3.0.11"
+    "@types/node-cron": "^3.0.11",
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-pgvector": "0.0.9"
   }
 }

@@ -59,6 +59,22 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: banner copy "Oura connected. Sleep and recovery now read from your ring." and, on failure, "Oura was not connected. You can try again from the Sleep card." (cancelled) or "Oura did not connect. Nothing changed; try again from the Sleep card." Strava page now says "Welcome, <name>." (no exclamation point).
 - Not changed, flagging: the Strava callback puts the Strava access token in the scora:// deep link URL. Any app that registers the scora scheme, or a browser history entry, can see it. The app no longer needs it (the API refreshes tokens itself). Removing it touches sign-in, so it is yours to call.
 - To reverse: copy lives in OuraLinkResult (DashboardView.swift) and apps/api/src/pages.ts callers.
+### 2026-10-17: Knowledge library schema shape
+- Status: DECIDED (review when you can)
+- Branch: claude/knowledge-schema
+- Context: spec §3 sketches the tables; reads are not stored anywhere yet, so read_citations has no read row to point at.
+- Choice: read_citations keys a read by athlete_id (strava_id, like device_tokens) + read_kind + read_generated_at, with rank and similarity. knowledge_chunks adds chunk_index, embedding_model and unique (fieldcopy_entry_id, chunk_index) so re-ingest is idempotent. Retrieval is a SQL function `match_knowledge_chunks(query_embedding, match_count, filter_tags)` over active sources, cosine similarity, HNSW index. RLS on with no policies (API uses the service role key).
+- Alternative: a `reads` table first, with read_citations.read_id as a foreign key. Better once reads are persisted; easy to add then.
+- Why: smallest shape that lets ingest and retrieval run end to end.
+- To reverse: drop the three tables and the function; nothing else depends on them yet.
+### 2026-10-17: PGlite for migration tests
+- Status: DECIDED
+- Branch: claude/knowledge-schema
+- Context: the Studio has no Postgres or Docker, and agents must not touch real Supabase.
+- Choice: devDependencies @electric-sql/pglite 0.5.8 and @electric-sql/pglite-pgvector 0.0.9 (free, Apache-2.0; pinned to August releases, not this week's). apps/api/test/migrations.test.ts applies every migration in order.
+- Alternative: Supabase CLI local stack (needs Docker).
+- Why: real Postgres plus pgvector in-process, no services.
+- To reverse: delete the test and the two devDependencies.
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library
