@@ -2,6 +2,13 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-17: Oura link outcome copy and Strava deep-link token
+- Status: NEEDS EVAN (copy is cheap to change; the token point is yours)
+- Branch: claude/oura-success
+- Context: the Oura round trip had no in-app landing and the callback pages were injectable.
+- Choice: banner copy "Oura connected. Sleep and recovery now read from your ring." and, on failure, "Oura was not connected. You can try again from the Sleep card." (cancelled) or "Oura did not connect. Nothing changed; try again from the Sleep card." Strava page now says "Welcome, <name>." (no exclamation point).
+- Not changed, flagging: the Strava callback puts the Strava access token in the scora:// deep link URL. Any app that registers the scora scheme, or a browser history entry, can see it. The app no longer needs it (the API refreshes tokens itself). Removing it touches sign-in, so it is yours to call.
+- To reverse: copy lives in OuraLinkResult (DashboardView.swift) and apps/api/src/pages.ts callers.
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library

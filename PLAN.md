@@ -40,7 +40,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
 - [~] CDV charts: Vega-Lite WebView in ChatView. iOS side merged 2026-10-15 (`claude/cdv-chart-webview`); API still needs to return `chart` (gpt-4o-mini CDV spec)
 - [x] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7) (merged 2026-10-15 from `claude/chatview-no-emoji`)
-- [ ] Oura success page + deep link landing (design-todos)
+- [~] Oura success page + deep link landing (design-todos) (`claude/oura-success`; also fixes reflected XSS in the Oura and Strava callback pages)
 - [ ] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md)
 - [ ] Manual plan entry + plan parsing (plan-aware reads)
 - [ ] Strava scheduled activities ingestion
