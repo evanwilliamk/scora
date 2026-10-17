@@ -22,7 +22,7 @@ import {
   apnsConfigured,
 } from './push';
 import { startScheduler } from './scheduler';
-import { resultPage, escapeHtml, scriptString } from './pages';
+import { resultPage, escapeHtml, scriptString, oauthErrorMessage } from './pages';
 
 dotenv.config();
 
@@ -183,7 +183,7 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
   if (oauthError) {
     return reply.type('text/html').send(resultPage({
       title: 'Oura not connected',
-      lines: [`Oura said: ${String(oauthError).slice(0, 200)}`],
+      lines: [oauthErrorMessage(oauthError)],
       deepLink: 'scora://oura/failed?reason=cancelled',
       buttonLabel: 'Back to SCORA',
     }));

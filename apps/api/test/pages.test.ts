@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeHtml, scriptString, resultPage } from '../src/pages';
+import { escapeHtml, scriptString, resultPage, oauthErrorMessage } from '../src/pages';
 
 test('escapeHtml neutralizes markup and quotes', () => {
   assert.equal(escapeHtml(`<img src=x onerror="alert('x')">&`), '&lt;img src=x onerror=&quot;alert(&#39;x&#39;)&quot;&gt;&amp;');
@@ -34,4 +34,10 @@ test('result pages carry no exclamation points or emoji (CLAUDE.md 3.7)', () => 
   const html = resultPage({ title: 'Oura connected', lines: ['Opening SCORA...'], deepLink: 'scora://oura/success' });
   const body = html.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<!doctype html>/i, '');
   assert.doesNotMatch(body, /!(?!=)/);
+});
+
+test('OAuth error codes map to fixed copy; anything else never echoes', () => {
+  assert.equal(oauthErrorMessage('access_denied'), 'Access was not granted.');
+  assert.match(oauthErrorMessage('server_error'), /try again/i);
+  assert.equal(oauthErrorMessage('Your account is locked, call 555-0100'), 'The connection did not complete.');
 });
