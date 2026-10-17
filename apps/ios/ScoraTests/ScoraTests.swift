@@ -44,6 +44,35 @@ final class ScoraTests: XCTestCase {
         }
     }
 
+    // MARK: - Oura deep link
+
+    func testOuraSuccessLink() throws {
+        let r = try XCTUnwrap(OuraLinkResult(url: URL(string: "scora://oura/success")!))
+        XCTAssertTrue(r.connected)
+    }
+
+    func testOuraFailedLinkReadsReason() throws {
+        let cancelled = try XCTUnwrap(OuraLinkResult(url: URL(string: "scora://oura/failed?reason=cancelled")!))
+        XCTAssertFalse(cancelled.connected)
+        XCTAssertTrue(cancelled.message.contains("was not connected"))
+        let other = try XCTUnwrap(OuraLinkResult(url: URL(string: "scora://oura/failed?reason=exchange")!))
+        XCTAssertTrue(other.message.contains("Nothing changed"))
+    }
+
+    func testOtherLinksAreNotOuraResults() {
+        XCTAssertNil(OuraLinkResult(url: URL(string: "scora://auth/success?athlete_id=1")!))
+        XCTAssertNil(OuraLinkResult(url: URL(string: "https://oura/success")!))
+        XCTAssertNil(OuraLinkResult(url: URL(string: "scora://oura/elsewhere")!))
+    }
+
+    func testOuraBannerCopyHasNoExclamationOrEmoji() throws {
+        for link in ["scora://oura/success", "scora://oura/failed?reason=cancelled", "scora://oura/failed"] {
+            let m = try XCTUnwrap(OuraLinkResult(url: URL(string: link)!)).message
+            XCTAssertFalse(m.contains("!"))
+            XCTAssertFalse(m.unicodeScalars.contains { $0.properties.isEmojiPresentation })
+        }
+    }
+
     // MARK: - CDV chart
 
     private func decode(_ json: String) throws -> CDVResponse {

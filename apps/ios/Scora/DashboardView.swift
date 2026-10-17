@@ -24,6 +24,33 @@ struct ReadResponse: Decodable {
   let generatedAt: String?
 }
 
+// Outcome of the Oura OAuth round trip, from scora://oura/success or
+// scora://oura/failed?reason=...
+struct OuraLinkResult: Equatable {
+  static let notification = Notification.Name("ouraLinkResult")
+
+  let connected: Bool
+  let message: String
+
+  init?(url: URL) {
+    guard url.scheme == "scora", url.host == "oura" else { return nil }
+    switch url.path {
+    case "/success":
+      connected = true
+      message = "Oura connected. Sleep and recovery now read from your ring."
+    case "/failed":
+      connected = false
+      let reason = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+        .queryItems?.first(where: { $0.name == "reason" })?.value
+      message = reason == "cancelled"
+        ? "Oura was not connected. You can try again from the Sleep card."
+        : "Oura did not connect. Nothing changed; try again from the Sleep card."
+    default:
+      return nil
+    }
+  }
+}
+
 // MARK: - View
 
 struct DashboardView: View {
@@ -37,6 +64,7 @@ struct DashboardView: View {
   @State private var expanded: Set<String> = []
   @State private var showChat = false
   @State private var showWeekly = false
+  @State private var ouraBanner: OuraLinkResult?
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -48,6 +76,17 @@ struct DashboardView: View {
   var body: some View {
     VStack(spacing: 0) {
       header
+      if let ouraBanner {
+        Text(ouraBanner.message)
+          .font(.footnote)
+          .foregroundColor(ouraBanner.connected ? .white : Color(white: 0.85))
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 16)
+          .padding(.vertical, 10)
+          .background(ouraBanner.connected ? Color.orange.opacity(0.25) : Color(white: 0.16))
+          .transition(.move(edge: .top).combined(with: .opacity))
+          .onTapGesture { withAnimation { self.ouraBanner = nil } }
+      }
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
           todaysRead
@@ -87,6 +126,16 @@ struct DashboardView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
       Task { await loadRead() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: OuraLinkResult.notification)) { note in
+      guard let result = note.object as? OuraLinkResult else { return }
+      withAnimation { ouraBanner = result }
+      Task {
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        await MainActor.run {
+          if ouraBanner == result { withAnimation { ouraBanner = nil } }
+        }
+      }
     }
   }
 
