@@ -9,6 +9,14 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: gpt-4o-mini (JSON mode, temperature 0) only transcribes. Code keeps a row only if its date resolves (yesterday to 26 weeks out), type and intensity are in closed lists, and every duration and distance appears in the pasted text (hours to minutes and miles to km allowed). Rejected rows come back as reasons. Tables keyed by athlete_id (strava_id) like the live API, Plan-tier columns left out. Added `tempo` to the intensity list (doc 07 omits it; the pattern library uses it). A new paste marks the old plan `replaced` and keeps its rows. iOS: "Your Plan" sheet from a header button; copy follows doc 09 ("Have a training plan?", "Paste plan here...", "Save plan"), minus the Strava-scheduled sentence since that source does not exist yet.
 - Cost: one gpt-4o-mini call per paste (fractions of a cent).
 - To reverse: drop the two tables; remove the routes and PlanView.
+### 2026-10-17: Onboarding slice and per-athlete delivery time
+- Status: DECIDED (review when you can)
+- Branch: claude/onboarding
+- Context: doc 09 §1 onboarding starts with Sign in with Apple and a Stripe customer, both yours. The scheduler pushed everyone at 06:00 in one server zone (PUSH_TZ).
+- Choice: build the steps after Strava sign-in: Oura (optional), Apple Health, plan paste (optional, reuses PlanView), morning time with the device's time zone, confirmation. Only a fresh sign-in triggers it. New athlete_preferences table; scheduler ticks every 15 minutes and sends each athlete's read once per local day at their time (default 06:00 America/New_York, same as before), skipping it if more than 2 hours late. PUSH_TZ is no longer read. Copy follows doc 09, minus its em dash ("Free tier, no extra cost."); the Apple Health and delivery screen copy is mine.
+- Alternative: keep one global push time until Plan tier.
+- Why: doc 09 makes delivery time part of Free onboarding; one fixed zone sends 6 AM New York reads at 3 AM in California.
+- To reverse: restore the two fixed crons in scheduler.ts; drop athlete_preferences; set needsOnboarding false.
 ### 2026-10-17: Knowledge library schema shape
 - Status: DECIDED (review when you can)
 - Branch: claude/knowledge-schema

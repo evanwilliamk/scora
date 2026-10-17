@@ -41,7 +41,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [~] CDV charts: Vega-Lite WebView in ChatView. iOS side merged 2026-10-15 (`claude/cdv-chart-webview`); API still needs to return `chart` (gpt-4o-mini CDV spec)
 - [x] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7) (merged 2026-10-15 from `claude/chatview-no-emoji`)
 - [ ] Oura success page + deep link landing (design-todos)
-- [ ] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md)
+- [~] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md): post-Strava steps + per-athlete push time (`claude/onboarding`, stacked on `claude/knowledge-schema` + `claude/manual-plan`). Sign in with Apple and the Stripe customer step still wait on Evan
 - [~] Manual plan entry + plan parsing (plan-aware reads) (`claude/manual-plan`, stacked on `claude/knowledge-schema`; API + iOS Your Plan sheet)
 - [ ] Plan-aware read: pass today's scheduled workout into posture/pattern matching and the read prompt (after `claude/manual-plan`, `claude/driver-record` and `claude/knowledge-retrieval` land)
 - [ ] Strava scheduled activities ingestion
