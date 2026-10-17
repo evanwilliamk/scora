@@ -18,6 +18,21 @@ struct DashboardCard: Decodable, Identifiable {
   let cta: String?
 }
 
+// /api/card-expand reply: a 2-3 sentence read of one card.
+struct CardExpansion: Decodable {
+  let cardId: String
+  let reply: String
+  let generated: Bool?
+
+  // What an open card shows: the expansion once it lands, else the card's own
+  // translation. An empty reply never blanks the card.
+  static func text(reply: String?, translation: String?) -> String? {
+    if let reply, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return reply }
+    if let translation, !translation.isEmpty { return translation }
+    return nil
+  }
+}
+
 struct ReadResponse: Decodable {
   let read: DailyRead
   let cards: [DashboardCard]
@@ -35,6 +50,8 @@ struct DashboardView: View {
   @State private var isLoading = false
   @State private var errorText: String?
   @State private var expanded: Set<String> = []
+  @State private var expansions: [String: String] = [:]
+  @State private var expanding: Set<String> = []
   @State private var showChat = false
   @State private var showWeekly = false
 
@@ -200,12 +217,13 @@ struct DashboardView: View {
         }
       }
 
-      if isOpen, let translation = card.translation, !translation.isEmpty {
-        Text(translation)
+      if isOpen, let text = CardExpansion.text(reply: expansions[card.id], translation: card.translation) {
+        Text(text)
           .font(.footnote)
           .foregroundColor(Color(white: 0.75))
           .fixedSize(horizontal: false, vertical: true)
           .padding(.top, 2)
+          .opacity(expanding.contains(card.id) ? 0.6 : 1)
       }
 
       if let source = card.source {
@@ -228,10 +246,33 @@ struct DashboardView: View {
       withAnimation(.easeInOut(duration: 0.15)) {
         if isOpen { expanded.remove(card.id) } else { expanded.insert(card.id) }
       }
+      if !isOpen, expansions[card.id] == nil, !expanding.contains(card.id) {
+        Task { await loadExpansion(card.id) }
+      }
     }
   }
 
   // MARK: Networking
+
+  // Card tap-to-expand. Any failure (offline, read expired) keeps the card's
+  // own translation on screen.
+  private func loadExpansion(_ cardId: String) async {
+    guard let url = URL(string: "\(apiBase)/api/card-expand") else { return }
+    await MainActor.run { _ = expanding.insert(cardId) }
+    defer { Task { @MainActor in expanding.remove(cardId) } }
+
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: [
+      "athleteId": tokenManager.athleteId, "cardId": cardId,
+    ])
+    guard let (data, resp) = try? await URLSession.shared.data(for: req),
+          (resp as? HTTPURLResponse)?.statusCode == 200,
+          let decoded = try? JSONDecoder().decode(CardExpansion.self, from: data)
+    else { return }
+    await MainActor.run { expansions[cardId] = decoded.reply }
+  }
 
   private func loadRead() async {
     guard let url = URL(string: "\(apiBase)/api/read") else { return }
@@ -262,6 +303,7 @@ struct DashboardView: View {
       await MainActor.run {
         read = decoded.read
         cards = decoded.cards
+        expansions = [:] // a new read means new numbers to interpret
         isLoading = false
       }
     } catch {
