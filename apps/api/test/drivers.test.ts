@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeDriverRecord, percentile } from '../src/drivers';
+import { computeDriverRecord, percentile, postureForRead } from '../src/drivers';
 import { computePosture } from '../../../packages/posture/src/index';
 import type { OuraSummary } from '../src/oura';
 
@@ -150,4 +150,14 @@ test('a settled, rested athlete with low load reads primed', () => {
 
 test('race flag passes through from options', () => {
   assert.equal(computeDriverRecord([], null, { now, raceInNext7d: true }).drivers.race_in_next_7d, true);
+});
+
+test('postureForRead decides the posture and gives the prompt one line to name', () => {
+  const acts = [...steadyWeeks(), run(0, 120, 140), run(2, 120, 140)];
+  const p = postureForRead(acts, null, { now });
+  assert.equal(p.result.posture, 'back-off');
+  assert.equal(p.result.rule, 'back-off');
+  assert.match(p.promptLine, /^POSTURE \(decided by SCORA's rules from the drivers, posture-v[\d.]+\): back-off$/);
+  // No prescriptive language sneaks into the line the LLM sees.
+  assert.doesNotMatch(p.promptLine, /should|need to|do a|go for/i);
 });

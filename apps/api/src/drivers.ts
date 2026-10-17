@@ -5,7 +5,8 @@
 // so the posture engine can never fire on a guess. Definitions (units, windows,
 // what counts as a hard day) are logged in DECISIONS.md 2026-10-17.
 
-import type { PostureDrivers, UserBaselines } from '../../../packages/posture/src/index';
+import { computePosture } from '../../../packages/posture/src/index';
+import type { PostureDrivers, PostureResult, UserBaselines } from '../../../packages/posture/src/index';
 import type { OuraSummary } from './oura';
 
 const DAY = 86400000;
@@ -166,4 +167,27 @@ export function computeDriverRecord(
   const completeness = fields.length > 0 ? Math.round((present / fields.length) * 100) / 100 : 0;
 
   return { drivers: d, baselines, completeness };
+}
+
+export interface ReadPosture {
+  record: DriverRecordResult;
+  result: PostureResult;
+  // One line for the read prompt. The LLM names this posture; it never picks one.
+  promptLine: string;
+}
+
+// Driver record -> posture engine, for the daily read. The posture is decided
+// here by rules (doc 07 v1 §8.3); the LLM only names it.
+export function postureForRead(
+  activities: any[],
+  recovery?: OuraSummary | null,
+  opts: DriverRecordOptions = {}
+): ReadPosture {
+  const record = computeDriverRecord(activities, recovery, opts);
+  const result = computePosture(record.drivers, record.baselines);
+  return {
+    record,
+    result,
+    promptLine: `POSTURE (decided by SCORA's rules from the drivers, ${result.engine_version}): ${result.posture}`,
+  };
 }
