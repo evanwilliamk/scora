@@ -128,6 +128,33 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(PlanDay.skippedNote(3), "3 lines could not be read and were left out.")
     }
 
+    // MARK: - Onboarding
+
+    func testOnboardingStepsRunInSpecOrder() {
+        XCTAssertEqual(OnboardingStep.allCases, [.oura, .health, .plan, .delivery, .done])
+        XCTAssertEqual(OnboardingStep.oura.next, .health)
+        XCTAssertNil(OnboardingStep.done.next)
+    }
+
+    func testDeliveryMinuteAndZoneLabel() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let t = cal.date(from: DateComponents(year: 2026, month: 10, day: 17, hour: 6, minute: 30))!
+        XCTAssertEqual(OnboardingState.deliveryMinute(from: t, calendar: cal), 390)
+        XCTAssertEqual(OnboardingState.zoneLabel(TimeZone(identifier: "America/Los_Angeles")!), "Los Angeles")
+    }
+
+    // Flag logic only: saveToken is not called here because it can register
+    // a device with the production API.
+    func testOnboardingFlagIsReadAtLaunchAndClearedOnFinish() {
+        OnboardingState.needsOnboarding = true
+        let tm = TokenManager()
+        XCTAssertTrue(tm.needsOnboarding)
+        tm.finishOnboarding()
+        XCTAssertFalse(OnboardingState.needsOnboarding)
+        XCTAssertFalse(TokenManager().needsOnboarding)
+    }
+
     // MARK: - CDV chart
 
     private func decode(_ json: String) throws -> CDVResponse {

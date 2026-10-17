@@ -47,6 +47,8 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [x] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7) (merged 2026-10-15 from `claude/chatview-no-emoji`)
 - [~] Oura success page + deep link landing (design-todos) (`claude/oura-success`; also fixes reflected XSS in the Oura and Strava callback pages)
 - [ ] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md)
+- [ ] Oura success page + deep link landing (design-todos)
+- [~] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md): post-Strava steps + per-athlete push time (`claude/onboarding`, stacked on `claude/knowledge-schema` + `claude/manual-plan`). Sign in with Apple and the Stripe customer step still wait on Evan
 - [~] Manual plan entry + plan parsing (plan-aware reads) (`claude/manual-plan`, stacked on `claude/knowledge-schema`; API + iOS Your Plan sheet)
 - [~] Plan-aware read: pass today's scheduled workout into posture/pattern matching and the read prompt (`claude/plan-aware-read`, stacked on `claude/knowledge-retrieval` + `claude/manual-plan`; merge those first)
 - [ ] Strava scheduled activities ingestion

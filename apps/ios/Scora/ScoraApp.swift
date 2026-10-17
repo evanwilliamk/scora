@@ -7,7 +7,12 @@ struct ScoraApp: App {
   
   var body: some Scene {
     WindowGroup {
-      if tokenManager.isAuthenticated {
+      if tokenManager.isAuthenticated && tokenManager.needsOnboarding {
+        OnboardingView(tokenManager: tokenManager, onFinish: {})
+          .onOpenURL { url in
+            handleDeepLink(url)
+          }
+      } else if tokenManager.isAuthenticated {
         DashboardView(tokenManager: tokenManager)
           .onOpenURL { url in
             handleDeepLink(url)
