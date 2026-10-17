@@ -18,6 +18,14 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: Supabase CLI local stack (needs Docker).
 - Why: real Postgres plus pgvector in-process, no services.
 - To reverse: delete the test and the two devDependencies.
+### 2026-10-17: Knowledge ingest chunking and embedding text
+- Status: DECIDED (review when you can)
+- Branch: claude/knowledge-ingest
+- Context: spec §2.3 says split long passages and embed each chunk, without sizes.
+- Choice: chunks up to 1500 characters (about 350 tokens), split at paragraph, then sentence, then word, with 200 characters of overlap. Embedded text is the chunk plus "Take: <Evan's take>" when there is one, so Evan's reading of a passage helps it get found. Tags are lowercased. A bad entry fails the whole export rather than ingesting part of a book. Ingest is a script (`apps/api/scripts/ingest-knowledge.ts`), not an endpoint, so no new auth surface.
+- Alternative: embed passage only; token-based chunking with a tokenizer dependency.
+- Why: FieldCopy passages are mostly short; this keeps one idea per chunk with no new dependency.
+- To reverse: CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS and embedText in apps/api/src/knowledge-ingest.ts.
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library

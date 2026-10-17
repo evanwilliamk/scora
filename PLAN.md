@@ -34,7 +34,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [ ] Port the 5 remaining v0.3 pattern entries (12 total). Stopgap only: the knowledge library replaces the "20+ entries" goal (Evan, 2026-10-13)
 - [x] Knowledge library spec `11_SCORA_Knowledge_Library_Spec_v0_1.md` (merged 2026-10-15 from `claude/knowledge-library-spec`)
 - [~] Knowledge library: pgvector migration + `knowledge_sources`, `knowledge_chunks`, `read_citations` tables (spec §3; local or mocks only) (`claude/knowledge-schema`; tested on PGlite, not applied to Supabase: Evan applies it)
-- [ ] Knowledge library: ingest script for FieldCopy JSON exports, embedding call mocked in tests (spec §2.3)
+- [~] Knowledge library: ingest script for FieldCopy JSON exports, embedding call mocked in tests (spec §2.3) (`claude/knowledge-ingest`, stacked on `claude/knowledge-schema`; real run is Evan's: `npx tsx scripts/ingest-knowledge.ts <file>`, try `--dry-run` first)
 - [ ] Knowledge library: retrieval step in the read pipeline behind a flag, pattern library as fallback (spec §2.4 to §2.6)
 - [!] Knowledge library: starter source list (5 to 10 books or coaches) and the open questions in spec §6 (Evan)
 - [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
