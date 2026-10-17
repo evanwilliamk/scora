@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-17: Knowledge retrieval in the daily read
+- Status: DECIDED (review when you can)
+- Branch: claude/knowledge-retrieval
+- Context: spec §2.4 to §2.6. Flag, query shape and prompt wording were unspecified.
+- Choice: env flag `KNOWLEDGE_RETRIEVAL=on` (default off, so no OpenAI embedding cost until you turn it on). Query is a plain-language description built only from drivers that exist, plus topic tags (sleep, load, recovery, hrv, intensity, taper); if the tagged search is empty it retries untagged. Top 4 chunks, cosine similarity at least 0.3. Prompt tells the model to paraphrase, take no numbers from the library, and never prescribe. Fallback order: library, pattern library (selectPattern), nothing. Citations are written to read_citations after the read, best effort. The API response gains `knowledge: { mode, chunks, pattern }` but no source names (spec §6.1 is still open).
+- Alternative: retrieval on by default; showing sources in the response.
+- Why: keeps today's behavior until you have a starter library to test against (spec §8 step 5).
+- To reverse: unset the env var, or remove the knowledgeForRead call in /api/read.
 ### 2026-10-17: Knowledge library schema shape
 - Status: DECIDED (review when you can)
 - Branch: claude/knowledge-schema
