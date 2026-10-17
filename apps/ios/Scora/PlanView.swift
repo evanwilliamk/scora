@@ -85,6 +85,11 @@ enum PlanDay {
     return f.string(from: now)
   }
 
+  // Sessions from today on, first 14, for the list after a save.
+  static func upcoming(_ rows: [PlanWorkout], today: String) -> [PlanWorkout] {
+    Array(rows.filter { $0.date >= today }.sorted { $0.date < $1.date }.prefix(14))
+  }
+
   static func skippedNote(_ count: Int) -> String? {
     guard count > 0 else { return nil }
     return count == 1
@@ -176,7 +181,7 @@ struct PlanView: View {
 
   private var upcomingSection: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("Next two weeks").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+      Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
       if let note { Text(note).font(.footnote).foregroundColor(.gray) }
       ForEach(workouts) { w in
         VStack(alignment: .leading, spacing: 3) {
@@ -225,12 +230,13 @@ struct PlanView: View {
       let (data, resp) = try await URLSession.shared.data(for: req)
       let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
       if status == 200, let saved = try? JSONDecoder().decode(PlanSaveResponse.self, from: data) {
+        // Show what was saved, even when the plan starts weeks from now.
         await MainActor.run {
+          workouts = PlanDay.upcoming(saved.workouts, today: PlanDay.today())
           note = PlanDay.skippedNote(saved.rejected.count)
           isEditing = false
           isSaving = false
         }
-        await loadPlan()
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
       } else {
         let msg = (try? JSONDecoder().decode(PlanErrorResponse.self, from: data))?.error ?? "Saving the plan failed."

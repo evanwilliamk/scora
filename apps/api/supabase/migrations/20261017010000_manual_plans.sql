@@ -42,3 +42,39 @@ create index if not exists scheduled_workouts_athlete_date_idx on scheduled_work
 
 alter table training_plans enable row level security;
 alter table scheduled_workouts enable row level security;
+
+-- At most one active manual plan per athlete.
+create unique index if not exists training_plans_one_active_manual_idx
+  on training_plans (athlete_id) where external_source = 'manual' and current_status = 'active';
+
+-- Replace an athlete's manual plan in one transaction: the old plan is marked
+-- 'replaced' (rows kept), the new plan and its sessions are inserted. If any
+-- insert fails, nothing changes. p_rows is the validated ParsedRow[] JSON.
+create or replace function replace_manual_plan(p_athlete_id text, p_raw_text text, p_rows jsonb)
+returns uuid
+language plpgsql
+as $$
+declare
+  v_plan_id uuid;
+begin
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then
+    raise exception 'No workouts to save';
+  end if;
+
+  update training_plans set current_status = 'replaced', updated_at = now()
+  where athlete_id = p_athlete_id and external_source = 'manual' and current_status = 'active';
+
+  insert into training_plans (athlete_id, source, external_source, start_date, end_date, raw_text)
+  select p_athlete_id, 'external', 'manual', min((r->>'date')::date), max((r->>'date')::date), p_raw_text
+  from jsonb_array_elements(p_rows) r
+  returning id into v_plan_id;
+
+  insert into scheduled_workouts (athlete_id, training_plan_id, scheduled_date, planned_type, planned_intensity,
+    planned_duration_min, planned_distance_km, planned_description, source, raw_source_json)
+  select p_athlete_id, v_plan_id, (r->>'date')::date, r->>'type', r->>'intensity',
+    (r->>'duration_min')::smallint, (r->>'distance_km')::numeric, nullif(r->>'description', ''), 'manual', r
+  from jsonb_array_elements(p_rows) r;
+
+  return v_plan_id;
+end;
+$$;
