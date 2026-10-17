@@ -197,8 +197,15 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
     const res = await fetch(`${OURA_API}/sleep?${range}`, auth);
     if (res.ok) {
       const json: any = await res.json();
-      const periods: any[] = (json.data || []).filter((p: any) => p.type !== 'nap');
-      periods.sort((a, b) => (a.day < b.day ? 1 : -1)); // newest first
+      // One period per night: the longest non-nap one (Oura can split a night
+      // into a long_sleep and a short sleep). Newest night first.
+      const byDay = new Map<string, any>();
+      for (const p of (json.data || []) as any[]) {
+        if (p.type === 'nap' || !p.day) continue;
+        const cur = byDay.get(p.day);
+        if (!cur || (p.total_sleep_duration ?? 0) > (cur.total_sleep_duration ?? 0)) byDay.set(p.day, p);
+      }
+      const periods = [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
       const latest = periods[0];
       if (latest) {
         summary.sleepSeconds = latest.total_sleep_duration ?? null;

@@ -503,7 +503,10 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
-    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
+    // Everything since 35 days ago (the driver record needs a full 28 days;
+    // 50 most recent activities can fall short for multi-sport athletes).
+    const after = Math.floor(Date.now() / 1000) - 35 * 86400;
+    const stravaRes = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${after}`, {
       headers: { Authorization: `Bearer ${stravaToken}` },
     });
     if (!stravaRes.ok) {
@@ -585,6 +588,9 @@ fastify.post('/api/read', async (request, reply) => {
       knowledgeDeps
     );
 
+    // The numbers behind the posture are drivers too, so naming it is backed.
+    const readDrivers = [...drivers, ...posture.evidence];
+
     const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
 
 HARD RULES:
@@ -595,7 +601,7 @@ HARD RULES:
 
 OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;
 
-    const driverBlock = drivers
+    const driverBlock = readDrivers
       .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
       .join('\n');
     const userPrompt = `DRIVERS (the only values you may cite):
@@ -610,7 +616,7 @@ Write today's read using only these drivers.`;
       const result = await generateValidatedVoice({
         systemPrompt,
         userPrompt,
-        drivers,
+        drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers",
         log: fastify.log,
@@ -636,7 +642,7 @@ Write today's read using only these drivers.`;
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
       cards,
-      drivers,
+      drivers: readDrivers,
       connections,
       generatedAt,
     });
