@@ -5,7 +5,8 @@ priority: 40
 posture_filter: [primed, steady, moderate]
 requires_scheduled_workout: false
 driver_rule: |
-  workouts_completed_this_week >= workouts_planned_this_week * 0.85
+  workouts_planned_this_week > 0
+  AND workouts_completed_this_week >= workouts_planned_this_week * 0.85
 min_data_completeness: 0.3
 voice_version: v0.3.0
 tone_notes: |

@@ -172,3 +172,7 @@ test('coach message acknowledgement fires in the daily read for Coach tier only'
   assert.equal(pick({ ...ctx, tier: 'plan' }), null);
   assert.equal(pick({ ...ctx, posture: 'rest' }), null);
 });
+
+test('strong-adherence week never fires on 0 of 0', () => {
+  assert.equal(pick({ posture: 'steady', context: 'weekly', drivers: { workouts_completed_this_week: 0, workouts_planned_this_week: 0 } }), null);
+});

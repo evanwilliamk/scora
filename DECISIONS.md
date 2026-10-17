@@ -2,6 +2,12 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-17: Pattern review notes (voice copy is yours)
+- Status: NEEDS EVAN (copy); one rule fix DECIDED
+- Branch: claude/port-v03-patterns
+- Decided: plan-adherence-strong-week now also requires workouts_planned_this_week > 0 (doc 06's rule fired on "0 of 0"). Differs from doc 06; update the doc or revert.
+- For you: (1) coach-note-preserve-verbatim's template "A week of quality work." is a claim no driver backs and fires at any posture with completeness 0; something neutral like "{{coach_name}}'s note this week:" avoids it. (2) coach-recent-message-acknowledge says "yesterday" but fires on the last 24 hours, and keeps doc 06's em dash.
+- To reverse: drop the first line of that driver_rule.
 ### 2026-10-17: Last 5 v0.3 pattern entries ported as written
 - Status: DECIDED (review when you can)
 - Branch: claude/port-v03-patterns
