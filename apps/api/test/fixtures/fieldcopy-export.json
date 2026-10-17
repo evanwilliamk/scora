@@ -1,0 +1,31 @@
+{
+  "entries": [
+    {
+      "id": "a1b2c3d4-0001",
+      "source_title": "Sample Training Book",
+      "source_author": "A. Author",
+      "page": "112",
+      "passage": "Sleep is when adaptation happens. A hard session followed by a short night is a session half absorbed.",
+      "take": "Short sleep after a hard day reads as debt, not fitness.",
+      "summary": null,
+      "tags": ["Sleep", "recovery"],
+      "captured_at": "2026-10-13T08:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0002",
+      "source_title": "Sample Training Book",
+      "source_author": "A. Author",
+      "page": 140,
+      "passage": "In the final week the work stays sharp and the volume falls away.",
+      "take": null,
+      "tags": ["taper"],
+      "captured_at": "2026-10-13T08:05:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0003",
+      "source_title": "Field Notes",
+      "source_author": null,
+      "passage": "Consistency over weeks beats any single day."
+    }
+  ]
+}
