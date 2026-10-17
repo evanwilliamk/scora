@@ -85,7 +85,13 @@ export async function storeStravaTokens(stravaId: string, tokenData: any) {
   }
 }
 
-async function refreshStravaToken(refreshToken: string) {
+interface StravaTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+}
+
+async function refreshStravaToken(refreshToken: string): Promise<StravaTokenResponse> {
   const response = await fetch('https://www.strava.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -101,7 +107,7 @@ async function refreshStravaToken(refreshToken: string) {
     throw new Error(`Strava token refresh failed: ${response.statusText}`);
   }
 
-  return response.json();
+  return (await response.json()) as StravaTokenResponse;
 }
 
 /**
