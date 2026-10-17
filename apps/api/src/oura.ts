@@ -163,6 +163,11 @@ export interface OuraSummary {
   readinessScore: number | null; // 0-100 daily readiness score
   // Trend context
   hrvWeekAvgMs: number | null; // avg HRV over prior ~7 nights
+  // History for the posture driver record (drivers.ts). Prior nights only,
+  // newest first, last night excluded. Optional so HealthKit summaries,
+  // which have no history yet, still fit the shape.
+  restingHrHistory?: number[]; // lowest HR, prior ~7 nights
+  sleepScoreHistory?: number[]; // daily sleep score, prior ~28 nights
 }
 
 // Pull the last week of Oura data and reduce it to the values the two cards
@@ -175,6 +180,8 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
   const end = Date.now() + day; // inclusive of today
   const start = Date.now() - 8 * day;
   const range = `start_date=${iso(start)}&end_date=${iso(end)}`;
+  // Sleep score percentiles (posture baselines) need a longer window.
+  const scoreRange = `start_date=${iso(Date.now() - 29 * day)}&end_date=${iso(end)}`;
 
   const summary: OuraSummary = {
     sleepSeconds: null,
@@ -190,8 +197,15 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
     const res = await fetch(`${OURA_API}/sleep?${range}`, auth);
     if (res.ok) {
       const json: any = await res.json();
-      const periods: any[] = (json.data || []).filter((p: any) => p.type !== 'nap');
-      periods.sort((a, b) => (a.day < b.day ? 1 : -1)); // newest first
+      // One period per night: the longest non-nap one (Oura can split a night
+      // into a long_sleep and a short sleep). Newest night first.
+      const byDay = new Map<string, any>();
+      for (const p of (json.data || []) as any[]) {
+        if (p.type === 'nap' || !p.day) continue;
+        const cur = byDay.get(p.day);
+        if (!cur || (p.total_sleep_duration ?? 0) > (cur.total_sleep_duration ?? 0)) byDay.set(p.day, p);
+      }
+      const periods = [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
       const latest = periods[0];
       if (latest) {
         summary.sleepSeconds = latest.total_sleep_duration ?? null;
@@ -205,6 +219,10 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
       if (hrvs.length > 0) {
         summary.hrvWeekAvgMs = Math.round(hrvs.reduce((s, v) => s + v, 0) / hrvs.length);
       }
+      summary.restingHrHistory = periods
+        .slice(1, 8)
+        .map((p) => p.lowest_heart_rate)
+        .filter((v) => typeof v === 'number');
     }
   } catch {
     // leave sleep fields null
@@ -212,11 +230,15 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
 
   // Daily sleep score.
   try {
-    const res = await fetch(`${OURA_API}/daily_sleep?${range}`, auth);
+    const res = await fetch(`${OURA_API}/daily_sleep?${scoreRange}`, auth);
     if (res.ok) {
       const json: any = await res.json();
       const rows: any[] = (json.data || []).slice().sort((a: any, b: any) => (a.day < b.day ? 1 : -1));
       if (rows[0]) summary.sleepScore = rows[0].score ?? null;
+      summary.sleepScoreHistory = rows
+        .slice(1, 29)
+        .map((r) => r.score)
+        .filter((v) => typeof v === 'number');
     }
   } catch {
     // leave null

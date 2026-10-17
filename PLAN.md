@@ -32,6 +32,9 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [x] Posture engine as its own module with unit tests (merged 2026-10-15 from `claude/posture-engine`; not wired into the API yet)
 - [ ] Compute the per-user driver record (doc 07 v1 §8.2) and wire posture + voice into the daily read
 - [~] Port the 5 remaining v0.3 pattern entries (12 total) (`claude/port-v03-patterns`). Stopgap only: the knowledge library replaces the "20+ entries" goal (Evan, 2026-10-13)
+- [~] Compute the per-user driver record (doc 07 v1 §8.2) and wire posture into the daily read (`claude/driver-record`; definitions in DECISIONS.md 2026-10-17)
+- [ ] Wire `@scora/voice` selectPattern into the daily read (needs a scheduled-workout source: every v0.3 entry but the taper ones requires one)
+- [ ] Port the 5 remaining v0.3 pattern entries (12 total). Stopgap only: the knowledge library replaces the "20+ entries" goal (Evan, 2026-10-13)
 - [x] Knowledge library spec `11_SCORA_Knowledge_Library_Spec_v0_1.md` (merged 2026-10-15 from `claude/knowledge-library-spec`)
 - [ ] Knowledge library: pgvector migration + `knowledge_sources`, `knowledge_chunks`, `read_citations` tables (spec §3; local or mocks only)
 - [ ] Knowledge library: ingest script for FieldCopy JSON exports, embedding call mocked in tests (spec §2.3)
