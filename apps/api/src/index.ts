@@ -26,6 +26,9 @@ import { supabasePrefsStore } from './preferences';
 import type { PrefsStore } from './preferences';
 import { isValidTimezone, isValidDeliveryMinute } from './delivery';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
+import { supabasePlanStore } from './plan-store';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -660,6 +663,59 @@ fastify.put('/api/preferences', async (request, reply) => {
   } catch (e) {
     fastify.log.error(`Preferences save failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Saving preferences failed.' });
+  }
+});
+
+// Manual plan entry (Free tier plan source, doc 09 §1.4). The athlete pastes
+// a plan; gpt-4o-mini transcribes it and plan-parse.ts keeps only rows whose
+// dates resolve and whose numbers appear in the pasted text.
+const isoDay = (v: unknown): string | null =>
+  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+const addDays = (day: string, n: number) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+let _planSb: ReturnType<typeof createClient> | null = null;
+const planStore = () => {
+  const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase env not configured');
+  _planSb = _planSb ?? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  return supabasePlanStore(_planSb);
+};
+
+fastify.post('/api/plan/manual', async (request, reply) => {
+  const { athleteId, text, today: clientToday } = (request.body as any) || {};
+  if (!athleteId || typeof text !== 'string') {
+    return reply.code(400).send({ error: 'Missing: athleteId, text' });
+  }
+  // The app sends its local date so weekday names resolve in the athlete's zone.
+  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  try {
+    const parsed = await parsePlanText(text, today, openAiPlanLlm(process.env.OPENAI_API_KEY || ''));
+    if (parsed.rows.length === 0) {
+      return reply.code(422).send({
+        error: 'No sessions with a day or date were found. Try one session per line, like "Tue: 45 min tempo".',
+        rejected: parsed.rejected.map((r) => r.reason),
+      });
+    }
+    const { planId } = await planStore().saveManualPlan(String(athleteId), text.trim(), parsed.rows);
+    return reply.send({ planId, workouts: parsed.rows, rejected: parsed.rejected.map((r) => r.reason) });
+  } catch (e) {
+    if (e instanceof PlanParseError) return reply.code(422).send({ error: e.message });
+    fastify.log.error(`Manual plan failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Saving the plan failed.' });
+  }
+});
+
+// Active plan workouts from today, two weeks ahead.
+fastify.get('/api/plan', async (request, reply) => {
+  const { athleteId, today: clientToday } = request.query as { athleteId?: string; today?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  try {
+    const workouts = await planStore().workoutsBetween(athleteId, today, addDays(today, 13));
+    return reply.send({ today, workouts });
+  } catch (e) {
+    fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading the plan failed.' });
   }
 });
 
