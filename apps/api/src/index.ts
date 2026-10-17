@@ -705,13 +705,14 @@ fastify.post('/api/plan/manual', async (request, reply) => {
   }
 });
 
-// Active plan workouts from today, two weeks ahead.
+// The next 14 sessions of the active plan, up to 26 weeks ahead (a plan can
+// start next month).
 fastify.get('/api/plan', async (request, reply) => {
   const { athleteId, today: clientToday } = request.query as { athleteId?: string; today?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
-    const workouts = await planStore().workoutsBetween(athleteId, today, addDays(today, 13));
+    const workouts = (await planStore().workoutsBetween(athleteId, today, addDays(today, 182))).slice(0, 14);
     return reply.send({ today, workouts });
   } catch (e) {
     fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);

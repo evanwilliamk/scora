@@ -46,6 +46,7 @@ Rules:
 - One item per planned session. Rest days: type "other", intensity "rest".
 - Resolve weekday names and relative dates against TODAY. Use the next occurrence on or after TODAY unless the text gives a date.
 - Copy numbers exactly as written. Never compute, convert, or estimate a duration or distance that is not written.
+- "description" must be copied from that session's own text, word for word.
 - If a field is not in the text, use null.
 - Output JSON only.`;
   const user = `TODAY: ${today}\n\nPLAN TEXT:\n${text}`;
@@ -56,6 +57,20 @@ Rules:
 export function numbersIn(text: string): number[] {
   return (text.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => Number(n.replace(',', '.')));
 }
+
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+const num = (s: string) => Number(s.replace(',', '.'));
+const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
+
+// Numbers written with a given unit right after them ("45 min", "1.5 h").
+function withUnit(text: string, units: string): number[] {
+  const re = new RegExp(`${NUM}\\s*(?:${units})(?![a-z])`, 'gi');
+  return [...text.matchAll(re)].map((m) => num(m[1]));
+}
+const MINUTES = "min|mins|minute|minutes|'";
+const HOURS = 'h|hr|hrs|hour|hours';
+const KM = 'km|k|kms|kilometers?|kilometres?';
+const MI = 'mi|mile|miles';
 
 const isoDate = (s: unknown): string | null => {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
@@ -69,11 +84,12 @@ const daysBetween = (a: string, b: string) =>
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 
 // Checks the LLM's rows against the source text. `today` is YYYY-MM-DD in the
-// athlete's zone.
+// athlete's zone. Each row is checked against its own words: the description
+// must appear in the paste, and every duration and distance must be written in
+// that description with its unit next to it.
 export function validateParsedRows(raw: unknown, sourceText: string, today: string): ParseResult {
   const items: unknown[] = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.workouts) ? (raw as any).workouts : [];
-  const written = numbersIn(sourceText);
-  const isWritten = (n: number) => written.some((w) => near(w, n));
+  const source = norm(sourceText);
   const rows: ParsedRow[] = [];
   const rejected: Rejected[] = [];
   const seen = new Set<string>();
@@ -95,12 +111,19 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
       : (INTENSITIES as readonly string[]).includes(r.intensity) ? (r.intensity as Intensity) : undefined;
     if (intensity === undefined) { reject(`unknown intensity ${JSON.stringify(r.intensity)}`); continue; }
 
+    const description = typeof r.description === 'string' ? r.description.trim().slice(0, 500) : '';
+    if (!description || !source.includes(norm(description).replace(/[.,;:]+$/, ''))) {
+      reject('description is not in the text');
+      continue;
+    }
+
     let duration: number | null = null;
     if (r.duration_min != null) {
       const d = Number(r.duration_min);
       if (!Number.isFinite(d) || d <= 0 || d > 1440) { reject('duration out of range'); continue; }
-      // Minutes as written, or hours written and converted (1.5 h -> 90).
-      if (!isWritten(d) && !isWritten(d / 60)) { reject(`duration ${d} min is not in the text`); continue; }
+      const asMinutes = withUnit(description, MINUTES).some((w) => near(w, d));
+      const asHours = withUnit(description, HOURS).some((w) => near(w * 60, d));
+      if (!asMinutes && !asHours) { reject(`duration ${d} min is not written for this session`); continue; }
       duration = Math.round(d);
     }
 
@@ -109,11 +132,13 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
       const v = Number(r.distance);
       const unit = r.distance_unit === 'mi' ? 'mi' : r.distance_unit === 'km' ? 'km' : null;
       if (!Number.isFinite(v) || v <= 0 || !unit) { reject('distance without a valid unit'); continue; }
-      if (!isWritten(v)) { reject(`distance ${v} ${unit} is not in the text`); continue; }
+      if (!withUnit(description, unit === 'mi' ? MI : KM).some((w) => near(w, v))) {
+        reject(`distance ${v} ${unit} is not written for this session`);
+        continue;
+      }
       distanceKm = Math.round((unit === 'mi' ? v * KM_PER_MI : v) * 100) / 100;
     }
 
-    const description = typeof r.description === 'string' ? r.description.trim().slice(0, 500) : '';
     const key = `${date}|${type}|${description.toLowerCase()}`;
     if (seen.has(key)) { reject('duplicate session'); continue; }
     seen.add(key);
