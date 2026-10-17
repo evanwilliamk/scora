@@ -2,6 +2,13 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-17: Last 5 v0.3 pattern entries ported as written
+- Status: DECIDED (review when you can)
+- Branch: claude/port-v03-patterns
+- Context: Q10 answer B: port the remaining doc 06 v0.3 entries as a stopgap.
+- Choice: copied §6.8 to §6.12 verbatim, same as the first 7. coach-recent-message-acknowledge keeps doc 06's em dash in its template (voice copy, same call as 2026-10-11 note 3). None can fire in production yet: they need adaptation, missed-workout, adherence and coach drivers that nothing computes.
+- Why: doc 06 is the source of truth for voice copy.
+- To reverse: delete the 5 YAML files in packages/voice/patterns.
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library
