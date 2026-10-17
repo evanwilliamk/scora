@@ -44,6 +44,14 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: ran `npm install` at the root and committed the 16-line lockfile change.
 - Why: the routine's test command (`npm ci && npm test`) must work.
 - To reverse: revert commit b289e96.
+### 2026-10-17: CDV charts: LLM picks the kind, server builds the spec
+- Status: DECIDED (review when you can)
+- Branch: claude/cdv-chart-api
+- Context: CLAUDE.md §8.5 says gpt-4o-mini writes the CDV spec. A free-form LLM spec could plot invented numbers, which breaks §3.2 and §3.4.
+- Choice: the model adds one line, `CHART: <kind>`, choosing from weekly_miles, recent_pace, recent_hr, weekday_runs or none. The API builds the Vega-Lite spec and its inline data from Strava activities. No extra LLM call.
+- Alternative: let the model write the full spec with data, then validate every value against the data block.
+- Why: same guarantee as the driver-existence validator, at zero extra cost. New kinds are a few lines each in apps/api/src/cdv-chart.ts.
+- To reverse: remove the CHART line from the CDV prompt and the `chart` field from the response.
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library

@@ -42,6 +42,8 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [!] Knowledge library: starter source list (5 to 10 books or coaches) and the open questions in spec §6 (Evan)
 - [~] Card tap-to-expand with a card-expansion prompt (Free tier, card level only) (`claude/card-expand`, stacked on `claude/driver-record`; API + iOS, needs a deploy to try on device)
 - [~] CDV charts: Vega-Lite WebView in ChatView. iOS side merged 2026-10-15 (`claude/cdv-chart-webview`); API still needs to return `chart` (gpt-4o-mini CDV spec)
+- [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
+- [~] CDV charts: Vega-Lite WebView in ChatView. iOS side merged 2026-10-15 (`claude/cdv-chart-webview`); API side on `claude/cdv-chart-api` (LLM picks a chart kind, server builds the spec from real data)
 - [x] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7) (merged 2026-10-15 from `claude/chatview-no-emoji`)
 - [ ] Oura success page + deep link landing (design-todos)
 - [ ] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md)
