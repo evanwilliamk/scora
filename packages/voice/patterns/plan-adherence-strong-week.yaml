@@ -1,0 +1,23 @@
+# Pattern Library v0.3 — doc 06 §6.10
+# Weekly read only: adherence has been high. Confirms consistent execution.
+id: plan-adherence-strong-week-v1
+priority: 40
+posture_filter: [primed, steady, moderate]
+requires_scheduled_workout: false
+driver_rule: |
+  workouts_completed_this_week >= workouts_planned_this_week * 0.85
+min_data_completeness: 0.3
+voice_version: v0.3.0
+tone_notes: |
+  Fires in the weekly read only (context = 'weekly'). Voice names the
+  consistency, no cheerleading.
+slot_drivers:
+  - workouts_completed_this_week
+  - workouts_planned_this_week
+context_filter: [weekly]
+template: |
+  {{workouts_completed_this_week}} of {{workouts_planned_this_week}} on the plan this week. Consistency is what compounds.
+llm_hint: |
+  "Consistency is what compounds" is a real training truth. Don't overuse it,
+  but it lands when earned.
+exclude_if_recently_fired: 7

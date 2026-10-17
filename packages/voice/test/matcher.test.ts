@@ -121,3 +121,54 @@ test('selectPatterns returns a priority-ordered list and empty when none fire', 
   const none = selectPatterns({ posture: 'steady', drivers: {} }, LIB);
   assert.deepEqual(none, []);
 });
+
+// ---- doc 06 §6.8 to §6.12 (ported 2026-10-17) ----
+
+test('adaptation follow-up fires the morning after a named adaptation', () => {
+  const ctx: MatchContext = {
+    posture: 'steady',
+    scheduledWorkout: { planned_intensity: 'tempo' },
+    drivers: { yesterday_adaptation_triggered: true },
+  };
+  assert.equal(pick(ctx), 'plan-was-adapted-yesterday-follow-up-v1');
+  assert.equal(pick({ ...ctx, recentlyFired: { 'plan-was-adapted-yesterday-follow-up-v1': 2 } }), null);
+});
+
+test('missed-yesterday fires for a short miss, not a long gap', () => {
+  const ctx: MatchContext = {
+    posture: 'steady',
+    scheduledWorkout: { planned_intensity: 'easy' },
+    drivers: { yesterday_workout_missed: true, consecutive_missed_days: 1 },
+  };
+  assert.equal(pick(ctx), 'plan-missed-yesterday-no-guilt-v1');
+  assert.equal(pick({ ...ctx, drivers: { yesterday_workout_missed: true, consecutive_missed_days: 3 } }), null);
+  assert.equal(pick({ ...ctx, posture: 'rest' }), null);
+});
+
+test('strong-adherence week fires only in the weekly read', () => {
+  const drivers = { workouts_completed_this_week: 6, workouts_planned_this_week: 7 };
+  assert.equal(pick({ posture: 'steady', context: 'weekly', drivers }), 'plan-adherence-strong-week-v1');
+  assert.equal(pick({ posture: 'steady', context: 'daily', drivers }), null);
+  // 5 of 7 is 71%, under the 85% bar.
+  assert.equal(
+    pick({ posture: 'steady', context: 'weekly', drivers: { workouts_completed_this_week: 5, workouts_planned_this_week: 7 } }),
+    null
+  );
+});
+
+test('coach note dominates the weekly read, Coach tier only', () => {
+  const drivers = { coach_note_this_week: 'Good week. Hold the long run at 18.', workouts_completed_this_week: 7, workouts_planned_this_week: 7 };
+  assert.equal(pick({ posture: 'back-off', context: 'weekly', tier: 'coach', drivers }), 'coach-note-preserve-verbatim-v1');
+  assert.equal(pick({ posture: 'steady', context: 'weekly', tier: 'plan', drivers }), 'plan-adherence-strong-week-v1');
+  assert.equal(
+    pick({ posture: 'steady', context: 'weekly', tier: 'coach', drivers: { coach_note_this_week: null } }),
+    null
+  );
+});
+
+test('coach message acknowledgement fires in the daily read for Coach tier only', () => {
+  const ctx: MatchContext = { posture: 'moderate', tier: 'coach', drivers: { coach_message_last_24h: true } };
+  assert.equal(pick(ctx), 'coach-recent-message-acknowledge-v1');
+  assert.equal(pick({ ...ctx, tier: 'plan' }), null);
+  assert.equal(pick({ ...ctx, posture: 'rest' }), null);
+});
