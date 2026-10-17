@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { postureForRead } from './drivers';
+import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -572,6 +573,18 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
+    // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
+    // else the curated pattern library, else nothing. Never blocks the read.
+    const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
+    const knowledge = await knowledgeForRead(
+      {
+        posture: posture.result.posture,
+        drivers: posture.record.drivers,
+        completeness: posture.record.completeness,
+      },
+      knowledgeDeps
+    );
+
     const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
 
 HARD RULES:
@@ -589,7 +602,7 @@ OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric li
 ${driverBlock}
 
 ${posture.promptLine}
-
+${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 
     let voice: string;
@@ -611,13 +624,21 @@ Write today's read using only these drivers.`;
       });
     }
 
+    const generatedAt = new Date().toISOString();
+    if (knowledge.mode === 'library' && knowledgeDeps.sb) {
+      recordCitations(knowledgeDeps.sb, athleteId, generatedAt, knowledge.chunks).catch((e) =>
+        fastify.log.warn(`read_citations insert failed: ${e instanceof Error ? e.message : e}`)
+      );
+    }
+
     return reply.send({
       read: { voice },
       posture: postureOut,
+      knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
       cards,
       drivers,
       connections,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
     });
   } catch (error) {
     fastify.log.error('Read exception:', error);
