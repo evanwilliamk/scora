@@ -44,20 +44,55 @@ test('a faithful transcription keeps every row and converts miles', () => {
 
 test('invented numbers are rejected, like unbacked drivers in the voice', () => {
   const r = validateParsedRows({ workouts: [
-    { date: '2026-10-20', type: 'run', intensity: 'tempo', duration_min: 60, description: 'tempo' },
-    { date: '2026-10-18', type: 'run', intensity: 'long', distance: 18, distance_unit: 'mi', description: 'long' },
-    { date: '2026-10-22', type: 'run', intensity: 'easy', distance: 10, description: 'easy' },
+    { date: '2026-10-20', type: 'run', intensity: 'tempo', duration_min: 60, description: '45 min tempo, 3x8 at threshold' },
+    { date: '2026-10-18', type: 'run', intensity: 'long', distance: 18, distance_unit: 'mi', description: 'long run 16 mi easy' },
+    { date: '2026-10-22', type: 'run', intensity: 'easy', distance: 10, description: '6 km recovery' },
+    { date: '2026-10-22', type: 'run', intensity: 'easy', description: 'an easy 30 min jog' },
   ] }, PLAN, TODAY);
   assert.equal(r.rows.length, 0);
   assert.deepEqual(r.rejected.map((x) => x.reason), [
-    'duration 60 min is not in the text',
-    'distance 18 mi is not in the text',
+    'duration 60 min is not written for this session',
+    'distance 18 mi is not written for this session',
     'distance without a valid unit',
+    'description is not in the text',
   ]);
 });
 
+test('numbers are checked against the session, not the whole paste (review findings)', () => {
+  const text = 'Week 1\nTue: easy run 10 km\nThu: tempo';
+  const r = validateParsedRows([
+    // "1" from "Week 1" read as one hour
+    { date: '2026-10-20', type: 'run', intensity: 'easy', duration_min: 60, description: 'easy run 10 km' },
+    // km written, model said miles
+    { date: '2026-10-20', type: 'run', intensity: 'easy', distance: 10, distance_unit: 'mi', description: 'easy run 10 km' },
+    // 10 borrowed from Tuesday
+    { date: '2026-10-22', type: 'run', intensity: 'tempo', duration_min: 10, description: 'tempo' },
+    // the faithful version survives
+    { date: '2026-10-20', type: 'run', intensity: 'easy', distance: 10, distance_unit: 'km', description: 'easy run 10 km' },
+  ], text, TODAY);
+  assert.deepEqual(r.rejected.map((x) => x.reason), [
+    'duration 60 min is not written for this session',
+    'distance 10 mi is not written for this session',
+    'duration 10 min is not written for this session',
+  ]);
+  assert.deepEqual(r.rows.map((x) => x.distance_km), [10]);
+});
+
+test('units: 10k, 90 mins, 1h and 75 minutes are read; a bare number is not a duration', () => {
+  const text = 'Mon: 10k easy\nTue: 90 mins steady\nWed: 1h ride\nThu: 75 minutes\nFri: 5x3 hills';
+  const r = validateParsedRows([
+    { date: '2026-10-19', type: 'run', intensity: 'easy', distance: 10, distance_unit: 'km', description: '10k easy' },
+    { date: '2026-10-20', type: 'run', intensity: 'moderate', duration_min: 90, description: '90 mins steady' },
+    { date: '2026-10-21', type: 'ride', intensity: null, duration_min: 60, description: '1h ride' },
+    { date: '2026-10-22', type: 'run', intensity: null, duration_min: 75, description: '75 minutes' },
+    { date: '2026-10-23', type: 'run', intensity: 'hard', duration_min: 15, description: '5x3 hills' },
+  ], text, TODAY);
+  assert.equal(r.rows.length, 4);
+  assert.deepEqual(r.rejected.map((x) => x.reason), ['duration 15 min is not written for this session']);
+});
+
 test('bad dates, past dates, far dates, unknown enums and duplicates are rejected', () => {
-  const base = { type: 'run', intensity: 'easy', description: 'x' };
+  const base = { type: 'run', intensity: 'easy', description: 'rest' };
   const r = validateParsedRows([
     { ...base, date: '2026-02-30' },
     { ...base, date: '20 Oct' },
@@ -78,8 +113,8 @@ test('bad dates, past dates, far dates, unknown enums and duplicates are rejecte
 
 test('yesterday is still accepted (time zones), and rows come back in date order', () => {
   const r = validateParsedRows([
-    { date: '2026-10-20', type: 'run', intensity: 'easy', description: 'b' },
-    { date: '2026-10-16', type: 'run', intensity: 'easy', description: 'a' },
+    { date: '2026-10-20', type: 'run', intensity: 'easy', description: 'tempo' },
+    { date: '2026-10-16', type: 'run', intensity: 'easy', description: 'rest' },
   ], PLAN, TODAY);
   assert.deepEqual(r.rows.map((x) => x.date), ['2026-10-16', '2026-10-20']);
 });
@@ -147,6 +182,7 @@ test('saving a plan stores its rows and reads them back by date range', async ()
 test('a new paste replaces the active plan without deleting the old rows', async () => {
   const store = sqlPlanStore(db);
   const { rows } = validateParsedRows([{ date: '2026-10-20', type: 'run', intensity: 'easy', description: 'easy 30' }], 'Tue easy 30', TODAY);
+  assert.equal(rows.length, 1);
   await store.saveManualPlan('111', 'Tue easy 30', rows);
   const week = await store.workoutsBetween('111', '2026-10-17', '2026-10-23');
   assert.deepEqual(week.map((w) => w.planned_description), ['easy 30']);
@@ -174,8 +210,24 @@ test('supabasePlanStore filters on the active plan and numbers come back as numb
       return (...a: any[]) => { calls.push([k, ...a]); return q; };
     },
   });
-  const store = supabasePlanStore({ from: (t: string) => { calls.push(['from', t]); return q; } });
+  const store = supabasePlanStore({ from: (t: string) => { calls.push(['from', t]); return q; }, rpc: () => q });
   const out = await store.workoutsBetween('111', '2026-10-17', '2026-10-30');
   assert.deepEqual(out, [{ id: 'w', scheduled_date: '2026-10-20', planned_distance_km: 8 }]);
   assert.ok(calls.some((c) => c[0] === 'eq' && c[1] === 'training_plans.current_status' && c[2] === 'active'));
+});
+
+test('a failed replace changes nothing (one transaction)', async () => {
+  const store = sqlPlanStore(db);
+  const bad = [{ date: '2026-10-20', type: 'yoga', intensity: null, duration_min: null, distance_km: null, description: 'x' }] as any;
+  await assert.rejects(store.saveManualPlan('111', 'bad', bad), /check constraint/i);
+  const week = await store.workoutsBetween('111', '2026-10-17', '2026-10-23');
+  assert.deepEqual(week.map((w) => w.planned_description), ['easy 30'], 'the active plan is untouched');
+});
+
+test('only one active manual plan per athlete', async () => {
+  await assert.rejects(
+    db.query(`insert into training_plans (athlete_id, source, external_source, start_date, end_date)
+              values ('111', 'external', 'manual', '2026-10-20', '2026-10-21')`),
+    /duplicate key|unique/i
+  );
 });

@@ -20,50 +20,14 @@ export interface PlanStore {
   workoutsBetween(athleteId: string, from: string, to: string): Promise<StoredWorkout[]>;
 }
 
-const rowValues = (athleteId: string, planId: string, r: ParsedRow) => ({
-  athlete_id: athleteId,
-  training_plan_id: planId,
-  scheduled_date: r.date,
-  planned_type: r.type,
-  planned_intensity: r.intensity,
-  planned_duration_min: r.duration_min,
-  planned_distance_km: r.distance_km,
-  planned_description: r.description || null,
-  source: 'manual',
-  raw_source_json: r,
-});
-
-const span = (rows: ParsedRow[]) => ({ start: rows[0].date, end: rows[rows.length - 1].date });
-
 type Db = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
 
 export function sqlPlanStore(db: Db): PlanStore {
   return {
     async saveManualPlan(athleteId, rawText, rows) {
       if (rows.length === 0) throw new Error('No workouts to save');
-      await db.query(
-        `update training_plans set current_status = 'replaced', updated_at = now()
-         where athlete_id = $1 and external_source = 'manual' and current_status = 'active'`,
-        [athleteId]
-      );
-      const { start, end } = span(rows);
-      const plan = await db.query(
-        `insert into training_plans (athlete_id, source, external_source, start_date, end_date, raw_text)
-         values ($1, 'external', 'manual', $2, $3, $4) returning id`,
-        [athleteId, start, end, rawText]
-      );
-      const planId = plan.rows[0].id as string;
-      for (const r of rows) {
-        const v = rowValues(athleteId, planId, r);
-        await db.query(
-          `insert into scheduled_workouts (athlete_id, training_plan_id, scheduled_date, planned_type,
-             planned_intensity, planned_duration_min, planned_distance_km, planned_description, source, raw_source_json)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [v.athlete_id, v.training_plan_id, v.scheduled_date, v.planned_type, v.planned_intensity,
-            v.planned_duration_min, v.planned_distance_km, v.planned_description, v.source, JSON.stringify(v.raw_source_json)]
-        );
-      }
-      return { planId };
+      const r = await db.query('select replace_manual_plan($1, $2, $3::jsonb) as id', [athleteId, rawText, JSON.stringify(rows)]);
+      return { planId: r.rows[0].id as string };
     },
     async workoutsBetween(athleteId, from, to) {
       const r = await db.query(
@@ -83,23 +47,17 @@ export function sqlPlanStore(db: Db): PlanStore {
 }
 
 // Production store over supabase-js (service role).
-export function supabasePlanStore(sb: { from: (t: string) => any }): PlanStore {
+export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: string, args: any) => any }): PlanStore {
   const check = (r: { error: any }, what: string) => {
     if (r.error) throw new Error(`${what}: ${r.error.message}`);
   };
   return {
     async saveManualPlan(athleteId, rawText, rows) {
       if (rows.length === 0) throw new Error('No workouts to save');
-      check(await sb.from('training_plans')
-        .update({ current_status: 'replaced', updated_at: new Date().toISOString() })
-        .eq('athlete_id', athleteId).eq('external_source', 'manual').eq('current_status', 'active'), 'Replace plan');
-      const { start, end } = span(rows);
-      const plan = await sb.from('training_plans')
-        .insert({ athlete_id: athleteId, source: 'external', external_source: 'manual', start_date: start, end_date: end, raw_text: rawText })
-        .select('id').single();
-      check(plan, 'Insert plan');
-      check(await sb.from('scheduled_workouts').insert(rows.map((r) => rowValues(athleteId, plan.data.id, r))), 'Insert workouts');
-      return { planId: plan.data.id };
+      // One transaction in Postgres (replace_manual_plan, migration 20261017010000).
+      const r = await sb.rpc('replace_manual_plan', { p_athlete_id: athleteId, p_raw_text: rawText, p_rows: rows });
+      check(r, 'Save plan');
+      return { planId: r.data as string };
     },
     async workoutsBetween(athleteId, from, to) {
       const r = await sb.from('scheduled_workouts')
