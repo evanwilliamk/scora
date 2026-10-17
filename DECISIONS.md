@@ -59,6 +59,14 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: banner copy "Oura connected. Sleep and recovery now read from your ring." and, on failure, "Oura was not connected. You can try again from the Sleep card." (cancelled) or "Oura did not connect. Nothing changed; try again from the Sleep card." Strava page now says "Welcome, <name>." (no exclamation point).
 - Not changed, flagging: the Strava callback puts the Strava access token in the scora:// deep link URL. Any app that registers the scora scheme, or a browser history entry, can see it. The app no longer needs it (the API refreshes tokens itself). Removing it touches sign-in, so it is yours to call.
 - To reverse: copy lives in OuraLinkResult (DashboardView.swift) and apps/api/src/pages.ts callers.
+### 2026-10-17: Knowledge retrieval in the daily read
+- Status: DECIDED (review when you can)
+- Branch: claude/knowledge-retrieval
+- Context: spec §2.4 to §2.6. Flag, query shape and prompt wording were unspecified.
+- Choice: env flag `KNOWLEDGE_RETRIEVAL=on` (default off, so no OpenAI embedding cost until you turn it on). Query is a plain-language description built only from drivers that exist, plus topic tags (sleep, load, recovery, hrv, intensity, taper); if the tagged search is empty it retries untagged. Top 4 chunks, cosine similarity at least 0.3. Prompt tells the model to paraphrase, take no numbers from the library, and never prescribe. Fallback order: library, pattern library (selectPattern), nothing. Citations are written to read_citations after the read, best effort. The API response gains `knowledge: { mode, chunks, pattern }` but no source names (spec §6.1 is still open).
+- Alternative: retrieval on by default; showing sources in the response.
+- Why: keeps today's behavior until you have a starter library to test against (spec §8 step 5).
+- To reverse: unset the env var, or remove the knowledgeForRead call in /api/read.
 ### 2026-10-17: Knowledge library schema shape
 - Status: DECIDED (review when you can)
 - Branch: claude/knowledge-schema
@@ -83,6 +91,27 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: embed passage only; token-based chunking with a tokenizer dependency.
 - Why: FieldCopy passages are mostly short; this keeps one idea per chunk with no new dependency.
 - To reverse: CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS and embedText in apps/api/src/knowledge-ingest.ts.
+### 2026-10-17: Driver record definitions for the posture engine
+- Status: DECIDED (review when you can)
+- Branch: claude/driver-record
+- Context: doc 07 v1 §8.2 (driver computation) is not in the repo, so the night worker defined each driver.
+- Choice:
+  - Load = run moving minutes (same unit as the Load card). Rides etc. excluded. acwr = load_7d / (load_28d / 4), null until the oldest fetched run is 21+ days old, so new accounts do not read back-off.
+  - Hard day = any run that is a Strava race/workout, or whose avg HR is at or above the athlete's own 80th percentile over 28 days (needs 5+ HR runs). Streak counts back from today, or from yesterday if nothing is recorded today.
+  - Long effort = run of 90+ min moving time.
+  - Sleep: last night's Oura score; delta vs mean of prior 7 nights (points); p25/p75 over prior 28 nights (needs 7+). Low night = below p25.
+  - HRV delta in percent vs prior-7 avg; resting HR delta in bpm vs prior-7 avg.
+  - race_in_next_7d stays null until a plan or race source exists, so taper cannot fire yet.
+  - Oura fetch now pulls 29 days of daily_sleep (was 8) for the baselines.
+- Why: these match what the dashboard cards already show, so the voice and the posture read the same numbers.
+- To reverse: edit the constants at the top of apps/api/src/drivers.ts.
+### 2026-10-17: Root package-lock.json synced with packages/posture
+- Status: DECIDED
+- Branch: claude/driver-record
+- Context: main's root lockfile lacked @scora/posture, so `npm ci` failed in apps/api.
+- Choice: ran `npm install` at the root and committed the 16-line lockfile change.
+- Why: the routine's test command (`npm ci && npm test`) must work.
+- To reverse: revert commit b289e96.
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library
