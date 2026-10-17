@@ -63,6 +63,8 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(CardExpansion.text(reply: nil, translation: "Card."), "Card.")
         XCTAssertEqual(CardExpansion.text(reply: "  ", translation: "Card."), "Card.")
         XCTAssertNil(CardExpansion.text(reply: nil, translation: ""))
+    }
+
     // MARK: - Oura deep link
 
     func testOuraSuccessLink() throws {
@@ -90,6 +92,8 @@ final class ScoraTests: XCTestCase {
             XCTAssertFalse(m.contains("!"))
             XCTAssertFalse(m.unicodeScalars.contains { $0.properties.isEmojiPresentation })
         }
+    }
+
     // MARK: - Manual plan
 
     func testPlanWorkoutDecodesBothShapes() throws {
