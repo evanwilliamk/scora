@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { postureForRead } from './drivers';
+import { SnapshotCache, planCardExpansion } from './card-expand';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -27,6 +28,9 @@ import { startScheduler } from './scheduler';
 dotenv.config();
 
 const fastify = Fastify({ logger: true });
+
+// What each athlete's last read showed, for card tap-to-expand (10 min).
+const readSnapshots = new SnapshotCache();
 fastify.register(cors);
 
 fastify.get('/', async (request, reply) => {
@@ -561,6 +565,8 @@ fastify.post('/api/read', async (request, reply) => {
       completeness: posture.record.completeness,
     };
 
+    readSnapshots.set(athleteId, { cards, drivers: [...drivers, ...posture.evidence], posture: posture.result.posture });
+
     // With no drivers there is nothing the voice can honestly say. Don't invent.
     if (drivers.length === 0) {
       return reply.send({
@@ -631,6 +637,43 @@ Write today's read using only these drivers.`;
       error: 'Read failed',
       detail: error instanceof Error ? error.message : String(error),
     });
+  }
+});
+
+// Card tap-to-expand (Free tier, card level). Interprets one dashboard card
+// from the athlete's last read. Needs a read in the last 10 minutes; on 409
+// the app keeps showing the card's own translation.
+fastify.post('/api/card-expand', async (request, reply) => {
+  const { athleteId, cardId } = (request.body as any) || {};
+  if (!athleteId || !cardId) {
+    return reply.code(400).send({ error: 'Missing: athleteId, cardId' });
+  }
+  const snapshot = readSnapshots.get(String(athleteId));
+  if (!snapshot) {
+    return reply.code(409).send({ error: 'No recent read. Refresh the dashboard first.' });
+  }
+  const card = snapshot.cards.find((c) => c.id === cardId);
+  if (!card) {
+    return reply.code(404).send({ error: `Unknown card: ${cardId}` });
+  }
+
+  const plan = planCardExpansion(card, snapshot);
+  if (plan.kind === 'static') {
+    return reply.send({ cardId, reply: plan.reply, drivers: [], generated: false });
+  }
+  try {
+    const result = await generateValidatedVoice({
+      systemPrompt: plan.systemPrompt,
+      userPrompt: plan.userPrompt,
+      drivers: plan.drivers,
+      maxTokens: 150,
+      leadIn: card.title,
+      log: fastify.log,
+    });
+    return reply.send({ cardId, reply: result.voice, drivers: plan.drivers, generated: true });
+  } catch (e) {
+    fastify.log.error(`Card expansion failed: ${e instanceof Error ? e.message : e}`);
+    return reply.send({ cardId, reply: card.translation ?? '', drivers: [], generated: false });
   }
 });
 

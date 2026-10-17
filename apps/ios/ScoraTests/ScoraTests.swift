@@ -44,6 +44,27 @@ final class ScoraTests: XCTestCase {
         }
     }
 
+    // MARK: - Card expansion
+
+    func testCardExpansionDecodes() throws {
+        let json = #"{"cardId":"sleep","reply":"Sleep 7:12 held for a second night.","drivers":[],"generated":true}"#
+        let e = try JSONDecoder().decode(CardExpansion.self, from: Data(json.utf8))
+        XCTAssertEqual(e.cardId, "sleep")
+        XCTAssertEqual(e.generated, true)
+    }
+
+    func testStaleExpansionIsDropped() {
+        XCTAssertTrue(CardExpansion.isCurrent(requested: 3, current: 3))
+        XCTAssertFalse(CardExpansion.isCurrent(requested: 2, current: 3))
+    }
+
+    func testCardExpansionFallsBackToTranslation() {
+        XCTAssertEqual(CardExpansion.text(reply: "Read.", translation: "Card."), "Read.")
+        XCTAssertEqual(CardExpansion.text(reply: nil, translation: "Card."), "Card.")
+        XCTAssertEqual(CardExpansion.text(reply: "  ", translation: "Card."), "Card.")
+        XCTAssertNil(CardExpansion.text(reply: nil, translation: ""))
+    }
+
     // MARK: - CDV chart
 
     private func decode(_ json: String) throws -> CDVResponse {
