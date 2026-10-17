@@ -26,6 +26,7 @@ import {
 import { startScheduler } from './scheduler';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
+import { planForRead } from './plan-read';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -491,7 +492,7 @@ Answer THIS question specifically using the data above. If the data can't answer
 // six dashboard cards, all computed from the athlete's real Strava data.
 fastify.post('/api/read', async (request, reply) => {
   try {
-    const { athleteId } = (request.body as any) || {};
+    const { athleteId, today: clientToday } = (request.body as any) || {};
     if (!athleteId) {
       return reply.code(400).send({ error: 'Missing: athleteId' });
     }
@@ -553,7 +554,7 @@ fastify.post('/api/read', async (request, reply) => {
     );
 
     // Posture is decided by rules from the driver record, not by the LLM.
-    // No plan or race source is wired yet, so race_in_next_7d stays null.
+    // No race source is wired yet, so race_in_next_7d stays null.
     const posture = postureForRead(activities, recovery);
     const postureOut = {
       posture: posture.result.posture,
@@ -576,6 +577,17 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
+    // The athlete's own plan for today, if they pasted one. The read may name
+    // it; it never changes it (CLAUDE.md §1.3). Never blocks the read.
+    const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+    let plan = planForRead([], today);
+    try {
+      plan = planForRead(await planStore().workoutsBetween(String(athleteId), today, today), today);
+    } catch (e) {
+      fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
+    }
+    const readDrivers = plan.driver ? [...drivers, plan.driver] : drivers;
+
     // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
     // else the curated pattern library, else nothing. Never blocks the read.
     const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
@@ -584,6 +596,7 @@ fastify.post('/api/read', async (request, reply) => {
         posture: posture.result.posture,
         drivers: posture.record.drivers,
         completeness: posture.record.completeness,
+        scheduled: plan.scheduled,
       },
       knowledgeDeps
     );
@@ -598,13 +611,13 @@ HARD RULES:
 
 OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;
 
-    const driverBlock = drivers
+    const driverBlock = readDrivers
       .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
       .join('\n');
     const userPrompt = `DRIVERS (the only values you may cite):
 ${driverBlock}
 
-${posture.promptLine}
+${posture.promptLine}${plan.promptLine ? `\n${plan.promptLine}` : ''}
 ${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 
@@ -613,7 +626,7 @@ Write today's read using only these drivers.`;
       const result = await generateValidatedVoice({
         systemPrompt,
         userPrompt,
-        drivers,
+        drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers",
         log: fastify.log,
@@ -638,8 +651,9 @@ Write today's read using only these drivers.`;
       read: { voice },
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
+      plan: { today: plan.driver?.value ?? null },
       cards,
-      drivers,
+      drivers: readDrivers,
       connections,
       generatedAt,
     });

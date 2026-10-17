@@ -92,6 +92,9 @@ struct DashboardView: View {
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
       Task { await loadRead() }
     }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
+      Task { await loadRead() }
+    }
   }
 
   // Kick off the Oura OAuth flow in the browser; on return the app receives a
@@ -249,7 +252,8 @@ struct DashboardView: View {
 
     // HealthKit is on-device: read a summary and send it up so the backend can
     // fill Sleep + Recovery when Oura isn't connected.
-    var payload: [String: Any] = ["athleteId": tokenManager.athleteId]
+    // The local date lets the read find today's session in the athlete's plan.
+    var payload: [String: Any] = ["athleteId": tokenManager.athleteId, "today": PlanDay.today()]
     if let health = await HealthManager.shared.fetchSummary(),
        let encoded = try? JSONEncoder().encode(health),
        let dict = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any] {
