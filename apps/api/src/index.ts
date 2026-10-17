@@ -22,6 +22,10 @@ import {
   apnsConfigured,
 } from './push';
 import { startScheduler } from './scheduler';
+import { supabasePrefsStore } from './preferences';
+import type { PrefsStore } from './preferences';
+import { isValidTimezone, isValidDeliveryMinute } from './delivery';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -613,6 +617,52 @@ Write today's read using only these drivers.`;
   }
 });
 
+// Delivery preferences (doc 09 §1.4): time zone and morning push time, set
+// in onboarding. The Supabase client is created on first use.
+let _prefs: PrefsStore | null = null;
+const prefsStore: PrefsStore = new Proxy({} as PrefsStore, {
+  get(_t, key: keyof PrefsStore) {
+    if (!_prefs) {
+      const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase env not configured');
+      _prefs = supabasePrefsStore(createSupabaseClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
+    }
+    return (_prefs[key] as any).bind(_prefs);
+  },
+});
+
+fastify.get('/api/preferences', async (request, reply) => {
+  const { athleteId } = request.query as { athleteId?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  try {
+    const p = await prefsStore.get(athleteId);
+    return reply.send({ timezone: p.timezone, deliveryMinute: p.delivery_minute, onboarded: p.onboarded_at != null });
+  } catch (e) {
+    fastify.log.error(`Preferences load failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading preferences failed.' });
+  }
+});
+
+fastify.put('/api/preferences', async (request, reply) => {
+  const { athleteId, timezone, deliveryMinute, onboarded } = (request.body as any) || {};
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  if (timezone !== undefined && !isValidTimezone(timezone)) {
+    return reply.code(400).send({ error: 'Unknown time zone.' });
+  }
+  if (deliveryMinute !== undefined && !isValidDeliveryMinute(deliveryMinute)) {
+    return reply.code(400).send({ error: 'Delivery time must be a whole minute between 0 and 1439.' });
+  }
+  try {
+    const p = await prefsStore.update(String(athleteId), {
+      timezone, delivery_minute: deliveryMinute, onboarded: onboarded === true,
+    });
+    return reply.send({ timezone: p.timezone, deliveryMinute: p.delivery_minute, onboarded: p.onboarded_at != null });
+  } catch (e) {
+    fastify.log.error(`Preferences save failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Saving preferences failed.' });
+  }
+});
+
 // Weekly read — the Sunday review. Reflects on the past 7 days (vs the prior 7)
 // and names the week's shape in the voice. Same rules as the daily read:
 // non-prescriptive, numeric-first, only cites drivers that exist.
@@ -779,7 +829,7 @@ const start = async () => {
     console.log('API running on 0.0.0.0:3000');
     console.log('POST /api/cdv - Chat-driven analysis');
     // Push scheduler (daily + weekly). No-op until APNS_* env is configured.
-    startScheduler(3000, fastify.log);
+    startScheduler(3000, fastify.log, prefsStore);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
