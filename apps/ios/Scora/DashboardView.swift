@@ -26,6 +26,9 @@ struct CardExpansion: Decodable {
 
   // What an open card shows: the expansion once it lands, else the card's own
   // translation. An empty reply never blanks the card.
+  // An expansion requested before the latest read cites old numbers.
+  static func isCurrent(requested: Int, current: Int) -> Bool { requested == current }
+
   static func text(reply: String?, translation: String?) -> String? {
     if let reply, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return reply }
     if let translation, !translation.isEmpty { return translation }
@@ -52,6 +55,8 @@ struct DashboardView: View {
   @State private var expanded: Set<String> = []
   @State private var expansions: [String: String] = [:]
   @State private var expanding: Set<String> = []
+  // Bumped on every new read; an expansion from an older read is dropped.
+  @State private var readGeneration = 0
   @State private var showChat = false
   @State private var showWeekly = false
 
@@ -258,7 +263,10 @@ struct DashboardView: View {
   // own translation on screen.
   private func loadExpansion(_ cardId: String) async {
     guard let url = URL(string: "\(apiBase)/api/card-expand") else { return }
-    await MainActor.run { _ = expanding.insert(cardId) }
+    let generation = await MainActor.run { () -> Int in
+      expanding.insert(cardId)
+      return readGeneration
+    }
     defer { Task { @MainActor in expanding.remove(cardId) } }
 
     var req = URLRequest(url: url)
@@ -271,7 +279,9 @@ struct DashboardView: View {
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(CardExpansion.self, from: data)
     else { return }
-    await MainActor.run { expansions[cardId] = decoded.reply }
+    await MainActor.run {
+      if CardExpansion.isCurrent(requested: generation, current: readGeneration) { expansions[cardId] = decoded.reply }
+    }
   }
 
   private func loadRead() async {
@@ -304,6 +314,7 @@ struct DashboardView: View {
         read = decoded.read
         cards = decoded.cards
         expansions = [:] // a new read means new numbers to interpret
+        readGeneration += 1
         isLoading = false
       }
     } catch {

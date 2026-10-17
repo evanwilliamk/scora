@@ -53,6 +53,11 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(e.generated, true)
     }
 
+    func testStaleExpansionIsDropped() {
+        XCTAssertTrue(CardExpansion.isCurrent(requested: 3, current: 3))
+        XCTAssertFalse(CardExpansion.isCurrent(requested: 2, current: 3))
+    }
+
     func testCardExpansionFallsBackToTranslation() {
         XCTAssertEqual(CardExpansion.text(reply: "Read.", translation: "Card."), "Read.")
         XCTAssertEqual(CardExpansion.text(reply: nil, translation: "Card."), "Card.")

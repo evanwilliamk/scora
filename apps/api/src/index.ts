@@ -565,7 +565,7 @@ fastify.post('/api/read', async (request, reply) => {
       completeness: posture.record.completeness,
     };
 
-    readSnapshots.set(athleteId, { cards, drivers, posture: posture.result.posture });
+    readSnapshots.set(athleteId, { cards, drivers: [...drivers, ...posture.evidence], posture: posture.result.posture });
 
     // With no drivers there is nothing the voice can honestly say. Don't invent.
     if (drivers.length === 0) {
