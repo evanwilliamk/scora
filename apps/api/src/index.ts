@@ -29,6 +29,7 @@ import { startScheduler } from './scheduler';
 import { resultPage, escapeHtml, scriptString, oauthErrorMessage } from './pages';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
+import { planForRead } from './plan-read';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -487,7 +488,7 @@ Answer THIS question specifically using the data above. If the data can't answer
 // six dashboard cards, all computed from the athlete's real Strava data.
 fastify.post('/api/read', async (request, reply) => {
   try {
-    const { athleteId } = (request.body as any) || {};
+    const { athleteId, today: clientToday } = (request.body as any) || {};
     if (!athleteId) {
       return reply.code(400).send({ error: 'Missing: athleteId' });
     }
@@ -552,7 +553,7 @@ fastify.post('/api/read', async (request, reply) => {
     );
 
     // Posture is decided by rules from the driver record, not by the LLM.
-    // No plan or race source is wired yet, so race_in_next_7d stays null.
+    // No race source is wired yet, so race_in_next_7d stays null.
     const posture = postureForRead(activities, recovery);
     const postureOut = {
       posture: posture.result.posture,
@@ -577,6 +578,17 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
+    // The athlete's own plan for today, if they pasted one. The read may name
+    // it; it never changes it (CLAUDE.md §1.3). Never blocks the read.
+    const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+    let plan = planForRead([], today);
+    try {
+      // A week ahead, so "nothing scheduled today" is known when a plan exists.
+      plan = planForRead(await planStore().workoutsBetween(String(athleteId), today, addDays(today, 6)), today);
+    } catch (e) {
+      fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
+    }
+
     // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
     // else the curated pattern library, else nothing. Never blocks the read.
     const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
@@ -585,12 +597,15 @@ fastify.post('/api/read', async (request, reply) => {
         posture: posture.result.posture,
         drivers: posture.record.drivers,
         completeness: posture.record.completeness,
+        scheduled: plan.scheduled,
       },
       knowledgeDeps
     );
 
     // The numbers behind the posture are drivers too, so naming it is backed.
-    const readDrivers = [...drivers, ...posture.evidence];
+    // The numbers behind the posture and today's planned session are drivers
+    // too, so naming either is backed.
+    const readDrivers = [...drivers, ...posture.evidence, ...(plan.driver ? [plan.driver] : [])];
 
     const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
 
@@ -598,6 +613,7 @@ HARD RULES:
 - Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep, HRV, or recovery unless present).
 - Numeric-first: reference the raw value, then say what it means.
 - Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction.
+- The athlete's plan is theirs: never suggest skipping, moving, shortening, delaying or easing a planned session, even when the posture and the plan disagree. Name both and stop.
 - Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
 
 OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;
@@ -608,7 +624,7 @@ OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric li
     const userPrompt = `DRIVERS (the only values you may cite):
 ${driverBlock}
 
-${posture.promptLine}
+${posture.promptLine}${plan.promptLine ? `\n${plan.promptLine}` : ''}
 ${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 
@@ -642,6 +658,7 @@ Write today's read using only these drivers.`;
       read: { voice },
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
+      plan: { today: plan.driver?.value ?? null },
       cards,
       drivers: readDrivers,
       connections,

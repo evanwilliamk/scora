@@ -162,6 +162,8 @@ struct DashboardView: View {
           if ouraBanner == result { withAnimation { ouraBanner = nil } }
         }
       }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
+      Task { await loadRead() }
     }
   }
 
@@ -349,7 +351,8 @@ struct DashboardView: View {
 
     // HealthKit is on-device: read a summary and send it up so the backend can
     // fill Sleep + Recovery when Oura isn't connected.
-    var payload: [String: Any] = ["athleteId": tokenManager.athleteId]
+    // The local date lets the read find today's session in the athlete's plan.
+    var payload: [String: Any] = ["athleteId": tokenManager.athleteId, "today": PlanDay.today()]
     if let health = await HealthManager.shared.fetchSummary(),
        let encoded = try? JSONEncoder().encode(health),
        let dict = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any] {
