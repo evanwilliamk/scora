@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
+import { CHART_MENU, parseChartKind, stripChartLine, buildChartSpec } from './cdv-chart';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -377,6 +378,8 @@ PATTERN-AWARENESS (allowed, NOT prescription):
 OUTPUT FORMAT (exactly):
 - Line 1: one-sentence voice read that directly answers the question (may include a pattern observation if relevant).
 - Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <primed|steady|moderate|back-off|rest|taper OR short trend like +12% / flat / down>
+- Last line: CHART: <kind>, the one chart that best shows the data behind your answer. SCORA draws it from the real data; you only pick the kind:
+${CHART_MENU}
 Only cite metrics that exist in the data.`;
 
     const userPrompt = `Athlete question: "${message}"
@@ -437,7 +440,11 @@ Answer THIS question specifically using the data above. If the data can't answer
     }
 
     const llmResult = await openaiRes.json();
-    const responseText = llmResult.choices[0].message.content;
+    const rawText: string = llmResult.choices[0].message.content;
+    // The LLM picks a chart kind; the spec and its data come from the activities.
+    const chartKind = parseChartKind(rawText);
+    const chart = chartKind ? buildChartSpec(chartKind, activities, now) : null;
+    const responseText = stripChartLine(rawText);
 
     // Parse voice and drivers
     const lines = responseText.split('\n');
@@ -475,6 +482,7 @@ Answer THIS question specifically using the data above. If the data can't answer
       },
       remaining: quota?.remaining,
       limit: quota?.limit,
+      ...(chart ? { chart } : {}),
     });
   } catch (error) {
     fastify.log.error('CDV exception:', error);
