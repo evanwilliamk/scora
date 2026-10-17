@@ -123,7 +123,7 @@ test('ingested chunks come back through match_knowledge_chunks', async () => {
 
 test('ingest refuses vectors of the wrong size or count', async () => {
   const entries = parseExport(fixture).slice(0, 1);
-  const store = { upsertSource: async () => 'id', upsertChunk: async () => {} };
+  const store = { upsertSource: async () => 'id', upsertChunk: async () => {}, pruneEntry: async () => {} };
   await assert.rejects(ingest(entries, { embed: async () => [[1, 2, 3]], store }), /dims/);
   await assert.rejects(ingest(entries, { embed: async () => [], store }), /0 vectors for 1/);
 });
@@ -170,4 +170,25 @@ test('supabaseStore looks up a null-author source with IS NULL, then upserts chu
   const up = log.find((l) => l[0] === 'upsert');
   assert.equal(up[2].onConflict, 'fieldcopy_entry_id,chunk_index');
   assert.match(up[1].embedding, /^\[0,0,/);
+});
+
+test('chunking never rewrites text: decimals and abbreviations survive (review finding)', () => {
+  const sentence = 'At 2.5 percent, e.g. a 42.2 km race needs 3.5 hours of steady work.';
+  const text = Array.from({ length: 30 }, () => sentence).join(' ') + '\n\nSecond paragraph ends here.';
+  const chunks = chunkPassage(text, 300, 0);
+  assert.ok(chunks.length > 1);
+  for (const c of chunks) assert.doesNotMatch(c, /\d\. \d|e\. g\./);
+  assert.equal(chunks.join(' '), text.replace(/\s+/g, ' '));
+});
+
+test('re-ingesting a shorter passage removes its stale chunks', async () => {
+  const store = sqlStore(db);
+  const long = Array.from({ length: 40 }, (_, i) => `Sentence ${i} about training load and recovery.`).join(' ');
+  const entry = (passage: string) => parseExport([{ id: 'shrink-1', source_title: 'Shrink Book', passage }]);
+  await ingest(entry(long), { embed: fakeEmbed([]), store });
+  const before = await db.query<{ n: number }>(`select count(*)::int as n from knowledge_chunks where fieldcopy_entry_id = 'shrink-1'`);
+  assert.ok(before.rows[0].n > 1);
+  await ingest(entry('Now one short passage.'), { embed: fakeEmbed([]), store });
+  const after = await db.query<{ n: number; text: string }>(`select count(*)::int as n, min(text) as text from knowledge_chunks where fieldcopy_entry_id = 'shrink-1'`);
+  assert.deepEqual(after.rows[0], { n: 1, text: 'Now one short passage.' });
 });

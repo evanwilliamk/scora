@@ -60,7 +60,10 @@ export function chunkPassage(text: string, maxChars = CHUNK_MAX_CHARS, overlap =
   // split on words.
   const units: string[] = [];
   for (const para of clean.split(/\n\s*\n/)) {
-    const sentences = para.replace(/\n/g, ' ').match(/[^.!?]+(?:[.!?]+["')\]]*|$)\s*/g) || [para];
+    // Split only where sentence punctuation is followed by whitespace, so
+    // "2.5", "42.2 km" and "e.g." survive. Rejoining with one space gives
+    // back the (whitespace-normalized) text exactly.
+    const sentences = para.replace(/\n/g, ' ').split(/(?<=[.!?]["')\]]*)\s+/);
     for (const s of sentences) {
       const t = s.trim();
       if (!t) continue;
@@ -162,6 +165,9 @@ export interface KnowledgeStore {
   upsertSource(s: PlannedSource): Promise<string>;
   // Insert or replace by (fieldcopy_entry_id, chunk_index).
   upsertChunk(sourceId: string, c: PlannedChunk, embedding: number[]): Promise<void>;
+  // Delete an entry's chunks with chunk_index >= keep (left over when an
+  // edited passage now splits into fewer chunks).
+  pruneEntry(fieldcopyEntryId: string, keep: number): Promise<void>;
 }
 
 export interface IngestResult {
@@ -195,6 +201,10 @@ export async function ingest(
       await deps.store.upsertChunk(ids.get(slice[j].sourceKey)!, slice[j], vectors[j]);
     }
   }
+  const perEntry = new Map<string, number>();
+  for (const c of plan.chunks) perEntry.set(c.fieldcopy_entry_id, (perEntry.get(c.fieldcopy_entry_id) ?? 0) + 1);
+  for (const [entryId, keep] of perEntry) await deps.store.pruneEntry(entryId, keep);
+
   return { sources: plan.sources.length, chunks: plan.chunks.length, embedCalls };
 }
 
@@ -246,6 +256,9 @@ export function sqlStore(db: { query: (sql: string, params?: any[]) => Promise<{
           c.fieldcopy_entry_id, c.chunk_index]
       );
     },
+    async pruneEntry(entryId, keep) {
+      await db.query('delete from knowledge_chunks where fieldcopy_entry_id = $1 and chunk_index >= $2', [entryId, keep]);
+    },
   };
 }
 
@@ -284,6 +297,10 @@ export function supabaseStore(sb: SupabaseLike): KnowledgeStore {
         { onConflict: 'fieldcopy_entry_id,chunk_index' }
       );
       if (r.error) throw new IngestError(`Chunk upsert failed: ${r.error.message}`);
+    },
+    async pruneEntry(entryId, keep) {
+      const r = await sb.from('knowledge_chunks').delete().eq('fieldcopy_entry_id', entryId).gte('chunk_index', keep);
+      if (r.error) throw new IngestError(`Chunk prune failed: ${r.error.message}`);
     },
   };
 }

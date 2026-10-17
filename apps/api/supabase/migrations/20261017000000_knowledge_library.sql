@@ -65,6 +65,11 @@ alter table read_citations enable row level security;
 -- Top-k retrieval for supabase-js rpc('match_knowledge_chunks', ...).
 -- Active sources only; when filter_tags is non-empty, a chunk must share at
 -- least one tag. Similarity is cosine (1 = identical).
+--
+-- Unfiltered queries use the HNSW index. Tagged queries search the tagged
+-- rows exactly (GIN on tags, then distance), because HNSW returns its ~40
+-- nearest neighbours before any WHERE runs and would drop closer tagged
+-- chunks in a large library.
 create or replace function match_knowledge_chunks(
   query_embedding vector(1536),
   match_count int default 5,
@@ -81,16 +86,32 @@ returns table (
   tags text[],
   similarity real
 )
-language sql stable
+language plpgsql stable
 as $$
-  select
-    c.id, c.source_id, s.title, s.author, c.page, c.text, c.take, c.tags,
-    (1 - (c.embedding <=> query_embedding))::real as similarity
-  from knowledge_chunks c
-  join knowledge_sources s on s.id = c.source_id
-  where s.active
-    and c.embedding is not null
-    and (cardinality(filter_tags) = 0 or c.tags && filter_tags)
-  order by c.embedding <=> query_embedding
-  limit greatest(match_count, 0);
+begin
+  if cardinality(filter_tags) = 0 then
+    return query
+      select c.id, c.source_id, s.title, s.author, c.page, c.text, c.take, c.tags,
+        (1 - (c.embedding <=> query_embedding))::real
+      from knowledge_chunks c
+      join knowledge_sources s on s.id = c.source_id
+      where s.active and c.embedding is not null
+      order by c.embedding <=> query_embedding
+      limit greatest(match_count, 0);
+  else
+    return query
+      with tagged as materialized (
+        select c.id, c.source_id, c.page, c.text, c.take, c.tags, c.embedding
+        from knowledge_chunks c
+        where c.tags && filter_tags and c.embedding is not null
+      )
+      select t.id, t.source_id, s.title, s.author, t.page, t.text, t.take, t.tags,
+        (1 - (t.embedding <=> query_embedding))::real
+      from tagged t
+      join knowledge_sources s on s.id = t.source_id
+      where s.active
+      order by t.embedding <=> query_embedding
+      limit greatest(match_count, 0);
+  end if;
+end;
 $$;
