@@ -84,19 +84,3 @@ export function estimateCalories(a: any, weightKg: number | null | undefined): C
   }
   return null;
 }
-
-// Every activity since `afterSec`, page by page (Strava returns oldest first
-// with `after`, so one capped page could drop the newest).
-export async function fetchActivitiesSince(token: string, afterSec: number, fetchImpl: typeof fetch = fetch, maxPages = 5): Promise<any[]> {
-  const out: any[] = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const res = await fetchImpl(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${afterSec}&page=${page}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error(`Strava ${res.status}`);
-    const batch = (await res.json()) as any[];
-    out.push(...batch);
-    if (batch.length < 200) break;
-  }
-  return out;
-}
