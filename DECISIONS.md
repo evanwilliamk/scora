@@ -2,6 +2,13 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: The read observes plan changes touching today
+- Status: DECIDED (reversible)
+- Branch: claude/read-sees-plan-changes (on claude/integration-2026-10-18)
+- Context: CLAUDE.md §1.3 allows "Today's tempo was moved to Wednesday because..." in the voice, since the plan engine already decided.
+- Choice: with `PLAN_ADAPTATIONS=on`, the read loads active-plan changes whose original or new date is today, adds each stored reason as a "Plan change" driver (so the voice may quote it and the validator accepts its numbers), and adds a PLAN CHANGE line telling the model it may observe the change, never argue with it, add to it or suggest another. Gives up after 2 s; never blocks the read.
+- To reverse: remove the planChange block in POST /api/read.
+
 
 ### 2026-10-17: Pattern review notes (voice copy is yours)
 - Status: NEEDS EVAN (copy); one rule fix DECIDED

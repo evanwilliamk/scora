@@ -6,6 +6,7 @@
 // (apply_plan_adaptation, migration 20261018010000). The engine decides; the
 // reason text below only states the decision. Off unless PLAN_ADAPTATIONS=on.
 
+import type { Driver } from './metrics';
 import {
   ADAPTATION_ENGINE_VERSION, evaluateAdaptation, templateWeekMinutes, validateTemplate,
 } from '../../../packages/plan-engine/src/index';
@@ -65,6 +66,9 @@ export interface AdaptStore {
   // Returns the adaptation id, or null if the engine already adapted it.
   apply(write: AdaptationWrite): Promise<string | null>;
   recent(athleteId: string, limit: number): Promise<PlanAdaptationRow[]>;
+  // Changes that touch `day` on the active plan: a session moved to or from
+  // it, or downgraded or displaced on it.
+  forDay(athleteId: string, day: string): Promise<PlanAdaptationRow[]>;
 }
 
 const DAY = 86_400_000;
@@ -251,6 +255,19 @@ export function sqlAdaptStore(db: Db): AdaptStore {
       );
       return r.rows as PlanAdaptationRow[];
     },
+    async forDay(athleteId, day) {
+      const r = await db.query(
+        `select a.id, a.adaptation_type, to_char(a.original_date, 'YYYY-MM-DD') as original_date,
+                to_char(a.new_date, 'YYYY-MM-DD') as new_date, a.reason_code, a.reason_text,
+                to_char(a.triggered_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as triggered_at
+         from plan_adaptations a
+         where a.athlete_id = $1 and a.dismissed_at is null and ($2::date in (a.original_date, a.new_date))
+           and exists (select 1 from training_plans p where p.id = a.training_plan_id and p.current_status = 'active')
+         order by a.triggered_at, a.id`,
+        [athleteId, day],
+      );
+      return r.rows as PlanAdaptationRow[];
+    },
   };
 }
 
@@ -298,5 +315,26 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
       // Same shape as the SQL store: ISO 8601 in UTC with milliseconds.
       return (r.data ?? []).map(({ training_plans: _p, ...a }: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
     },
+    async forDay(athleteId, day) {
+      const r = await sb.from('plan_adaptations')
+        .select('id, adaptation_type, original_date, new_date, reason_code, reason_text, triggered_at, training_plans!inner(current_status)')
+        .eq('athlete_id', athleteId).is('dismissed_at', null).eq('training_plans.current_status', 'active')
+        .or(`original_date.eq.${day},new_date.eq.${day}`)
+        .order('triggered_at', { ascending: true }).order('id');
+      check(r, 'Load plan changes');
+      return (r.data ?? []).map(({ training_plans: _p, ...a }: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
+    },
+  };
+}
+
+// What the read may say about plan changes touching today (CLAUDE.md §1.3:
+// the voice can observe an adaptation the plan engine made, never make one).
+// Each change's stored reason is a driver, so the voice may quote it.
+export function planChangeContext(rows: PlanAdaptationRow[]): { drivers: Driver[]; promptLine: string } {
+  if (rows.length === 0) return { drivers: [], promptLine: '' };
+  const reasons = rows.map((r) => r.reason_text.trim()).filter(Boolean);
+  return {
+    drivers: reasons.map((value) => ({ metric: 'Plan change', value })),
+    promptLine: `PLAN CHANGE (already made by SCORA's plan engine; you may observe it, never argue with it, add to it or suggest another): ${reasons.join(' ')}`,
   };
 }

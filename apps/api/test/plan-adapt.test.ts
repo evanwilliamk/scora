@@ -11,7 +11,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import { parse as parseYaml } from 'yaml';
 import { assemblePlan, validateTemplate } from '../../../packages/plan-engine/src/index';
-import { adaptTomorrow, downgradedStructure, sqlAdaptStore } from '../src/plan-adapt';
+import { adaptTomorrow, downgradedStructure, planChangeContext, sqlAdaptStore } from '../src/plan-adapt';
 import { validateVoice } from '../src/validator';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -232,4 +232,18 @@ test('review fixes: recent() shows only changes on an active plan, and not dismi
   await db.query(`update plan_adaptations set dismissed_at = null where athlete_id = 'v1'`);
   await db.query(`update training_plans set current_status = 'replaced' where athlete_id = 'v1'`);
   assert.equal((await store.recent('v1', 5)).length, 0);
+});
+
+test('the read sees changes touching today, as quotable drivers (CLAUDE.md §1.3)', async () => {
+  await seedPlan('p1', templateId);
+  await adaptTomorrow('p1', '2026-10-28', 'back-off', store, DRAFTS); // Thursday 10-29 downgraded
+  assert.equal((await store.forDay('p1', '2026-10-28')).length, 0);
+  const rows = await store.forDay('p1', '2026-10-29');
+  assert.equal(rows.length, 1);
+  const ctx = planChangeContext(rows);
+  assert.match(ctx.promptLine, /^PLAN CHANGE \(already made by SCORA's plan engine; you may observe it, never argue with it/);
+  assert.deepEqual(ctx.drivers, [{ metric: 'Plan change', value: rows[0].reason_text }]);
+  // The stored reason passes the voice validator when it is a driver.
+  assert.deepEqual(validateVoice(`${rows[0].reason_text}`, ctx.drivers as any), { ok: true, bannedHits: [], unbackedNumbers: [] });
+  assert.deepEqual(planChangeContext([]), { drivers: [], promptLine: '' });
 });

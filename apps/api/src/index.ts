@@ -34,7 +34,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { planForRead } from './plan-read';
-import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore, withTimeout } from './plan-adapt';
+import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, supabaseGenerateStore,
 } from './plan-generate';
@@ -630,6 +630,17 @@ fastify.post('/api/read', async (request, reply) => {
       fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
     }
 
+    // Plan changes the engine made that touch today: the read may observe
+    // them (CLAUDE.md §1.3). Only when adaptations are on; never blocks.
+    let planChange = planChangeContext([]);
+    if (adaptationsEnabled()) {
+      try {
+        planChange = planChangeContext(await withTimeout(adaptStore().forDay(String(athleteId), today), 2000));
+      } catch (e) {
+        fastify.log.warn(`Plan changes not loaded for read: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+
     // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
     // else the curated pattern library, else nothing. Never blocks the read.
     const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
@@ -646,7 +657,7 @@ fastify.post('/api/read', async (request, reply) => {
     // The numbers behind the posture are drivers too, so naming it is backed.
     // The numbers behind the posture and today's planned session are drivers
     // too, so naming either is backed.
-    const readDrivers = [...drivers, ...posture.evidence, ...(plan.driver ? [plan.driver] : [])];
+    const readDrivers = [...drivers, ...posture.evidence, ...(plan.driver ? [plan.driver] : []), ...planChange.drivers];
 
     const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
 
@@ -665,7 +676,7 @@ OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric li
     const userPrompt = `DRIVERS (the only values you may cite):
 ${driverBlock}
 
-${posture.promptLine}${plan.promptLine ? `\n${plan.promptLine}` : ''}
+${posture.promptLine}${plan.promptLine ? `\n${plan.promptLine}` : ''}${planChange.promptLine ? `\n${planChange.promptLine}` : ''}
 ${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 

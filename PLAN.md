@@ -64,6 +64,7 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 - [~] HealthKit dated nights for the charts, so athletes without Oura get sleep, HRV and resting HR charts (`claude/healthkit-nights`, on `claude/inline-charts`)
 - [~] Race predictions v1 (PRD §5.B.6): a range from recent efforts, `RACE_PREDICTIONS=on` (`claude/race-predictions`, on `claude/plan-adapt-job`); shown on Your Plan by `claude/ios-race-prediction`
 - [~] Calorie engine v1 (PRD §5.B.7): burn estimates with method and inputs, `CALORIE_ENGINE=on` (`claude/calorie-engine`, on `claude/plan-adapt-job`; API only)
+- [~] The read observes plan changes touching today (CLAUDE.md §1.3) (`claude/read-sees-plan-changes`, on `claude/integration-2026-10-18`)
 - [!] Calorie engine needs body weight; Strava only sends it with `profile:read_all` (Q21)
 - [!] Rest posture with no move window: hard session currently stays (Q19)
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
