@@ -24,6 +24,20 @@ Thresholds live in `src/constants.ts`. Change one, bump `ADAPTATION_ENGINE_VERSI
 
 The library is empty: templates are coach-authored and reviewed (doc 07 v2 §8.3). `test/fixtures/four-week.yaml` is a test fixture, not training content.
 
-Not yet wired into `apps/api` (no `training_plans` table or plan generation yet). The assembler comes next.
+## Assembler
+
+```ts
+const t = matchTemplate(templates, { sport: 'run', goal_type: 'half_marathon', experience_level: 'regular', current_weekly_km: 38 });
+if (!t) return 'template not available yet'; // no LLM fallback
+const plan = assemblePlan({ template: t, start_date: startDateForRace(t, race), goal_race_date: race });
+plan.workouts;     // dated scheduled workouts with scaled structure (WorkoutKit) and stable ids
+plan.week_minutes; // template call per week, the adaptation engine's template_week_minutes
+```
+
+- The plan starts on a Monday; the race must fall in the final week. Nothing is scheduled on or after race day.
+- A week's `week_load_percent` scales warmup, steady and cooldown steps to whole minutes; interval reps and durations stay as authored.
+- No athlete scaling beyond template choice: the volume range picks the template, and the template's numbers are used as written.
+
+Not yet wired into `apps/api` (no `training_plans` table or `/plan/generate` route yet).
 
 Tests: `npm test` (from this folder).

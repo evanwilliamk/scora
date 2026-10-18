@@ -33,8 +33,9 @@ test('the fixture template loads, with durations derived from each structure', (
 
 test('week minutes follow the pattern, the phase rotation and the load percent', () => {
   const [t] = loadTemplates(FIXTURES, draftsOk);
-  // w1 42+40+40+90+40, w2 long_steady, w3 threshold, w4 80% of w1
-  assert.deepEqual(templateWeekMinutes(t), [252, 262, 270, 202]);
+  // w1 42+40+40+90+40, w2 long_steady, w3 threshold. w4 at 80% scales only
+  // continuous steps: fartlek 8+22+8, tempo 8+16+8, easy 32 x2, long 72.
+  assert.deepEqual(templateWeekMinutes(t), [252, 262, 270, 206]);
 });
 
 test('each phase cycles its slot list in order', () => {

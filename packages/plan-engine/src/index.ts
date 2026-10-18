@@ -23,9 +23,12 @@ export type {
 export { EXPERIENCE_LEVELS, REST_SLOT, SPORTS, STEP_INTENSITIES, WEEKDAYS } from './template-types';
 export type { TemplateErrorCode, ValidateOptions } from './template-loader';
 export {
-  DURATION_ESTIMATE_TOLERANCE_MIN, MAX_WEEKLY_INCREASE, TemplateError, loadTemplates, phaseOf, stepMinutes,
-  templateWeekMinutes, validateTemplate, workoutFor,
+  DURATION_ESTIMATE_TOLERANCE_MIN, MAX_WEEKLY_INCREASE, TemplateError, loadTemplates, phaseOf, scaleStructure,
+  stepMinutes, structureMinutes, templateWeekMinutes, validateTemplate, workoutFor,
 } from './template-loader';
+
+export type { AssembleInput, AssembledPlan, AssembledWorkout, TemplateQuery } from './assembler';
+export { AssemblyError, assemblePlan, matchTemplate, startDateForRace } from './assembler';
 
 import { fileURLToPath } from 'node:url';
 

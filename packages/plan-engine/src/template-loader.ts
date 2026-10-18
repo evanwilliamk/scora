@@ -183,7 +183,7 @@ export function validateTemplate(raw: unknown, file: string, opts: ValidateOptio
       }
       return fail('bad_step', `${at} type is "${String(s.type)}" (allowed: warmup, steady, interval, cooldown)`);
     });
-    const duration_min = structure.reduce((t, s) => t + stepMinutes(s), 0);
+    const duration_min = structureMinutes(structure);
     if (def.total_duration_est_min !== undefined) {
       const est = def.total_duration_est_min;
       if (!isNum(est) || Math.abs(est - duration_min) > DURATION_ESTIMATE_TOLERANCE_MIN) {
@@ -262,16 +262,29 @@ export function workoutFor(t: PlanTemplate, week: number, slot: string): string 
   return list[(weekInPhase - 1) % list.length];
 }
 
-// Minutes the template calls for in each week, before any athlete scaling.
-// Load percent scales a week's total; the assembler applies it the same way.
+// A week's load percent scales the continuous steps (warmup, steady,
+// cooldown) to whole minutes. Interval reps and work/rest durations are the
+// session itself and stay exactly as authored.
+export function scaleStructure(structure: WorkoutStep[], percent: number): WorkoutStep[] {
+  if (percent === 100) return structure.map((s) => ({ ...s }));
+  return structure.map((s) =>
+    s.type === 'interval' ? { ...s } : { ...s, duration_min: Math.max(1, Math.round((s.duration_min * percent) / 100)) },
+  );
+}
+
+export const structureMinutes = (structure: WorkoutStep[]) => structure.reduce((t, s) => t + stepMinutes(s), 0);
+
+// Minutes the template calls for in each week, with load percent applied the
+// same way the assembler applies it.
 export function templateWeekMinutes(t: PlanTemplate): number[] {
   return Array.from({ length: t.duration_weeks }, (_, i) => {
     const week = i + 1;
-    const base = WEEKDAYS.reduce((sum, day) => {
+    return WEEKDAYS.reduce((sum, day) => {
       const slot = t.weekly_pattern[day];
-      return slot === REST_SLOT ? sum : sum + t.workout_definitions[workoutFor(t, week, slot)].duration_min;
+      if (slot === REST_SLOT) return sum;
+      const def = t.workout_definitions[workoutFor(t, week, slot)];
+      return sum + structureMinutes(scaleStructure(def.structure, t.week_load_percent[i]));
     }, 0);
-    return Math.round((base * t.week_load_percent[i]) / 100);
   });
 }
 
