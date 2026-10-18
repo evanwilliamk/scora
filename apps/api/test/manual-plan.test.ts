@@ -42,53 +42,60 @@ test('a faithful transcription keeps every row and converts miles', () => {
   assert.equal(r.rows[2].intensity, 'rest');
 });
 
-test('invented numbers are rejected, like unbacked drivers in the voice', () => {
+test('invented numbers are removed, the session stays', () => {
   const r = validateParsedRows({ workouts: [
     { date: '2026-10-20', type: 'run', intensity: 'tempo', duration_min: 60, description: '45 min tempo, 3x8 at threshold' },
     { date: '2026-10-18', type: 'run', intensity: 'long', distance: 18, distance_unit: 'mi', description: 'long run 16 mi easy' },
     { date: '2026-10-22', type: 'run', intensity: 'easy', distance: 10, description: '6 km recovery' },
-    { date: '2026-10-22', type: 'run', intensity: 'easy', description: 'an easy 30 min jog' },
+    { date: '2026-10-22', type: 'run', intensity: 'easy', duration_min: 30, description: 'an easy 30 min jog' },
   ] }, PLAN, TODAY);
-  assert.equal(r.rows.length, 0);
-  assert.deepEqual(r.rejected.map((x) => x.reason), [
+  assert.equal(r.rejected.length, 0);
+  assert.equal(r.rows.length, 4);
+  for (const row of r.rows) {
+    assert.equal(row.duration_min, null);
+    assert.equal(row.distance_km, null);
+  }
+  assert.equal(r.rows.find((x) => x.date === '2026-10-22' && x.description === '')?.intensity, 'easy', 'reworded day kept, words dropped');
+  assert.deepEqual(r.adjusted.map((x) => x.reason), [
     'duration 60 min is not written for this session',
     'distance 18 mi is not written for this session',
-    'distance without a valid unit',
-    'description is not in the text',
+    'distance 10 (no unit) is not written for this session',
+    'description is not in the text; kept the day without numbers',
+    'duration 30 min is not written for this session',
   ]);
 });
 
 test('numbers are checked against the session, not the whole paste (review findings)', () => {
   const text = 'Week 1\nTue: easy run 10 km\nThu: tempo';
   const r = validateParsedRows([
-    // "1" from "Week 1" read as one hour
-    { date: '2026-10-20', type: 'run', intensity: 'easy', duration_min: 60, description: 'easy run 10 km' },
-    // km written, model said miles
-    { date: '2026-10-20', type: 'run', intensity: 'easy', distance: 10, distance_unit: 'mi', description: 'easy run 10 km' },
-    // 10 borrowed from Tuesday
+    { date: '2026-10-20', type: 'run', intensity: 'easy', duration_min: 60, distance: 10, distance_unit: 'mi', description: 'easy run 10 km' },
     { date: '2026-10-22', type: 'run', intensity: 'tempo', duration_min: 10, description: 'tempo' },
-    // the faithful version survives
-    { date: '2026-10-20', type: 'run', intensity: 'easy', distance: 10, distance_unit: 'km', description: 'easy run 10 km' },
   ], text, TODAY);
-  assert.deepEqual(r.rejected.map((x) => x.reason), [
-    'duration 60 min is not written for this session',
-    'distance 10 mi is not written for this session',
-    'duration 10 min is not written for this session',
-  ]);
-  assert.deepEqual(r.rows.map((x) => x.distance_km), [10]);
+  assert.deepEqual(r.rows.map((x) => [x.duration_min, x.distance_km]), [[null, null], [null, null]]);
 });
 
-test('units: 10k, 90 mins, 1h and 75 minutes are read; a bare number is not a duration', () => {
-  const text = 'Mon: 10k easy\nTue: 90 mins steady\nWed: 1h ride\nThu: 75 minutes\nFri: 5x3 hills';
-  const r = validateParsedRows([
-    { date: '2026-10-19', type: 'run', intensity: 'easy', distance: 10, distance_unit: 'km', description: '10k easy' },
-    { date: '2026-10-20', type: 'run', intensity: 'moderate', duration_min: 90, description: '90 mins steady' },
-    { date: '2026-10-21', type: 'ride', intensity: null, duration_min: 60, description: '1h ride' },
-    { date: '2026-10-22', type: 'run', intensity: null, duration_min: 75, description: '75 minutes' },
-    { date: '2026-10-23', type: 'run', intensity: 'hard', duration_min: 15, description: '5x3 hills' },
-  ], text, TODAY);
-  assert.equal(r.rows.length, 4);
-  assert.deepEqual(r.rejected.map((x) => x.reason), ['duration 15 min is not written for this session']);
+test('common plan formats are read (re-review findings)', () => {
+  const lines = [
+    ['45-min tempo', { duration_min: 45 }, 45, null],
+    ['10-mile long run', { distance: 10, distance_unit: 'mi' }, null, 16.09],
+    ['10 miler', { distance: 10, distance_unit: 'mi' }, null, 16.09],
+    ['6M easy', { distance: 6, distance_unit: 'mi' }, null, 9.66],
+    ['1:15 long run', { duration_min: 75 }, 75, null],
+    ['1h30 long ride', { duration_min: 90 }, 90, null],
+    ['1 hr 15 min long run', { duration_min: 75 }, 75, null],
+    ['60’ easy', { duration_min: 60 }, 60, null],
+    ['8x400m', { distance: 400, distance_unit: 'mi' }, null, null],
+    ['5k parkrun', { distance: 5, distance_unit: 'km' }, null, 5],
+    ['tempo at 4:30/km', { duration_min: 270 }, null, null],
+  ] as const;
+  const text = lines.map(([l]) => l).join('\n');
+  const rows = lines.map(([l, extra], i) => ({ date: `2026-10-${18 + i}`, type: 'run', intensity: null, description: l, ...extra }));
+  const r = validateParsedRows(rows, text, TODAY);
+  assert.equal(r.rows.length, lines.length);
+  r.rows.forEach((row, i) => {
+    assert.equal(row.duration_min, lines[i][2], `${lines[i][0]} duration`);
+    assert.equal(row.distance_km, lines[i][3], `${lines[i][0]} distance`);
+  });
 });
 
 test('bad dates, past dates, far dates, unknown enums and duplicates are rejected', () => {
