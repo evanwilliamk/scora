@@ -352,7 +352,8 @@ struct DashboardView: View {
 
     // HealthKit is on-device: read a summary and send it up so the backend can
     // fill Sleep + Recovery when Oura isn't connected.
-    // The local date lets the read find today's session in the athlete's plan.
+    // The local date lets the read find today's session in the athlete's plan
+    // and the plan engine evaluate the athlete's tomorrow, not the server's.
     var payload: [String: Any] = ["athleteId": tokenManager.athleteId, "today": PlanDay.today()]
     if let health = await HealthManager.shared.fetchSummary(),
        let encoded = try? JSONEncoder().encode(health),
