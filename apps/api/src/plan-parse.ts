@@ -31,7 +31,8 @@ export interface Rejected {
 
 export interface ParseResult {
   rows: ParsedRow[];
-  rejected: Rejected[];
+  rejected: Rejected[]; // sessions left out
+  adjusted: Rejected[]; // sessions kept with a number or description removed
 }
 
 export function buildPlanParsePrompt(text: string, today: string): { system: string; user: string } {
@@ -62,15 +63,40 @@ const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 const num = (s: string) => Number(s.replace(',', '.'));
 const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
 
-// Numbers written with a given unit right after them ("45 min", "1.5 h").
-function withUnit(text: string, units: string): number[] {
-  const re = new RegExp(`${NUM}\\s*(?:${units})(?![a-z])`, 'gi');
+// Numbers written with a given unit after them ("45 min", "45-min", "1.5 h").
+function withUnit(text: string, units: string, flags = 'gi'): number[] {
+  const re = new RegExp(`${NUM}[\\s-]*(?:${units})(?![a-z])`, flags);
   return [...text.matchAll(re)].map((m) => num(m[1]));
 }
-const MINUTES = "min|mins|minute|minutes|'";
+const MINUTES = "min|mins|minute|minutes|'|\u2019|\u2032";
 const HOURS = 'h|hr|hrs|hour|hours';
 const KM = 'km|k|kms|kilometers?|kilometres?';
-const MI = 'mi|mile|miles';
+const MI = 'mi|mile|miles|miler|mls';
+
+// Every duration written in a session, in minutes: "45 min", "1.5 h",
+// "1:15" (not a pace like 4:30/km), "1h30", "1 hr 15 min".
+export function writtenMinutes(text: string): number[] {
+  const out = [
+    ...withUnit(text, MINUTES),
+    ...withUnit(text, HOURS).map((h) => h * 60),
+  ];
+  for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:]|\s*\/)/g)) {
+    out.push(Number(m[1]) * 60 + Number(m[2]));
+  }
+  for (const m of text.matchAll(/(\d{1,2})\s*(?:h|hr|hrs|hours?)\s*(\d{1,2})(?:\s*(?:min|mins|minutes|m))?(?![a-z\d])/gi)) {
+    out.push(Number(m[1]) * 60 + Number(m[2]));
+  }
+  return out;
+}
+
+// Every distance written in a session, by unit. A capital M after a number
+// is miles ("6M easy"); a small m is metres ("8x400m") and is not counted.
+export function writtenDistances(text: string): { km: number[]; mi: number[] } {
+  return {
+    km: withUnit(text, KM),
+    mi: [...withUnit(text, MI), ...withUnit(text, 'M', 'g')],
+  };
+}
 
 const isoDate = (s: unknown): string | null => {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
@@ -92,6 +118,7 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
   const source = norm(sourceText);
   const rows: ParsedRow[] = [];
   const rejected: Rejected[] = [];
+  const adjusted: Rejected[] = [];
   const seen = new Set<string>();
 
   for (const item of items) {
@@ -111,35 +138,40 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
       : (INTENSITIES as readonly string[]).includes(r.intensity) ? (r.intensity as Intensity) : undefined;
     if (intensity === undefined) { reject(`unknown intensity ${JSON.stringify(r.intensity)}`); continue; }
 
-    const description = typeof r.description === 'string' ? r.description.trim().slice(0, 500) : '';
-    if (!description || !source.includes(norm(description).replace(/[.,;:]+$/, ''))) {
-      reject('description is not in the text');
-      continue;
+    // A description the model reworded can't vouch for any number: keep the
+    // session (date, type, intensity) but none of its numbers or words.
+    let description = typeof r.description === 'string' ? r.description.trim().slice(0, 500) : '';
+    const verbatim = description !== '' && source.includes(norm(description).replace(/[.,;:]+$/, ''));
+    if (!verbatim) {
+      if (description) adjusted.push({ row: item, reason: 'description is not in the text; kept the day without numbers' });
+      description = '';
     }
 
+    // Numbers must be written for this session with their unit. One that is
+    // not becomes null; the session itself stays.
     let duration: number | null = null;
     if (r.duration_min != null) {
       const d = Number(r.duration_min);
-      if (!Number.isFinite(d) || d <= 0 || d > 1440) { reject('duration out of range'); continue; }
-      const asMinutes = withUnit(description, MINUTES).some((w) => near(w, d));
-      const asHours = withUnit(description, HOURS).some((w) => near(w * 60, d));
-      if (!asMinutes && !asHours) { reject(`duration ${d} min is not written for this session`); continue; }
-      duration = Math.round(d);
+      if (Number.isFinite(d) && d > 0 && d <= 1440 && writtenMinutes(description).some((w) => near(w, d))) {
+        duration = Math.round(d);
+      } else {
+        adjusted.push({ row: item, reason: `duration ${r.duration_min} min is not written for this session` });
+      }
     }
 
     let distanceKm: number | null = null;
     if (r.distance != null) {
       const v = Number(r.distance);
       const unit = r.distance_unit === 'mi' ? 'mi' : r.distance_unit === 'km' ? 'km' : null;
-      if (!Number.isFinite(v) || v <= 0 || !unit) { reject('distance without a valid unit'); continue; }
-      if (!withUnit(description, unit === 'mi' ? MI : KM).some((w) => near(w, v))) {
-        reject(`distance ${v} ${unit} is not written for this session`);
-        continue;
+      const written = writtenDistances(description);
+      if (Number.isFinite(v) && v > 0 && unit && written[unit].some((w) => near(w, v))) {
+        distanceKm = Math.round((unit === 'mi' ? v * KM_PER_MI : v) * 100) / 100;
+      } else {
+        adjusted.push({ row: item, reason: `distance ${r.distance} ${unit ?? '(no unit)'} is not written for this session` });
       }
-      distanceKm = Math.round((unit === 'mi' ? v * KM_PER_MI : v) * 100) / 100;
     }
 
-    const key = `${date}|${type}|${description.toLowerCase()}`;
+    const key = `${date}|${type}|${String(r.description ?? '').trim().toLowerCase()}`;
     if (seen.has(key)) { reject('duplicate session'); continue; }
     seen.add(key);
 
@@ -147,7 +179,7 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
   }
 
   rows.sort((a, b) => a.date.localeCompare(b.date));
-  return { rows, rejected };
+  return { rows, rejected, adjusted };
 }
 
 export type PlanLlm = (system: string, user: string) => Promise<string>;
