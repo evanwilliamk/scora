@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import WorkoutKit
 @testable import Scora
 
 final class ScoraTests: XCTestCase {
@@ -70,6 +71,45 @@ final class ScoraTests: XCTestCase {
         let instant = Date(timeIntervalSince1970: 1_792_195_200) // 2026-10-17 00:00 UTC
         XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "UTC")!), "2026-10-17")
         XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "America/Los_Angeles")!), "2026-10-16")
+    }
+
+    func testWorkoutExportCopiesThePlanStructure() throws {
+        // Fixture template's threshold session: 10 + 3 x 8 (3 rest) + 10 = 50 min.
+        let json = #"[{"type":"warmup","duration_min":10,"intensity":"easy"},{"type":"interval","reps":3,"work_duration_min":8,"work_intensity":"threshold","rest_duration_min":3,"rest_intensity":"easy"},{"type":"cooldown","duration_min":10,"intensity":"easy"}]"#
+        let w = try WorkoutExport.customWorkout(json: json.data(using: .utf8)!, plannedType: "run", displayName: "Threshold")
+        XCTAssertEqual(w.activity, .running)
+        XCTAssertEqual(w.displayName, "Threshold")
+        XCTAssertNotNil(w.warmup)
+        XCTAssertNotNil(w.cooldown)
+        XCTAssertEqual(w.blocks.map(\.iterations), [2, 1], "reps - 1 work/rest pairs, then the last rep alone")
+        XCTAssertEqual(w.blocks.map { $0.steps.count }, [2, 1])
+        func seconds(_ g: WorkoutGoal) -> Double {
+            guard case let .time(v, unit) = g else { return 0 }
+            let m: Measurement<UnitDuration> = Measurement(value: v, unit: unit)
+            return m.converted(to: UnitDuration.seconds).value
+        }
+        var total: Double = seconds(w.warmup!.goal) + seconds(w.cooldown!.goal)
+        for b in w.blocks {
+            var perRound: Double = 0
+            for s in b.steps { perRound += seconds(s.step.goal) }
+            total += Double(b.iterations) * perRound
+        }
+        XCTAssertEqual(total, 50 * 60, "the Watch total equals the plan's 50 minutes")
+    }
+
+    func testWorkoutExportRefusesWhatItCannotCopy() {
+        XCTAssertThrowsError(try WorkoutExport.customWorkout(steps: [], plannedType: "run", displayName: "x")) {
+            XCTAssertEqual($0 as? WorkoutExportError, .empty)
+        }
+        let bad = [PlanStep(type: "interval", durationMin: nil, intensity: nil, reps: 0, workDurationMin: 2, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        XCTAssertThrowsError(try WorkoutExport.customWorkout(steps: bad, plannedType: "run", displayName: "x")) {
+            XCTAssertEqual($0 as? WorkoutExportError, .badStep(0))
+        }
+        let steady = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        XCTAssertThrowsError(try WorkoutExport.customWorkout(steps: steady, plannedType: "other", displayName: "x")) {
+            XCTAssertEqual($0 as? WorkoutExportError, .unsupportedActivity("other"))
+        }
+        XCTAssertNoThrow(try WorkoutExport.customWorkout(steps: steady, plannedType: "run", displayName: "Easy"))
     }
 
     func testSkippedNote() {
