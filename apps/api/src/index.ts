@@ -880,7 +880,10 @@ fastify.post('/api/plan/generate', async (request, reply) => {
   if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
   const body = (request.body as any) || {};
   if (!body.athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
-  const today = isoDay(body.today) ?? new Date().toISOString().slice(0, 10);
+  // The athlete's local date decides which sessions are still ahead; the
+  // server's UTC day would drop today's for a US evening request.
+  const today = isoDay(body.today);
+  if (!today) return reply.code(400).send({ error: 'Missing: today (YYYY-MM-DD, local)' });
   try {
     _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
     const req = parseGenerateRequest(body);
