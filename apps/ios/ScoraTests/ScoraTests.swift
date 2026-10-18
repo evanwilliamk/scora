@@ -213,6 +213,18 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(nights, [HealthNight(day: "2026-10-18", sleepSeconds: 7 * 3600, hrvMs: nil, restingHr: nil)])
     }
 
+    func testRacePredictionReadsAsARangeWithItsBasis() throws {
+        let ok = #"{"prediction":{"ok":true,"race":"half_marathon","distance_m":21097.5,"low_s":6300,"high_s":6720,"efforts":[{"date":"2026-10-04"},{"date":"2026-10-11"},{"date":"2026-10-14"}],"used_races":false,"version":"prediction-v1.0.0"}}"#
+        let p = try JSONDecoder().decode(PredictionResponse.self, from: ok.data(using: .utf8)!).prediction
+        XCTAssertEqual(p.headline, "1:45 – 1:52")
+        XCTAssertEqual(p.basis, "Based on your 3 best runs of the last 8 weeks.")
+        let none = #"{"prediction":{"ok":false,"race":"marathon","reason":"no_long_run","needed":"a run of at least 22 km in the last 8 weeks"}}"#
+        let n = try JSONDecoder().decode(PredictionResponse.self, from: none.data(using: .utf8)!).prediction
+        XCTAssertNil(n.headline)
+        XCTAssertEqual(n.basis, "No estimate yet: needs a run of at least 22 km in the last 8 weeks.")
+        XCTAssertEqual(RacePrediction.duration(24 * 60 + 5), "24:05")
+    }
+
     func testSkippedNote() {
         XCTAssertNil(PlanDay.skippedNote(0))
         XCTAssertEqual(PlanDay.skippedNote(1), "1 line could not be read and was left out.")
