@@ -154,7 +154,9 @@ export function parseHealthNights(raw: unknown): NonNullable<OuraSummary['nights
   for (const n of raw.slice(-35)) {
     if (!n || typeof n !== 'object') continue;
     const day = (n as any).day;
-    if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`)) || seen.has(day)) continue;
+    // A real calendar day: 2026-02-31 rolls over in Date.parse, so round-trip it.
+    const t = typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? Date.parse(`${day}T00:00:00Z`) : NaN;
+    if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== day || seen.has(day)) continue;
     seen.add(day);
     const night = {
       day,

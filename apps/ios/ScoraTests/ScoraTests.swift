@@ -127,8 +127,25 @@ final class ScoraTests: XCTestCase {
             calendar: cal)
         XCTAssertEqual(nights, [
             HealthNight(day: "2026-10-17", sleepSeconds: nil, hrvMs: 44, restingHr: nil),
-            HealthNight(day: "2026-10-18", sleepSeconds: 7 * 3600, hrvMs: 52, restingHr: 48),
+            HealthNight(day: "2026-10-18", sleepSeconds: 7 * 3600, hrvMs: 54, restingHr: 48),
         ])
+    }
+
+    func testHealthNightsCountOverlapsOnceAndIgnoreNaps() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+        let f = ISO8601DateFormatter()
+        let at = { (s: String) in f.date(from: s)! }
+        let nights = HealthNights.group(
+            sleep: [
+                // Watch and iPhone both log the same night: 03:00-10:00Z, overlapping.
+                (start: at("2026-10-18T03:00:00Z"), end: at("2026-10-18T09:00:00Z")),
+                (start: at("2026-10-18T04:00:00Z"), end: at("2026-10-18T10:00:00Z")),
+                // A 40 minute afternoon nap the same day.
+                (start: at("2026-10-18T19:00:00Z"), end: at("2026-10-18T19:40:00Z")),
+            ],
+            hrv: [], restingHr: [], calendar: cal)
+        XCTAssertEqual(nights, [HealthNight(day: "2026-10-18", sleepSeconds: 7 * 3600, hrvMs: nil, restingHr: nil)])
     }
 
     func testSkippedNote() {

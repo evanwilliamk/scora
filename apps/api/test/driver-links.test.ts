@@ -86,6 +86,7 @@ test('HealthKit nights from the app: malformed days and implausible values are d
     { day: '2026-10-17', sleepSeconds: 999999, hrvMs: 51, restingHr: 5 },
     { day: '2026-10-17', sleepSeconds: 20000 }, // duplicate day
     { day: 'yesterday', sleepSeconds: 20000 },
+    { day: '2026-02-31', sleepSeconds: 20000 },
     { day: '2026-10-18', hrvMs: 'high' },
     null,
   ]);

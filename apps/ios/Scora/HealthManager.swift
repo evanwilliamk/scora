@@ -22,8 +22,11 @@ struct HealthNight: Codable, Equatable {
 }
 
 enum HealthNights {
-  // Sleep counts toward the local day it ended on (the morning you woke);
-  // HRV and resting HR are the mean of that day's samples.
+  // Asleep samples one hour apart or less form one sleep session, measured as
+  // the union of its samples (Watch and iPhone samples that overlap count
+  // once). Each wake day keeps its longest session, so a nap never adds to
+  // the night. HRV and resting HR take the day's last sample, the same value
+  // the read cites as the latest.
   static func group(
     sleep: [(start: Date, end: Date)],
     hrv: [(date: Date, value: Double)],
@@ -40,14 +43,31 @@ enum HealthNights {
       edit(&n)
       nights[day] = n
     }
-    for s in sleep where s.end > s.start {
-      touch(f.string(from: s.end)) { $0.sleepSeconds = ($0.sleepSeconds ?? 0) + s.end.timeIntervalSince(s.start) }
+
+    var sessions: [(end: Date, asleep: TimeInterval)] = []
+    var cur: (start: Date, end: Date, asleep: TimeInterval)?
+    for s in sleep.filter({ $0.end > $0.start }).sorted(by: { $0.start < $1.start }) {
+      if var c = cur, s.start <= c.end.addingTimeInterval(3600) {
+        // Count only the part not already covered.
+        let from = max(s.start, c.end)
+        if s.end > from { c.asleep += s.end.timeIntervalSince(from) }
+        c.end = max(c.end, s.end)
+        cur = c
+      } else {
+        if let c = cur { sessions.append((end: c.end, asleep: c.asleep)) }
+        cur = (start: s.start, end: s.end, asleep: s.end.timeIntervalSince(s.start))
+      }
     }
-    func means(_ xs: [(date: Date, value: Double)]) -> [String: Double] {
-      Dictionary(grouping: xs, by: { f.string(from: $0.date) }).mapValues { $0.map(\.value).reduce(0, +) / Double($0.count) }
+    if let c = cur { sessions.append((end: c.end, asleep: c.asleep)) }
+    for s in sessions {
+      touch(f.string(from: s.end)) { $0.sleepSeconds = max($0.sleepSeconds ?? 0, s.asleep) }
     }
-    for (day, v) in means(hrv) { touch(day) { $0.hrvMs = (v * 10).rounded() / 10 } }
-    for (day, v) in means(restingHr) { touch(day) { $0.restingHr = v.rounded() } }
+
+    func lastPerDay(_ xs: [(date: Date, value: Double)]) -> [String: Double] {
+      Dictionary(grouping: xs, by: { f.string(from: $0.date) }).mapValues { $0.max(by: { $0.date < $1.date })!.value }
+    }
+    for (day, v) in lastPerDay(hrv) { touch(day) { $0.hrvMs = (v * 10).rounded() / 10 } }
+    for (day, v) in lastPerDay(restingHr) { touch(day) { $0.restingHr = v.rounded() } }
     return nights.values.sorted { $0.day < $1.day }
   }
 }
