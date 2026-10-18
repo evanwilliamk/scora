@@ -116,6 +116,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: the 3 queries/day count reset at UTC midnight, which is mid-evening in the US (noted 2026-10-17).
 - Choice: the app sends its local date with each CDV query; the server uses it when it is within a day of the server's date, and the stored quota day never moves backwards, so a changed phone clock buys at most one early reset. Without a date (older app builds) the UTC day is used as before.
 - To reverse: drop `quotaDay(...)` from the `/api/cdv` call in `apps/api/src/index.ts`.
+### 2026-10-18: WorkoutKit export copies the plan structure exactly
+- Status: DECIDED (reversible)
+- Branch: claude/workoutkit-export (on claude/plan-adapt-job)
+- Context: Plan tier pushes today's session to Apple Watch (CLAUDE.md §5.2). WorkoutKit repeats a [work, recovery] block on every rep, which would add a recovery after the last rep that the template does not have.
+- Choice: a leading warmup and trailing cooldown map to WorkoutKit's own; each interval step becomes reps - 1 [work, recovery] rounds plus one final work step, so the Watch total equals the plan's minutes; steady steps are single-step blocks. Run, ride and swim only; anything else is refused. No pace or heart-rate alerts yet (templates do not carry targets). Scheduling to the Watch is not wired: it needs a paired device to try.
+- To reverse: `apps/ios/Scora/WorkoutExport.swift`.
 
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
