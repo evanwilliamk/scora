@@ -34,6 +34,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { planForRead } from './plan-read';
+import { numericLine } from './numeric-line';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, supabaseGenerateStore,
@@ -723,7 +724,7 @@ Write today's read using only these drivers.`;
     }
 
     return reply.send({
-      read: { voice, ...(charts ?? {}) },
+      read: { voice, numbers: numericLine(readDrivers), ...(charts ?? {}) },
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
       plan: { today: plan.driver?.value ?? null },

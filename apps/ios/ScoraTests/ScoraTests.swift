@@ -169,6 +169,13 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(DriverSeries.localDay("soon"))
     }
 
+    func testReadDecodesNumbersAndPosture() throws {
+        let json = #"{"read":{"voice":"Body is settled.","numbers":"Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412"},"posture":{"posture":"steady","rule":"default"},"cards":[],"generatedAt":null}"#
+        let r = try JSONDecoder().decode(ReadResponse.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(r.read.numbers, "Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412")
+        XCTAssertEqual(r.posture?.posture, "steady")
+    }
+
     func testReadWithoutChartsStillDecodes() throws {
         let json = #"{"read":{"voice":"Plain read."},"cards":[],"generatedAt":null}"#.data(using: .utf8)!
         let r = try JSONDecoder().decode(ReadResponse.self, from: json)

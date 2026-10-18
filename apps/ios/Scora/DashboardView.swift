@@ -4,6 +4,9 @@ import SwiftUI
 
 struct DailyRead: Decodable {
   let voice: String
+  // "Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412" (PRD §5.A.2).
+  // Optional so older API builds still decode.
+  var numbers: String? = nil
   // Plan tier inline charts (DriverChart.swift). Absent when the server has
   // them off.
   let links: [DriverLink]?
@@ -40,8 +43,13 @@ struct CardExpansion: Decodable {
   }
 }
 
+struct ReadPosture: Decodable, Equatable {
+  let posture: String
+}
+
 struct ReadResponse: Decodable {
   let read: DailyRead
+  let posture: ReadPosture?
   let cards: [DashboardCard]
   let generatedAt: String?
 }
@@ -80,6 +88,7 @@ struct DashboardView: View {
   @Environment(\.openURL) private var openURL
 
   @State private var read: DailyRead?
+  @State private var posture: String?
   @State private var cards: [DashboardCard] = []
   @State private var isLoading = false
   @State private var errorText: String?
@@ -226,6 +235,20 @@ struct DashboardView: View {
         .textCase(.uppercase)
 
       if let read {
+        // Posture badge and the raw numbers first (PRD §5.A.3, CLAUDE.md §3.3).
+        HStack(spacing: 8) {
+          if let p = posture {
+            Text(p)
+              .font(.caption.bold())
+              .foregroundColor(.black)
+              .padding(.horizontal, 8).padding(.vertical, 3)
+              .background(Color.orange.opacity(0.85))
+              .clipShape(Capsule())
+          }
+          if let n = read.numbers, !n.isEmpty {
+            Text(n).font(.footnote.monospacedDigit()).foregroundColor(.gray)
+          }
+        }
         Text(ReadText.attributed(read.voice, links: read.links ?? [], series: read.series ?? [:]))
           .font(.system(size: 20, weight: .regular, design: .serif))
           .foregroundColor(.white)
@@ -365,6 +388,7 @@ struct DashboardView: View {
     if DemoMode.isOn {
       await MainActor.run {
         read = DemoMode.read
+        posture = "steady"
         if DemoMode.opensChart { chartSeries = DemoMode.read.series?["hrv"] }
       }
       return
@@ -399,6 +423,7 @@ struct DashboardView: View {
       let decoded = try JSONDecoder().decode(ReadResponse.self, from: data)
       await MainActor.run {
         read = decoded.read
+        posture = decoded.posture?.posture
         cards = decoded.cards
         expansions = [:] // a new read means new numbers to interpret
         readGeneration += 1

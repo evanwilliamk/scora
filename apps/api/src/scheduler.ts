@@ -7,6 +7,7 @@ import {
   sendPush,
 } from './push';
 import { dueDeliveries } from './delivery';
+import { pushBody } from './numeric-line';
 import type { PrefsStore } from './preferences';
 
 // Scheduled push delivery — the free-tier doorbell (§5.1).
@@ -50,11 +51,13 @@ async function pushToAthlete(
   }
   const body: any = await res.json();
   const voice: string | undefined = body?.read?.voice;
+  const numbers: string = typeof body?.read?.numbers === 'string' ? body.read.numbers : '';
   if (!voice) return false;
 
   const tokens = await getDeviceTokens(athleteId);
   for (const token of tokens) {
-    const r = await sendPush(token, { title, body: trimBody(voice) });
+    // Numbers first (PRD §5.A.2); the weekly read has none and sends the voice.
+    const r = await sendPush(token, { title, body: numbers ? pushBody(numbers, voice) : trimBody(voice) });
     if (r.reason === 'BadDeviceToken' || r.reason === 'Unregistered') {
       await removeDeviceToken(token);
     } else if (!r.ok) {

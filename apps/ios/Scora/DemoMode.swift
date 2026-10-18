@@ -31,6 +31,7 @@ enum DemoMode {
     let mean = { (xs: [Double]) in (xs.dropLast().reduce(0, +) / Double(xs.count - 1) * 10).rounded() / 10 }
     return DailyRead(
       voice: voice,
+      numbers: "Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412",
       links: [link("7:12", "sleep"), link("52ms", "hrv"), link("412 min", "load")],
       series: [
         "hrv": DriverSeries(key: "hrv", label: "HRV, nightly average", unit: "ms", points: days(hrv), baseline: mean(hrv)),
