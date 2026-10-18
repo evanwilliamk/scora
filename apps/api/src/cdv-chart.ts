@@ -21,13 +21,13 @@ export const CHART_MENU = `- weekly_miles: total run miles per week, last 8 week
 
 // `CHART: <kind>` anywhere in the reply, with or without markdown around the
 // label ("**CHART:** weekly_miles").
-const CHART_TAG = /[*_`]*\bCHART\b[*_`]*\s*:\s*[*_`]*\s*([a-z_]+)[*_`]*/i;
+const CHART_TAG = /[*_`\[(]*\bCHART\b[*_`]*\s*:\s*[*_`]*\s*([a-z]+(?:[_ ][a-z]+)?)[*_`\])]*/i;
 
 // Unknown kinds and `none` give null.
 export function parseChartKind(text: string): ChartKind | null {
   const m = CHART_TAG.exec(text);
   if (!m) return null;
-  const k = m[1].toLowerCase();
+  const k = m[1].toLowerCase().replace(/ /g, '_');
   return (CHART_KINDS as readonly string[]).includes(k) ? (k as ChartKind) : null;
 }
 
@@ -38,7 +38,8 @@ export function stripChartLine(text: string): string {
   for (const line of text.split('\n')) {
     if (!CHART_TAG.test(line)) { out.push(line); continue; }
     const rest = line.replace(new RegExp(CHART_TAG.source, 'gi'), '').trimEnd();
-    if (rest.trim() !== '') out.push(rest);
+    // Drop what's left if it is only punctuation ("CHART: weekly_miles.").
+    if (/[\p{L}\p{N}]/u.test(rest)) out.push(rest);
   }
   return out.join('\n');
 }
@@ -94,9 +95,15 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
 
   if (kind === 'recent_pace' || kind === 'recent_hr') {
     const last = runs.slice(0, 10).reverse();
+    // Two runs on one day (doubles) get distinct labels so they don't share
+    // an x position.
+    const seenLabel = new Map<string, number>();
     const values = last
       .map((a, order) => {
-        const date = dayLabel(a);
+        const base = dayLabel(a);
+        const n = (seenLabel.get(base) ?? 0) + 1;
+        seenLabel.set(base, n);
+        const date = n === 1 ? base : `${base} (${n})`;
         if (kind === 'recent_hr') {
           return typeof a.average_heartrate === 'number' ? { date, order, value: Math.round(a.average_heartrate) } : null;
         }

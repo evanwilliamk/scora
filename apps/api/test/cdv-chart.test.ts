@@ -109,3 +109,16 @@ test('weeks older than the fetched data are left out, not drawn as zero', () => 
 test('no styling config is sent (the app owns colors and fonts)', () => {
   for (const k of CHART_KINDS) assert.equal('config' in (buildChartSpec(k, acts, now) as object), false, k);
 });
+
+test('tag leftovers never become the voice; spaced kinds parse (re-review)', () => {
+  assert.equal(stripChartLine('CHART: weekly_miles.\nMETRIC: a | VALUE: 1'), 'METRIC: a | VALUE: 1');
+  assert.equal(stripChartLine('Voice.\n[CHART: weekly_miles]'), 'Voice.');
+  assert.equal(parseChartKind('CHART: weekly miles'), 'weekly_miles');
+  assert.equal(stripChartLine('Load is up. CHART: weekly miles'), 'Load is up.');
+});
+
+test('doubles get distinct x labels', () => {
+  const spec: any = buildChartSpec('recent_hr', [run(0, 5, 45, 150), { ...run(0, 3, 30, 140), start_date: new Date(now - 3600e3).toISOString(), start_date_local: new Date(now - 3600e3).toISOString() }, run(2, 5, 45, 145)], now);
+  const labels = spec.data.values.map((v: any) => v.date);
+  assert.equal(new Set(labels).size, labels.length, labels.join(','));
+});
