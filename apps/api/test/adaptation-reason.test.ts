@@ -56,6 +56,13 @@ test('lines that break a rule are caught, each with a named issue', () => {
     ["Tuesday's intervals moved to Thursday, as your coach would want.", moved, /coach/],
     ["Tuesday's intervals moved to Thursday!", moved, /exclamation/],
     ['', moved, /empty/],
+    // review fixes
+    ["Tuesday's long run moved to Thursday.", moved, /names long/],
+    ["Tuesday's intervals are now steady at the same 60 minutes. HRV is 12% above your week.", downgraded, /says up for HRV/],
+    ["Tuesday's intervals moved to Thursday. Keep it easy, sleep was 5:40.", moved, /advice/],
+    ["Tuesday's intervals moved to Thursday and friday stays as is.", moved, /names Friday/],
+    ["Tuesday's intervals moved to Thursday, clear of Sat.", moved, /names Saturday/],
+    ["Tuesday's intervals moved to Thursday. Posture reads back-off after five hours of sleep.", moved, /wrong posture back-off|number in words/],
   ];
   for (const [text, d, issue] of cases) {
     const issues = reasonIssues(text, d, evidence);
