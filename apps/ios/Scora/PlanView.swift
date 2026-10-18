@@ -75,6 +75,31 @@ struct PlanErrorResponse: Decodable {
   let error: String
 }
 
+// One named change the plan engine made, from GET /api/plan/adaptations.
+// The reason is the server's sentence; the app adds nothing to it.
+struct PlanAdaptation: Decodable, Identifiable, Equatable {
+  let id: String
+  let type: String
+  let reason: String
+  let triggeredAt: String
+
+  enum CodingKeys: String, CodingKey {
+    case id, type = "adaptation_type", reason = "reason_text", triggeredAt = "triggered_at"
+  }
+}
+
+struct PlanAdaptationsResponse: Decodable {
+  let adaptations: [PlanAdaptation]
+}
+
+enum PlanChanges {
+  // Newest first, at most three: the list is a footnote to the plan, not a feed.
+  // A displaced session's "skipped" row repeats its move, so it is left out.
+  static func visible(_ rows: [PlanAdaptation]) -> [PlanAdaptation] {
+    Array(rows.filter { $0.type != "skipped" }.sorted { $0.triggeredAt > $1.triggeredAt }.prefix(3))
+  }
+}
+
 enum PlanDay {
   // Today in the athlete's own zone, so "Tue" resolves to their Tuesday.
   static func today(_ now: Date = Date(), zone: TimeZone = .current) -> String {
@@ -106,6 +131,7 @@ struct PlanView: View {
 
   @State private var text = ""
   @State private var workouts: [PlanWorkout] = []
+  @State private var changes: [PlanAdaptation] = []
   @State private var note: String?
   @State private var errorText: String?
   @State private var isSaving = false
@@ -183,6 +209,19 @@ struct PlanView: View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
       if let note { Text(note).font(.footnote).foregroundColor(.gray) }
+      if !changes.isEmpty {
+        Text("Plan changes").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
+        ForEach(changes) { c in
+          Text(c.reason)
+            .font(.footnote)
+            .foregroundColor(Color(white: 0.8))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color(white: 0.08))
+            .cornerRadius(10)
+        }
+        Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
+      }
       ForEach(workouts) { w in
         VStack(alignment: .leading, spacing: 3) {
           HStack {
@@ -215,6 +254,20 @@ struct PlanView: View {
           let decoded = try? JSONDecoder().decode(PlanListResponse.self, from: data)
     else { return }
     await MainActor.run { workouts = decoded.workouts }
+    await loadChanges()
+  }
+
+  // Named plan changes. The endpoint is off (404) until plan adaptations are
+  // switched on; then the list simply stays empty.
+  private func loadChanges() async {
+    var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations")
+    comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
+    guard let url = comps?.url,
+          let (data, resp) = try? await URLSession.shared.data(from: url),
+          (resp as? HTTPURLResponse)?.statusCode == 200,
+          let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
+    else { return }
+    await MainActor.run { changes = PlanChanges.visible(decoded.adaptations) }
   }
 
   private func savePlan() async {

@@ -72,6 +72,21 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "America/Los_Angeles")!), "2026-10-16")
     }
 
+    func testPlanAdaptationsDecodeAndShowNewestThree() throws {
+        let json = """
+        {"adaptations":[
+          {"id":"a","adaptation_type":"downgraded","original_date":null,"new_date":null,"reason_code":"posture_backoff_tempo_scheduled","reason_text":"Thursday's tempo is now an endurance run at the same 40 minutes. Today's posture reads back-off.","triggered_at":"2026-10-28T06:00:00.000Z"},
+          {"id":"b","adaptation_type":"moved","original_date":"2026-11-03","new_date":"2026-11-05","reason_code":"posture_rest_hard_scheduled","reason_text":"Tuesday's threshold session moved to Thursday.","triggered_at":"2026-11-02T06:00:00.000Z"},
+          {"id":"c","adaptation_type":"skipped","original_date":"2026-11-05","new_date":null,"reason_code":"displaced_by_move","reason_text":"Thursday's easy run gives way to Tuesday's threshold session.","triggered_at":"2026-11-02T06:00:00.000Z"},
+          {"id":"d","adaptation_type":"moved","original_date":"2026-10-20","new_date":"2026-10-22","reason_code":"posture_rest_hard_scheduled","reason_text":"Older.","triggered_at":"2026-10-19T06:00:00.000Z"},
+          {"id":"e","adaptation_type":"moved","original_date":"2026-10-13","new_date":"2026-10-15","reason_code":"posture_rest_hard_scheduled","reason_text":"Oldest.","triggered_at":"2026-10-12T06:00:00.000Z"}
+        ]}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(PlanAdaptationsResponse.self, from: json)
+        XCTAssertEqual(decoded.adaptations.count, 5)
+        XCTAssertEqual(PlanChanges.visible(decoded.adaptations).map(\.id), ["b", "a", "d"])
+    }
+
     func testSkippedNote() {
         XCTAssertNil(PlanDay.skippedNote(0))
         XCTAssertEqual(PlanDay.skippedNote(1), "1 line could not be read and was left out.")
