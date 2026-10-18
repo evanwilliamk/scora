@@ -110,6 +110,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `GET /api/calories` (last 14 days), behind `CALORIE_ENGINE=on`. Runs: ACSM running equation with uphill grade from elevation gain. Rides: Strava kilojoules when from a real power meter (`device_watts`), else a Compendium MET by average speed. Swims and other sports: no estimate in v1. Weight from the Strava profile; no weight, no estimate. HR is left out: HR equations need age and sex, which SCORA does not have.
 - Caveat: Strava sends weight only with `profile:read_all`; if the app's OAuth scope lacks it, nobody gets estimates until weight comes from HealthKit or onboarding.
 - To reverse: `apps/api/src/calories.ts`, versioned.
+### 2026-10-18: CDV daily quota resets at the athlete's midnight
+- Status: DECIDED (reversible)
+- Branch: claude/cdv-local-day (on claude/plan-adapt-job)
+- Context: the 3 queries/day count reset at UTC midnight, which is mid-evening in the US (noted 2026-10-17).
+- Choice: the app sends its local date with each CDV query; the server uses it when it is within a day of the server's date, and the stored quota day never moves backwards, so a changed phone clock buys at most one early reset. Without a date (older app builds) the UTC day is used as before.
+- To reverse: drop `quotaDay(...)` from the `/api/cdv` call in `apps/api/src/index.ts`.
 
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
