@@ -94,15 +94,21 @@ struct RacePrediction: Decodable, Equatable {
     case lowS = "low_s", highS = "high_s", usedRaces = "used_races"
   }
 
-  static func duration(_ s: Int) -> String {
-    let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
-    return h > 0 ? "\(h):\(String(format: "%02d", m))" : "\(m):\(String(format: "%02d", sec))"
+  // m:ss under an hour; h:mm otherwise. In h:mm the fast end rounds down
+  // and the slow end up, so the shown range always contains the computed one.
+  static func duration(_ s: Int, hours: Bool? = nil, roundUp: Bool = false) -> String {
+    if hours ?? (s >= 3600) {
+      let mins = roundUp ? (s + 59) / 60 : s / 60
+      return "\(mins / 60):\(String(format: "%02d", mins % 60))"
+    }
+    return "\(s / 60):\(String(format: "%02d", s % 60))"
   }
 
-  // "1:45 – 1:52" with what it rests on, or what is missing.
+  // "1:45 – 1:52": both ends in one format, chosen by the slow end.
   var headline: String? {
     guard ok, let lowS, let highS else { return nil }
-    return "\(Self.duration(lowS)) – \(Self.duration(highS))"
+    let hours = highS >= 3600
+    return "\(Self.duration(lowS, hours: hours)) – \(Self.duration(highS, hours: hours, roundUp: true))"
   }
 
   var basis: String {
@@ -183,6 +189,7 @@ struct PlanView: View {
     .background(Color.black)
     .preferredColorScheme(.dark)
     .task { await loadPlan() }
+    .task { await loadPrediction() } // independent: shown even if the plan list fails
   }
 
   private var pasteSection: some View {
@@ -268,7 +275,6 @@ struct PlanView: View {
           let decoded = try? JSONDecoder().decode(PlanListResponse.self, from: data)
     else { return }
     await MainActor.run { workouts = decoded.workouts }
-    await loadPrediction()
   }
 
   // Off (404) until predictions are switched on; then shown above the plan.
