@@ -224,6 +224,11 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(n.headline)
         XCTAssertEqual(n.basis, "No estimate yet: needs a run of at least 22 km in the last 8 weeks.")
         XCTAssertEqual(RacePrediction.duration(24 * 60 + 5), "24:05")
+        // Review fixes: one format across the range, slow end rounded up.
+        let mixed = #"{"prediction":{"ok":true,"race":"10k","low_s":3480,"high_s":3660,"efforts":[{"date":"2026-10-04"}],"used_races":false}}"#
+        XCTAssertEqual(try JSONDecoder().decode(PredictionResponse.self, from: mixed.data(using: .utf8)!).prediction.headline, "0:58 – 1:01")
+        let edge = #"{"prediction":{"ok":true,"race":"half_marathon","low_s":6300,"high_s":6719,"efforts":[],"used_races":false}}"#
+        XCTAssertEqual(try JSONDecoder().decode(PredictionResponse.self, from: edge.data(using: .utf8)!).prediction.headline, "1:45 – 1:52")
     }
 
     func testWorkoutExportCopiesThePlanStructure() throws {
