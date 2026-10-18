@@ -96,6 +96,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `GET /api/plan/prediction`, behind `RACE_PREDICTIONS=on`. Runs of 3 km or more from the last 8 weeks are projected to the race with Riegel (exponent 1.06); Strava-tagged races (timed start to finish) are used instead of training runs when any exist. The range spans the best three projections, never narrower than ±2%. No prediction without 3 qualifying runs, or without a long run of half the race distance (capped at 25 km). Every effort used is returned with the range. Plan progression and body state are not in v1.
 - Alternatives: VDOT tables (Daniels), or a model fitted on HR and pace. Riegel is the simplest that is honest with a range.
 - To reverse: constants in `apps/api/src/race-prediction.ts` (PREDICTION), versioned.
+### 2026-10-18: Calorie engine v1: ACSM running, measured work or METs for rides
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/calorie-engine (on claude/plan-adapt-job)
+- Context: PRD §5.B.7 lists weight, duration, HR, elevation and sport coefficients; no formula given. Burn only, never intake (CLAUDE.md §11).
+- Choice: `GET /api/calories` (last 14 days), behind `CALORIE_ENGINE=on`. Runs: ACSM running equation with uphill grade from elevation gain. Rides: Strava kilojoules when from a real power meter (`device_watts`), else a Compendium MET by average speed. Swims and other sports: no estimate in v1. Weight from the Strava profile; no weight, no estimate. HR is left out: HR equations need age and sex, which SCORA does not have.
+- Caveat: Strava sends weight only with `profile:read_all`; if the app's OAuth scope lacks it, nobody gets estimates until weight comes from HealthKit or onboarding.
+- To reverse: `apps/api/src/calories.ts`, versioned.
 
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)

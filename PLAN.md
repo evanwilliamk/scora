@@ -78,6 +78,7 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 - [~] HealthKit dated nights from the app, so athletes without Oura get sleep, HRV and resting HR charts (`claude/healthkit-nights`, on `claude/inline-charts`)
 - [~] Race predictions v1 (PRD §5.B.6): range from recent efforts, `RACE_PREDICTIONS=on` (`claude/race-predictions`, on `claude/plan-adapt-job`; API only, no iOS display yet)
 - [~] Race predictions v1 (PRD §5.B.6): range from recent efforts, `RACE_PREDICTIONS=on` (`claude/race-predictions`, on `claude/plan-adapt-job`; shown on the Your Plan sheet by `claude/ios-race-prediction`)
+- [~] Calorie engine v1 (PRD §5.B.7): burn estimates with method and inputs, `CALORIE_ENGINE=on` (`claude/calorie-engine`, on `claude/plan-adapt-job`; API only; needs weight from Strava `profile:read_all` or HealthKit)
 - [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
 - [~] (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; runs with the daily read, see DECISIONS) Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
