@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Race predictions v1: Riegel range from recent efforts
+- Status: DECIDED (reversible); the formula is a coaching call worth a look
+- Branch: claude/race-predictions (on claude/plan-adapt-job)
+- Context: PRD §5.B.6 asks for a range from current fitness, plan progression, recent races and body state; it gives no formula.
+- Choice: `GET /api/plan/prediction`, behind `RACE_PREDICTIONS=on`. Runs of 3 km or more from the last 8 weeks are projected to the race with Riegel (exponent 1.06); Strava-tagged races (timed start to finish) are used instead of training runs when any exist. The range spans the best three projections, never narrower than ±2%. No prediction without 3 qualifying runs, or without a long run of half the race distance (capped at 25 km). Every effort used is returned with the range. Plan progression and body state are not in v1.
+- Alternatives: VDOT tables (Daniels), or a model fitted on HR and pace. Riegel is the simplest that is honest with a range.
+- To reverse: constants in `apps/api/src/race-prediction.ts` (PREDICTION), versioned.
+
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-adapt-job (on plan-schema + plan-assembler + driver-record)
