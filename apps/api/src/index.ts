@@ -26,6 +26,11 @@ import { startScheduler } from './scheduler';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore } from './plan-adapt';
+import {
+  GenerateError, generatePlan, generationEnabled, parseGenerateRequest, supabaseGenerateStore,
+} from './plan-generate';
+import { TEMPLATE_DIR, loadTemplates } from '../../../packages/plan-engine/src/index';
+import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -710,6 +715,36 @@ fastify.get('/api/plan', async (request, reply) => {
   } catch (e) {
     fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Loading the plan failed.' });
+  }
+});
+
+// SCORA plan generation (doc 07 v2 §6.1). Reviewed templates only; drafts
+// never load here. Off unless PLAN_GENERATION=on; Plan tier gating waits for
+// the Stripe item.
+let _templates: PlanTemplate[] | null = null;
+fastify.post('/api/plan/generate', async (request, reply) => {
+  if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const body = (request.body as any) || {};
+  if (!body.athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  const today = isoDay(body.today) ?? new Date().toISOString().slice(0, 10);
+  try {
+    _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
+    const req = parseGenerateRequest(body);
+    planStore(); // same env check and client
+    const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(_planSb!));
+    return reply.send({
+      planId,
+      template: { slug: plan.template_slug, version: plan.template_version },
+      start_date: plan.start_date,
+      end_date: plan.end_date,
+      workouts: plan.workouts.length,
+    });
+  } catch (e) {
+    if (e instanceof GenerateError) {
+      return reply.code(e.code === 'bad_request' ? 400 : 422).send({ error: e.message, code: e.code });
+    }
+    fastify.log.error(`Plan generation failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Building the plan failed.' });
   }
 });
 
