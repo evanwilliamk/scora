@@ -258,6 +258,15 @@ struct DashboardView: View {
   // MARK: Networking
 
   private func loadRead() async {
+    #if DEBUG
+    if DemoMode.isOn {
+      await MainActor.run {
+        read = DemoMode.read
+        if DemoMode.opensChart { chartSeries = DemoMode.read.series?["hrv"] }
+      }
+      return
+    }
+    #endif
     guard let url = URL(string: "\(apiBase)/api/read") else { return }
     await MainActor.run { isLoading = true; errorText = nil }
 

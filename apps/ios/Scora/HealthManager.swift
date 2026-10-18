@@ -24,6 +24,9 @@ final class HealthManager {
   }
 
   func requestAuthorization() async -> Bool {
+    #if DEBUG
+    if DemoMode.isOn { return false } // no system prompts over the demo screen
+    #endif
     guard HKHealthStore.isHealthDataAvailable() else { return false }
     do {
       try await store.requestAuthorization(toShare: [], read: readTypes)
