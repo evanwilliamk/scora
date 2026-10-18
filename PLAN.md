@@ -61,6 +61,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
 - [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
 - [~] Inline chart-expansion (Plan tier, CLAUDE.md §3.4): drivers in the read link to 28-day charts, behind `INLINE_CHARTS=on` (`claude/inline-charts`, stacked on `claude/plan-adapt-job`; API + iOS, ScoraTests pass on the simulator, not seen in the running app because the API flag is off in production)
+- [~] HealthKit dated nights from the app, so athletes without Oura get sleep, HRV and resting HR charts (`claude/healthkit-nights`, on `claude/inline-charts`)
 - [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
 - [~] (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; runs with the daily read, see DECISIONS) Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging

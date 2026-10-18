@@ -9,6 +9,47 @@ struct HealthSummary: Codable {
   var hrvMs: Double?
   var restingHr: Double?
   var hrvWeekAvgMs: Double?
+  // Dated nights (oldest first) for the inline charts. Only days with a
+  // recorded value appear; nothing is filled in.
+  var nights: [HealthNight]?
+}
+
+struct HealthNight: Codable, Equatable {
+  let day: String // YYYY-MM-DD, local
+  var sleepSeconds: Double?
+  var hrvMs: Double?
+  var restingHr: Double?
+}
+
+enum HealthNights {
+  // Sleep counts toward the local day it ended on (the morning you woke);
+  // HRV and resting HR are the mean of that day's samples.
+  static func group(
+    sleep: [(start: Date, end: Date)],
+    hrv: [(date: Date, value: Double)],
+    restingHr: [(date: Date, value: Double)],
+    calendar: Calendar = .current
+  ) -> [HealthNight] {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = calendar.timeZone
+    f.dateFormat = "yyyy-MM-dd"
+    var nights: [String: HealthNight] = [:]
+    func touch(_ day: String, _ edit: (inout HealthNight) -> Void) {
+      var n = nights[day] ?? HealthNight(day: day)
+      edit(&n)
+      nights[day] = n
+    }
+    for s in sleep where s.end > s.start {
+      touch(f.string(from: s.end)) { $0.sleepSeconds = ($0.sleepSeconds ?? 0) + s.end.timeIntervalSince(s.start) }
+    }
+    func means(_ xs: [(date: Date, value: Double)]) -> [String: Double] {
+      Dictionary(grouping: xs, by: { f.string(from: $0.date) }).mapValues { $0.map(\.value).reduce(0, +) / Double($0.count) }
+    }
+    for (day, v) in means(hrv) { touch(day) { $0.hrvMs = (v * 10).rounded() / 10 } }
+    for (day, v) in means(restingHr) { touch(day) { $0.restingHr = v.rounded() } }
+    return nights.values.sorted { $0.day < $1.day }
+  }
 }
 
 final class HealthManager {
@@ -44,11 +85,13 @@ final class HealthManager {
     async let hrv = latestHRV()
     async let rhr = latestRestingHR()
     async let hrvAvg = weekAvgHRV()
+    async let nights = recentNights()
     let summary = HealthSummary(
       sleepSeconds: await sleep,
       hrvMs: await hrv,
       restingHr: await rhr,
-      hrvWeekAvgMs: await hrvAvg
+      hrvWeekAvgMs: await hrvAvg,
+      nights: await nights
     )
     if summary.sleepSeconds == nil && summary.hrvMs == nil && summary.restingHr == nil {
       return nil
@@ -97,6 +140,36 @@ final class HealthManager {
       }
       store.execute(query)
     }
+  }
+
+  // The last 28 days, grouped into dated nights (HealthNights.group).
+  private func recentNights(days: Double = 28) async -> [HealthNight]? {
+    let start = Date().addingTimeInterval(-days * 24 * 3600)
+    let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [])
+    func samples(_ type: HKSampleType) async -> [HKSample] {
+      await withCheckedContinuation { continuation in
+        let q = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, s, _ in
+          continuation.resume(returning: s ?? [])
+        }
+        store.execute(q)
+      }
+    }
+    guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis),
+          let hrvType = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN),
+          let rhrType = HKObjectType.quantityType(forIdentifier: .restingHeartRate) else { return nil }
+    let asleep = (await samples(sleepType)).compactMap { $0 as? HKCategorySample }.filter { s in
+      if #available(iOS 16.0, *) {
+        return s.value != HKCategoryValueSleepAnalysis.inBed.rawValue && s.value != HKCategoryValueSleepAnalysis.awake.rawValue
+      } else {
+        return s.value == HKCategoryValueSleepAnalysis.asleep.rawValue
+      }
+    }
+    let ms = HKUnit.secondUnit(with: .milli)
+    let bpm = HKUnit.count().unitDivided(by: .minute())
+    let hrv = (await samples(hrvType)).compactMap { $0 as? HKQuantitySample }.map { (date: $0.endDate, value: $0.quantity.doubleValue(for: ms)) }
+    let rhr = (await samples(rhrType)).compactMap { $0 as? HKQuantitySample }.map { (date: $0.endDate, value: $0.quantity.doubleValue(for: bpm)) }
+    let nights = HealthNights.group(sleep: asleep.map { (start: $0.startDate, end: $0.endDate) }, hrv: hrv, restingHr: rhr)
+    return nights.isEmpty ? nil : nights
   }
 
   private func latestHRV() async -> Double? {

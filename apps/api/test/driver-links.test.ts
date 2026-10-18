@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDriverSeries, linkDrivers } from '../src/driver-links';
+import { buildDriverSeries, linkDrivers, parseHealthNights } from '../src/driver-links';
 import type { SeriesKey } from '../src/driver-links';
 import type { Driver } from '../src/metrics';
 
@@ -77,4 +77,23 @@ test('Oura nights: only recorded values, oldest first, at least two points', () 
   const one = buildDriverSeries([], { sleepSeconds: 1, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null,
     nights: [{ day: '2026-10-18', sleepSeconds: 25920, hrvMs: 52, restingHr: 48 }] }, '2026-10-18');
   assert.deepEqual(Object.keys(one), []);
+});
+
+test('HealthKit nights from the app: malformed days and implausible values are dropped, not charted', () => {
+  const nights = parseHealthNights([
+    { day: '2026-10-16', sleepSeconds: 27000, hrvMs: 44, restingHr: 49 },
+    { day: '2026-10-17', sleepSeconds: 999999, hrvMs: 51, restingHr: 5 },
+    { day: '2026-10-17', sleepSeconds: 20000 }, // duplicate day
+    { day: 'yesterday', sleepSeconds: 20000 },
+    { day: '2026-10-18', hrvMs: 'high' },
+    null,
+  ]);
+  assert.deepEqual(nights, [
+    { day: '2026-10-16', sleepSeconds: 27000, hrvMs: 44, restingHr: 49 },
+    { day: '2026-10-17', sleepSeconds: null, hrvMs: 51, restingHr: null },
+  ]);
+  assert.deepEqual(parseHealthNights('nope'), []);
+  assert.equal(parseHealthNights(Array.from({ length: 50 }, (_, i) => ({ day: `2026-09-${String((i % 28) + 1).padStart(2, '0')}`, hrvMs: 40 }))).length, 28);
+  const s = buildDriverSeries([], { sleepSeconds: null, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null, nights }, '2026-10-18');
+  assert.deepEqual(s.hrv!.points, [{ date: '2026-10-16', value: 44 }, { date: '2026-10-17', value: 51 }]);
 });
