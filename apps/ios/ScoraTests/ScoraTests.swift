@@ -158,6 +158,16 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(DriverSeries.format(52, unit: "ms"), "52 ms")
     }
 
+    func testChartDaysAreLocalAndImpossibleDaysAreDropped() {
+        let ny = TimeZone(identifier: "America/New_York")!
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = ny
+        let d = DriverSeries.localDay("2026-10-18", zone: ny)!
+        XCTAssertEqual(cal.component(.day, from: d), 18, "a US local day stays on its own date")
+        XCTAssertNil(DriverSeries.localDay("2026-02-31"))
+        XCTAssertNil(DriverSeries.localDay("soon"))
+    }
+
     func testReadWithoutChartsStillDecodes() throws {
         let json = #"{"read":{"voice":"Plain read."},"cards":[],"generatedAt":null}"#.data(using: .utf8)!
         let r = try JSONDecoder().decode(ReadResponse.self, from: json)

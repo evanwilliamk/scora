@@ -696,11 +696,16 @@ Write today's read using only these drivers.`;
     // (CLAUDE.md §3.4). Spans are found in code on the validated text.
     let charts: { links: ReturnType<typeof linkDrivers>; series: ReturnType<typeof buildDriverSeries> } | undefined;
     if (inlineChartsEnabled()) {
-      const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
-      const series = buildDriverSeries(activities, ouraSummary, today);
-      const links = linkDrivers(voice, readDrivers, new Set(Object.keys(series) as SeriesKey[]));
-      const used = new Set(links.map((l) => l.key));
-      charts = { links, series: Object.fromEntries(Object.entries(series).filter(([k]) => used.has(k as SeriesKey))) };
+      // Charts are extra: any failure leaves the read as plain text.
+      try {
+        const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+        const series = buildDriverSeries(activities, ouraSummary, today);
+        const links = linkDrivers(voice, readDrivers, new Set(Object.keys(series) as SeriesKey[]));
+        const used = new Set(links.map((l) => l.key));
+        charts = { links, series: Object.fromEntries(Object.entries(series).filter(([k]) => used.has(k as SeriesKey))) };
+      } catch (e) {
+        fastify.log.error(`Inline charts failed for ${athleteId}: ${e instanceof Error ? e.message : e}`);
+      }
     }
 
     return reply.send({
