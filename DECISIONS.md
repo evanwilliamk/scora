@@ -6,7 +6,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Status: DECIDED (reversible); turning it on is NEEDS EVAN (small OpenAI cost per adaptation)
 - Branch: claude/adaptation-reason-llm (on claude/plan-adapt-job)
 - Context: CLAUDE.md §6.4 has the LLM write the adaptation reason ("Moved to Wednesday because you slept 5.5 hours last night"); until now the stored reason was a fixed sentence.
-- Choice: behind `ADAPTATION_REASON_LLM=on` (default off) and only when adaptations are on. One gpt-4o-mini call per adaptation with the decided change, today's posture and the posture's drivers. Code rejects a line that names the wrong or an extra weekday, cites a number not in the drivers, advises or asks, says "coach", runs past two sentences or 220 characters, or hits the banned-phrase validator; then the fixed sentence is stored and the issues are logged. No retry.
+- Choice: behind `ADAPTATION_REASON_LLM=on` (default off) and only when adaptations are on. One gpt-4o-mini call per adaptation with the decided change, today's posture and the posture's drivers. Code rejects a line that names the wrong or an extra weekday (any case, short forms), names another session type, names the wrong posture, describes a signed driver in the wrong direction ("-12%" as "above"), spells a number out, cites a number not in the drivers, advises or asks, says "coach", runs past two sentences or 220 characters, or hits the banned-phrase validator (review fixes); then the fixed sentence is stored and the issues are logged. No retry.
 - Prompt copy is yours to change (`apps/api/src/adaptation-reason.ts`, SYSTEM).
 - To reverse: leave the flag off; nothing else changes.
 

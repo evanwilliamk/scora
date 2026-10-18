@@ -221,6 +221,8 @@ test('a reason writer, when given, words the stored reason and gets the fixed se
   assert.match(fallbackSeen, /^Thursday's tempo is now an endurance run at the same 40 minutes\./);
   const [a] = await store.recent('r1', 1);
   assert.equal(a.reason_text, "Thursday's tempo is now an endurance run. HRV sits under your week.");
+});
+
 test('review fixes: recent() shows only changes on an active plan, and not dismissed ones', async () => {
   await seedPlan('v1', templateId);
   await adaptTomorrow('v1', '2026-10-28', 'back-off', store, DRAFTS);
