@@ -62,6 +62,7 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
 - [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
 - [~] iOS: send the local date with `/api/read`; Your Plan sheet shows the last 3 named plan changes from `GET /api/plan/adaptations` (`claude/ios-plan-changes`, stacked on `claude/plan-adapt-job`; ScoraTests pass on the simulator, not seen in the running app because the endpoint is not deployed)
+- [~] Adaptation reason text from gpt-4o-mini (CLAUDE.md §6.4), checked in code, fixed sentence as fallback, behind `ADAPTATION_REASON_LLM=on` (`claude/adaptation-reason-llm`, stacked on `claude/plan-adapt-job`; stub LLM in tests, never called for real)
 - [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
 - [ ] Adaptation reason text from the gpt-4o-mini prompt (CLAUDE.md §6.4), validated, with today's fixed sentence as fallback

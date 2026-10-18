@@ -75,6 +75,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `POST /api/plan/generate` behind `PLAN_GENERATION=on` (404 when off). Loads reviewed templates only. The race must fit the template from this week's Monday, otherwise `race_too_soon`; no match is `template_not_available`, never an improvised plan. Sessions before today are not stored. A new plan marks the active SCORA plan `replaced` (rows kept). Refused while a coach plan is active, with the copy "Your coach sets your plan." Triathlon sessions store `planned_type` 'other' until templates name a discipline per session. planned_description stays empty until the workout-description prompt exists.
 - Why: everything a plan contains traces to a reviewed template (CLAUDE.md §6.1, §6.3).
 - To reverse: `apps/api/src/plan-generate.ts` and migration `20261018020000_create_scora_plan.sql`.
+### 2026-10-18: Adaptation reasons worded by gpt-4o-mini, checked in code
+- Status: DECIDED (reversible); turning it on is NEEDS EVAN (small OpenAI cost per adaptation)
+- Branch: claude/adaptation-reason-llm (on claude/plan-adapt-job)
+- Context: CLAUDE.md §6.4 has the LLM write the adaptation reason ("Moved to Wednesday because you slept 5.5 hours last night"); until now the stored reason was a fixed sentence.
+- Choice: behind `ADAPTATION_REASON_LLM=on` (default off) and only when adaptations are on. One gpt-4o-mini call per adaptation with the decided change, today's posture and the posture's drivers. Code rejects a line that names the wrong or an extra weekday, cites a number not in the drivers, advises or asks, says "coach", runs past two sentences or 220 characters, or hits the banned-phrase validator; then the fixed sentence is stored and the issues are logged. No retry.
+- Prompt copy is yours to change (`apps/api/src/adaptation-reason.ts`, SYSTEM).
+- To reverse: leave the flag off; nothing else changes.
 
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
