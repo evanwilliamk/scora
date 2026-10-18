@@ -6,7 +6,7 @@
 import { addDays, daysBetween, parseDate } from './dates';
 import { REST_SLOT, WEEKDAYS } from './template-types';
 import type { ExperienceLevel, PlanTemplate, Sport, Weekday, WorkoutStep } from './template-types';
-import { scaleStructure, structureMinutes, phaseOf, templateWeekMinutes, workoutFor } from './template-loader';
+import { scaleStructure, structureMinutes, phaseOf, workoutFor } from './template-loader';
 import type { Intensity, PlannedWorkout } from './types';
 
 export class AssemblyError extends Error {
@@ -63,8 +63,9 @@ export interface AssembledPlan {
   start_date: string;
   end_date: string;
   goal_race_date: string | null;
-  // Planned minutes per week as the template calls them (the adaptation
-  // engine's template_week_minutes).
+  // Planned minutes per week as assembled: the template call, less anything
+  // dropped on or after race day (the adaptation engine's
+  // template_week_minutes).
   week_minutes: number[];
   workouts: AssembledWorkout[];
 }
@@ -133,7 +134,8 @@ export function assemblePlan({ template: t, start_date, goal_race_date = null }:
     start_date,
     end_date,
     goal_race_date,
-    week_minutes: templateWeekMinutes(t),
+    week_minutes: Array.from({ length: t.duration_weeks }, (_, i) =>
+      workouts.filter((w) => w.week === i + 1).reduce((sum, w) => sum + w.planned_duration_min, 0)),
     workouts,
   };
 }
