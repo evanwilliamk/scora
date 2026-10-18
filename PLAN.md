@@ -50,6 +50,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 ## Later phases (not started, see the 90-day plan)
 
 - Phase 2: Stripe subscriptions, plan engine + templates, WorkoutKit, WhatsApp doorbell, inline chart-expansion
+  - [~] Plan tier DB migration: `plan_templates`, `plan_adaptations`, template/race columns on `training_plans`, WorkoutKit columns on `scheduled_workouts` (`claude/plan-schema`, stacked on `claude/manual-plan`; PGlite tests only, Evan applies it)
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`

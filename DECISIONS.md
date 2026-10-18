@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Plan tier schema shape
+- Status: DECIDED (reversible until applied to Supabase; Evan applies it)
+- Branch: claude/plan-schema (on claude/manual-plan)
+- Context: doc 07 v2 §4.2 to §4.5 key everything by users.id and make plan_templates.slug unique; the live API keys by athlete_id and athletes stay pinned to a template version.
+- Choice: athlete_id keys, as in the manual plan tables. `plan_templates` unique on (slug, version), with `status`/`reviewed_by`/`reviewed_on` (a reviewed row must name both). `training_plans` gains the template and race columns; a `scora_ai` plan must name a template and others must not; one active SCORA plan per athlete. `scheduled_workouts` gains WorkoutKit columns and allows `endurance` and `steady_state` (downgrade targets). `plan_adaptations` requires a non-blank reason_text (never silent), dates on a move, and adds `engine_version` and `dismissed_at`.
+- Why: matches the plan-engine package and the existing manual plan tables; constraints make a silent or unnamed adaptation impossible at the database level.
+- To reverse: edit `apps/api/supabase/migrations/20261018000000_plan_engine.sql` before it is applied.
+
 ### 2026-10-17: Manual plan parsing and storage
 - Status: DECIDED (review when you can)
 - Branch: claude/manual-plan
