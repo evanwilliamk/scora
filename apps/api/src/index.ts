@@ -12,7 +12,7 @@ import {
   fetchOuraSummary,
   OURA_CLIENT_ID,
 } from './oura';
-import { consumeCdvQuota, pingDatabase } from './usage';
+import { consumeCdvQuota, pingDatabase, quotaDay } from './usage';
 import { generateValidatedVoice } from './voice';
 import { validateVoice, buildFallbackVoice } from './validator';
 import {
@@ -404,7 +404,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     // breaking the chat. A soft cap must never take down core functionality.
     let quota = null;
     try {
-      quota = await consumeCdvQuota(athleteId);
+      quota = await consumeCdvQuota(athleteId, undefined, undefined, quotaDay((request.body as any)?.today));
     } catch (e) {
       fastify.log.error('CDV quota check failed — allowing query (fail-open):', e);
     }

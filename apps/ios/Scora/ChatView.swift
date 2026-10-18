@@ -316,7 +316,9 @@ struct ChatView: View {
     let body: [String: String] = [
       "message": message,
       "stravaToken": tokenManager.stravaToken,
-      "athleteId": tokenManager.athleteId
+      "athleteId": tokenManager.athleteId,
+      // The daily query count resets at the athlete's own midnight.
+      "today": PlanDay.today()
     ]
     req.httpBody = try? JSONSerialization.data(withJSONObject: body)
     

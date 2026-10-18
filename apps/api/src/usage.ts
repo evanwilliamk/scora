@@ -37,18 +37,33 @@ export interface CdvQuota {
 
 const todayStr = () => new Date().toISOString().slice(0, 10); // UTC calendar day
 
+// The quota day: the athlete's local date when the app sends one, so the
+// count resets at their midnight, not at UTC midnight (evening in the US).
+// A client date more than a day from the server's is ignored, and
+// consumeCdvQuota never lets the day move backwards, so a changed clock buys
+// at most one early reset, not a fresh quota per request.
+export function quotaDay(clientDay: string | null | undefined, now: Date = new Date()): string {
+  const utc = now.toISOString().slice(0, 10);
+  if (!clientDay || !/^\d{4}-\d{2}-\d{2}$/.test(clientDay)) return utc;
+  const t = Date.parse(`${clientDay}T00:00:00Z`);
+  if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== clientDay) return utc;
+  return Math.abs(t - Date.parse(`${utc}T00:00:00Z`)) <= 86_400_000 ? clientDay : utc;
+}
+
 // Check the athlete's CDV usage for today and, if under the limit, count this
 // query. Returns whether the call is allowed plus usage numbers for the UI.
 //
 // Read-modify-write (not atomic). At single-user scale a race could at worst
 // permit an occasional extra query — acceptable for a soft free-tier cap. If
 // this ever needs to be strict, move the increment into a Postgres RPC.
+// `supabase` and `today` are injectable for tests; production uses the
+// defaults.
 export async function consumeCdvQuota(
   athleteId: string,
-  limit: number = FREE_CDV_DAILY_LIMIT
+  limit: number = FREE_CDV_DAILY_LIMIT,
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+  today: string = todayStr()
 ): Promise<CdvQuota> {
-  const supabase = getSupabase();
-  const today = todayStr();
 
   const { data: athlete, error } = await supabase
     .from('athletes')
@@ -60,8 +75,9 @@ export async function consumeCdvQuota(
     throw new Error('Athlete not found — please reconnect Strava.');
   }
 
-  // A new day resets the count.
-  const usedBefore = athlete.cdv_count_date === today ? athlete.cdv_count ?? 0 : 0;
+  // A new day resets the count; the day never moves backwards.
+  const day = athlete.cdv_count_date && athlete.cdv_count_date > today ? athlete.cdv_count_date : today;
+  const usedBefore = athlete.cdv_count_date === day ? athlete.cdv_count ?? 0 : 0;
 
   if (usedBefore >= limit) {
     return { allowed: false, used: usedBefore, remaining: 0, limit };
@@ -70,7 +86,7 @@ export async function consumeCdvQuota(
   const usedAfter = usedBefore + 1;
   await supabase
     .from('athletes')
-    .update({ cdv_count: usedAfter, cdv_count_date: today })
+    .update({ cdv_count: usedAfter, cdv_count_date: day })
     .eq('strava_id', String(athleteId));
 
   return { allowed: true, used: usedAfter, remaining: limit - usedAfter, limit };
