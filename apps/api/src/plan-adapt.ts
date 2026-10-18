@@ -115,6 +115,9 @@ export interface AdaptResult {
 export interface AdaptOptions {
   // Drafts never adapt in production (doc 07 v2 §8.3); tests opt in.
   allowDrafts?: boolean;
+  // Words the reason (adaptation-reason.ts). Gets the fixed sentence to fall
+  // back on; without it the fixed sentence is stored.
+  writeReason?: (decision: Exclude<AdaptationDecision, { type: 'none' }>, fallback: string) => Promise<string>;
 }
 
 // Evaluate tomorrow's workouts on the athlete's active SCORA plan against
@@ -158,6 +161,8 @@ export async function adaptTomorrow(
     const displaced = decision.type === 'moved' && decision.displaced_workout_id
       ? week.find((w) => w.id === decision.displaced_workout_id) ?? null
       : null;
+    const fixed = reasonText(decision);
+    const reason_text = opts.writeReason ? await opts.writeReason(decision, fixed) : fixed;
     const adaptation_id = await store.apply({
       athlete_id: athleteId,
       training_plan_id: plan.id,
@@ -169,7 +174,7 @@ export async function adaptTomorrow(
         : null,
       displaced_workout_id: displaced?.id ?? null,
       reason_code: decision.reason_code,
-      reason_text: reasonText(decision),
+      reason_text,
       displaced_reason_text: decision.type === 'moved' && displaced ? displacedReasonText(decision, displaced) : null,
       engine_version: ADAPTATION_ENGINE_VERSION,
     });

@@ -26,6 +26,7 @@ import { startScheduler } from './scheduler';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore, withTimeout } from './plan-adapt';
+import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -573,7 +574,19 @@ fastify.post('/api/read', async (request, reply) => {
       // fall back to the newest activity's UTC offset, never the server's UTC day.
       const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
       try {
-        await withTimeout(adaptTomorrow(String(athleteId), today, posture.result.posture, adaptStore()), 4000);
+        // Optional: gpt-4o-mini words the reason from the posture drivers,
+        // checked in code, fixed sentence on any failure (ADAPTATION_REASON_LLM).
+        const llm = reasonLlmEnabled() ? openAiReasonLlm(process.env.OPENAI_API_KEY || '') : null;
+        const opts = llm
+          ? {
+              writeReason: async (d: Parameters<typeof writeReason>[0], fallback: string) => {
+                const r = await writeReason(d, posture.evidence, llm, fallback);
+                if (r.source === 'fallback') fastify.log.info(`adaptation reason fell back: ${r.issues.join('; ')}`);
+                return r.text;
+              },
+            }
+          : {};
+        await withTimeout(adaptTomorrow(String(athleteId), today, posture.result.posture, adaptStore(), opts), llm ? 8000 : 4000);
       } catch (e) {
         fastify.log.error(`Plan adaptation failed for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       }

@@ -209,3 +209,16 @@ test('review fixes: recent() timestamps are ISO 8601 UTC, like the Supabase stor
   const [a] = await store.recent('a1', 1);
   assert.match(a.triggered_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 });
+
+test('a reason writer, when given, words the stored reason and gets the fixed sentence as its fallback', async () => {
+  await seedPlan('r1', templateId);
+  let fallbackSeen = '';
+  const [r] = await adaptTomorrow('r1', '2026-10-28', 'back-off', store, {
+    ...DRAFTS,
+    writeReason: async (_d, fallback) => { fallbackSeen = fallback; return "Thursday's tempo is now an endurance run. HRV sits under your week."; },
+  });
+  assert.ok(r.adaptation_id);
+  assert.match(fallbackSeen, /^Thursday's tempo is now an endurance run at the same 40 minutes\./);
+  const [a] = await store.recent('r1', 1);
+  assert.equal(a.reason_text, "Thursday's tempo is now an endurance run. HRV sits under your week.");
+});

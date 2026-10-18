@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Adaptation reasons worded by gpt-4o-mini, checked in code
+- Status: DECIDED (reversible); turning it on is NEEDS EVAN (small OpenAI cost per adaptation)
+- Branch: claude/adaptation-reason-llm (on claude/plan-adapt-job)
+- Context: CLAUDE.md §6.4 has the LLM write the adaptation reason ("Moved to Wednesday because you slept 5.5 hours last night"); until now the stored reason was a fixed sentence.
+- Choice: behind `ADAPTATION_REASON_LLM=on` (default off) and only when adaptations are on. One gpt-4o-mini call per adaptation with the decided change, today's posture and the posture's drivers. Code rejects a line that names the wrong or an extra weekday, cites a number not in the drivers, advises or asks, says "coach", runs past two sentences or 220 characters, or hits the banned-phrase validator; then the fixed sentence is stored and the issues are logged. No retry.
+- Prompt copy is yours to change (`apps/api/src/adaptation-reason.ts`, SYSTEM).
+- To reverse: leave the flag off; nothing else changes.
+
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-adapt-job (on plan-schema + plan-assembler + driver-record)
