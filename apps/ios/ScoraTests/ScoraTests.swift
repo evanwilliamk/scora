@@ -44,6 +44,117 @@ final class ScoraTests: XCTestCase {
         }
     }
 
+    // MARK: - Card expansion
+
+    func testCardExpansionDecodes() throws {
+        let json = #"{"cardId":"sleep","reply":"Sleep 7:12 held for a second night.","drivers":[],"generated":true}"#
+        let e = try JSONDecoder().decode(CardExpansion.self, from: Data(json.utf8))
+        XCTAssertEqual(e.cardId, "sleep")
+        XCTAssertEqual(e.generated, true)
+    }
+
+    func testStaleExpansionIsDropped() {
+        XCTAssertTrue(CardExpansion.isCurrent(requested: 3, current: 3))
+        XCTAssertFalse(CardExpansion.isCurrent(requested: 2, current: 3))
+    }
+
+    func testCardExpansionFallsBackToTranslation() {
+        XCTAssertEqual(CardExpansion.text(reply: "Read.", translation: "Card."), "Read.")
+        XCTAssertEqual(CardExpansion.text(reply: nil, translation: "Card."), "Card.")
+        XCTAssertEqual(CardExpansion.text(reply: "  ", translation: "Card."), "Card.")
+        XCTAssertNil(CardExpansion.text(reply: nil, translation: ""))
+    }
+
+    // MARK: - Oura deep link
+
+    func testOuraSuccessLink() throws {
+        let r = try XCTUnwrap(OuraLinkResult(url: URL(string: "scora://oura/success")!))
+        XCTAssertTrue(r.connected)
+    }
+
+    func testOuraFailedLinkReadsReason() throws {
+        let cancelled = try XCTUnwrap(OuraLinkResult(url: URL(string: "scora://oura/failed?reason=cancelled")!))
+        XCTAssertFalse(cancelled.connected)
+        XCTAssertTrue(cancelled.message.contains("was not connected"))
+        let other = try XCTUnwrap(OuraLinkResult(url: URL(string: "scora://oura/failed?reason=exchange")!))
+        XCTAssertTrue(other.message.contains("Nothing changed"))
+    }
+
+    func testOtherLinksAreNotOuraResults() {
+        XCTAssertNil(OuraLinkResult(url: URL(string: "scora://auth/success?athlete_id=1")!))
+        XCTAssertNil(OuraLinkResult(url: URL(string: "https://oura/success")!))
+        XCTAssertNil(OuraLinkResult(url: URL(string: "scora://oura/elsewhere")!))
+    }
+
+    func testOuraBannerCopyHasNoExclamationOrEmoji() throws {
+        for link in ["scora://oura/success", "scora://oura/failed?reason=cancelled", "scora://oura/failed"] {
+            let m = try XCTUnwrap(OuraLinkResult(url: URL(string: link)!)).message
+            XCTAssertFalse(m.contains("!"))
+            XCTAssertFalse(m.unicodeScalars.contains { $0.properties.isEmojiPresentation })
+        }
+    }
+
+    // MARK: - Manual plan
+
+    func testPlanWorkoutDecodesBothShapes() throws {
+        let parsed = try JSONDecoder().decode(PlanSaveResponse.self, from: Data(#"{"planId":"p","workouts":[{"date":"2026-10-20","type":"run","intensity":"tempo","duration_min":45,"distance_km":null,"description":"45 min tempo"}],"rejected":["duration 60 min is not in the text"]}"#.utf8))
+        XCTAssertEqual(parsed.workouts.first?.durationMin, 45)
+        XCTAssertEqual(parsed.rejected.count, 1)
+
+        let stored = try JSONDecoder().decode(PlanListResponse.self, from: Data(#"{"today":"2026-10-17","workouts":[{"id":"w","scheduled_date":"2026-10-18","planned_type":"run","planned_intensity":"long","planned_duration_min":null,"planned_distance_km":25.75,"planned_description":"long run 16 mi easy"}]}"#.utf8))
+        let w = try XCTUnwrap(stored.workouts.first)
+        XCTAssertEqual(w.date, "2026-10-18")
+        XCTAssertEqual(w.intensity, "long")
+        XCTAssertEqual(w.distanceKm, 25.75)
+    }
+
+    func testPlanWorkoutLabels() {
+        let w = PlanWorkout(date: "2026-10-20", type: "run", intensity: "tempo", durationMin: 45, distanceKm: 8, description: nil)
+        XCTAssertEqual(w.dayLabel, "Tue Oct 20")
+        XCTAssertEqual(w.detail, "tempo · 45 min · 8 km")
+        let ride = PlanWorkout(date: "2026-10-24", type: "ride", intensity: nil, durationMin: nil, distanceKm: 25.75, description: nil)
+        XCTAssertEqual(ride.detail, "ride · 25.8 km")
+    }
+
+    func testPlanTodayUsesTheGivenZone() {
+        let instant = Date(timeIntervalSince1970: 1_792_195_200) // 2026-10-17 00:00 UTC
+        XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "UTC")!), "2026-10-17")
+        XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "America/Los_Angeles")!), "2026-10-16")
+    }
+
+    func testSkippedNote() {
+        XCTAssertNil(PlanDay.skippedNote(0))
+        XCTAssertEqual(PlanDay.skippedNote(1), "1 line could not be read and was left out.")
+        XCTAssertEqual(PlanDay.skippedNote(3), "3 lines could not be read and were left out.")
+    }
+
+    // MARK: - Onboarding
+
+    func testOnboardingStepsRunInSpecOrder() {
+        XCTAssertEqual(OnboardingStep.allCases, [.oura, .health, .plan, .delivery, .done])
+        XCTAssertEqual(OnboardingStep.oura.next, .health)
+        XCTAssertNil(OnboardingStep.done.next)
+    }
+
+    func testDeliveryMinuteAndZoneLabel() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let t = cal.date(from: DateComponents(year: 2026, month: 10, day: 17, hour: 6, minute: 30))!
+        XCTAssertEqual(OnboardingState.deliveryMinute(from: t, calendar: cal), 390)
+        XCTAssertEqual(OnboardingState.zoneLabel(TimeZone(identifier: "America/Los_Angeles")!), "Los Angeles")
+    }
+
+    // Flag logic only: saveToken is not called here because it can register
+    // a device with the production API.
+    func testOnboardingFlagIsReadAtLaunchAndClearedOnFinish() {
+        OnboardingState.needsOnboarding = true
+        let tm = TokenManager()
+        XCTAssertTrue(tm.needsOnboarding)
+        tm.finishOnboarding()
+        XCTAssertFalse(OnboardingState.needsOnboarding)
+        XCTAssertFalse(TokenManager().needsOnboarding)
+    }
+
     // MARK: - CDV chart
 
     private func decode(_ json: String) throws -> CDVResponse {

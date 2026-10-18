@@ -4,7 +4,7 @@ import { loadPatterns, validateEntry, PatternSchemaError } from '../src/loader';
 
 test('the shipped library loads and is internally consistent', () => {
   const entries = loadPatterns();
-  assert.ok(entries.length >= 7, `expected >=7 entries, got ${entries.length}`);
+  assert.ok(entries.length >= 12, `expected >=12 entries, got ${entries.length}`);
 
   // sorted by descending priority
   for (let i = 1; i < entries.length; i++) {

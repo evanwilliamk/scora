@@ -1,0 +1,21 @@
+# Pattern Library v0.3 — doc 06 §6.12 (Coach tier only)
+# Coach sent an in-app message in the last 24 hours. Point to it, gently.
+id: coach-recent-message-acknowledge-v1
+priority: 45
+posture_filter: [primed, steady, moderate, back-off]
+requires_scheduled_workout: false
+tier_filter: [coach]
+driver_rule: |
+  coach_message_last_24h = true
+context_filter: [daily]
+min_data_completeness: 0.2
+voice_version: v0.3.0
+tone_notes: |
+  Voice doesn't speak FOR the coach. Just acknowledges they wrote.
+slot_drivers:
+  - coach_name
+template: |
+  {{coach_name}} sent you a note yesterday — worth a look before today.
+llm_hint: |
+  Never summarize the coach's message. That's coach-competing. Just point to it.
+exclude_if_recently_fired: 2

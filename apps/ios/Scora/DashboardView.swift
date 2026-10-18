@@ -18,10 +18,55 @@ struct DashboardCard: Decodable, Identifiable {
   let cta: String?
 }
 
+// /api/card-expand reply: a 2-3 sentence read of one card.
+struct CardExpansion: Decodable {
+  let cardId: String
+  let reply: String
+  let generated: Bool?
+
+  // An expansion requested before the latest read cites old numbers.
+  static func isCurrent(requested: Int, current: Int) -> Bool { requested == current }
+
+  // What an open card shows: the expansion once it lands, else the card's own
+  // translation. An empty reply never blanks the card.
+  static func text(reply: String?, translation: String?) -> String? {
+    if let reply, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return reply }
+    if let translation, !translation.isEmpty { return translation }
+    return nil
+  }
+}
+
 struct ReadResponse: Decodable {
   let read: DailyRead
   let cards: [DashboardCard]
   let generatedAt: String?
+}
+
+// Outcome of the Oura OAuth round trip, from scora://oura/success or
+// scora://oura/failed?reason=...
+struct OuraLinkResult: Equatable {
+  static let notification = Notification.Name("ouraLinkResult")
+
+  let connected: Bool
+  let message: String
+
+  init?(url: URL) {
+    guard url.scheme == "scora", url.host == "oura" else { return nil }
+    switch url.path {
+    case "/success":
+      connected = true
+      message = "Oura connected. Sleep and recovery now read from your ring."
+    case "/failed":
+      connected = false
+      let reason = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+        .queryItems?.first(where: { $0.name == "reason" })?.value
+      message = reason == "cancelled"
+        ? "Oura was not connected. You can try again from the Sleep card."
+        : "Oura did not connect. Nothing changed; try again from the Sleep card."
+    default:
+      return nil
+    }
+  }
 }
 
 // MARK: - View
@@ -35,8 +80,14 @@ struct DashboardView: View {
   @State private var isLoading = false
   @State private var errorText: String?
   @State private var expanded: Set<String> = []
+  @State private var expansions: [String: String] = [:]
+  @State private var expanding: Set<String> = []
+  // Bumped on every new read; an expansion from an older read is dropped.
+  @State private var readGeneration = 0
   @State private var showChat = false
   @State private var showWeekly = false
+  @State private var ouraBanner: OuraLinkResult?
+  @State private var showPlan = false
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -48,6 +99,17 @@ struct DashboardView: View {
   var body: some View {
     VStack(spacing: 0) {
       header
+      if let ouraBanner {
+        Text(ouraBanner.message)
+          .font(.footnote)
+          .foregroundColor(ouraBanner.connected ? .white : Color(white: 0.85))
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 16)
+          .padding(.vertical, 10)
+          .background(ouraBanner.connected ? Color.orange.opacity(0.25) : Color(white: 0.16))
+          .transition(.move(edge: .top).combined(with: .opacity))
+          .onTapGesture { withAnimation { self.ouraBanner = nil } }
+      }
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
           todaysRead
@@ -79,6 +141,9 @@ struct DashboardView: View {
     .sheet(isPresented: $showWeekly) {
       WeeklyView(tokenManager: tokenManager)
     }
+    .sheet(isPresented: $showPlan) {
+      PlanView(tokenManager: tokenManager)
+    }
     .task {
       if read == nil {
         _ = await HealthManager.shared.requestAuthorization()
@@ -86,6 +151,19 @@ struct DashboardView: View {
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
+      Task { await loadRead() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: OuraLinkResult.notification)) { note in
+      guard let result = note.object as? OuraLinkResult else { return }
+      withAnimation { ouraBanner = result }
+      Task {
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        await MainActor.run {
+          if ouraBanner == result { withAnimation { ouraBanner = nil } }
+        }
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
       Task { await loadRead() }
     }
   }
@@ -106,6 +184,12 @@ struct DashboardView: View {
         .font(.headline.bold())
         .foregroundColor(.white)
       Spacer()
+      Button(action: { showPlan = true }) {
+        Image(systemName: "list.bullet.rectangle")
+          .foregroundColor(.orange)
+      }
+      .accessibilityLabel("Your plan")
+      .padding(.trailing, 4)
       Button(action: { showWeekly = true }) {
         Image(systemName: "calendar")
           .foregroundColor(.orange)
@@ -200,12 +284,13 @@ struct DashboardView: View {
         }
       }
 
-      if isOpen, let translation = card.translation, !translation.isEmpty {
-        Text(translation)
+      if isOpen, let text = CardExpansion.text(reply: expansions[card.id], translation: card.translation) {
+        Text(text)
           .font(.footnote)
           .foregroundColor(Color(white: 0.75))
           .fixedSize(horizontal: false, vertical: true)
           .padding(.top, 2)
+          .opacity(expanding.contains(card.id) ? 0.6 : 1)
       }
 
       if let source = card.source {
@@ -228,10 +313,38 @@ struct DashboardView: View {
       withAnimation(.easeInOut(duration: 0.15)) {
         if isOpen { expanded.remove(card.id) } else { expanded.insert(card.id) }
       }
+      if !isOpen, expansions[card.id] == nil, !expanding.contains(card.id) {
+        Task { await loadExpansion(card.id) }
+      }
     }
   }
 
   // MARK: Networking
+
+  // Card tap-to-expand. Any failure (offline, read expired) keeps the card's
+  // own translation on screen.
+  private func loadExpansion(_ cardId: String) async {
+    guard let url = URL(string: "\(apiBase)/api/card-expand") else { return }
+    let generation = await MainActor.run { () -> Int in
+      expanding.insert(cardId)
+      return readGeneration
+    }
+    defer { Task { @MainActor in expanding.remove(cardId) } }
+
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: [
+      "athleteId": tokenManager.athleteId, "cardId": cardId,
+    ])
+    guard let (data, resp) = try? await URLSession.shared.data(for: req),
+          (resp as? HTTPURLResponse)?.statusCode == 200,
+          let decoded = try? JSONDecoder().decode(CardExpansion.self, from: data)
+    else { return }
+    await MainActor.run {
+      if CardExpansion.isCurrent(requested: generation, current: readGeneration) { expansions[cardId] = decoded.reply }
+    }
+  }
 
   private func loadRead() async {
     guard let url = URL(string: "\(apiBase)/api/read") else { return }
@@ -239,7 +352,8 @@ struct DashboardView: View {
 
     // HealthKit is on-device: read a summary and send it up so the backend can
     // fill Sleep + Recovery when Oura isn't connected.
-    var payload: [String: Any] = ["athleteId": tokenManager.athleteId]
+    // The local date lets the read find today's session in the athlete's plan.
+    var payload: [String: Any] = ["athleteId": tokenManager.athleteId, "today": PlanDay.today()]
     if let health = await HealthManager.shared.fetchSummary(),
        let encoded = try? JSONEncoder().encode(health),
        let dict = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any] {
@@ -262,6 +376,8 @@ struct DashboardView: View {
       await MainActor.run {
         read = decoded.read
         cards = decoded.cards
+        expansions = [:] // a new read means new numbers to interpret
+        readGeneration += 1
         isLoading = false
       }
     } catch {

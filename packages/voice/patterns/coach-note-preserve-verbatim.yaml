@@ -1,0 +1,25 @@
+# Pattern Library v0.3 — doc 06 §6.11 (Coach tier only)
+# The coach wrote a weekly note: preserve it verbatim, don't compete with it.
+id: coach-note-preserve-verbatim-v1
+priority: 99 # highest priority so it dominates the weekly render
+posture_filter: [primed, steady, moderate, back-off, rest, taper]
+requires_scheduled_workout: false
+tier_filter: [coach]
+driver_rule: |
+  coach_note_this_week IS NOT NULL
+context_filter: [weekly]
+min_data_completeness: 0.0
+voice_version: v0.3.0
+tone_notes: |
+  This is the humility pattern. When the coach spoke, the voice shortens itself
+  and defers. The coach's note is preserved word-for-word. SCORA's voice
+  becomes the framing, not the substance.
+slot_drivers:
+  - coach_note_this_week
+  - coach_name
+template: |
+  A week of quality work. {{coach_name}}'s note:
+llm_hint: |
+  Voice writes ONE sentence framing the week. Then the coach's note appears
+  verbatim. Never rewrite the coach's words.
+exclude_if_recently_fired: 0

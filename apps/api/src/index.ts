@@ -3,6 +3,10 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
+import { postureForRead } from './drivers';
+import { SnapshotCache, planCardExpansion } from './card-expand';
+import { CHART_MENU, parseChartKind, stripChartLine, buildChartSpec } from './cdv-chart';
+import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -22,10 +26,22 @@ import {
   apnsConfigured,
 } from './push';
 import { startScheduler } from './scheduler';
+import { resultPage, escapeHtml, scriptString, oauthErrorMessage } from './pages';
+import { supabasePrefsStore } from './preferences';
+import type { PrefsStore } from './preferences';
+import { isValidTimezone, isValidDeliveryMinute } from './delivery';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
+import { supabasePlanStore } from './plan-store';
+import { planForRead } from './plan-read';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
 const fastify = Fastify({ logger: true });
+
+// What each athlete's last read showed, for card tap-to-expand (10 min).
+const readSnapshots = new SnapshotCache();
 fastify.register(cors);
 
 fastify.get('/', async (request, reply) => {
@@ -87,11 +103,11 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
 
     if (!tokenResponse.ok) {
       const errText = await tokenResponse.text();
-      fastify.log.error('Strava token error:', errText);
+      fastify.log.error({ err: errText }, 'Strava token error');
       return reply.code(400).send({ error: 'Token exchange failed', detail: errText });
     }
 
-    const tokenData = await tokenResponse.json();
+    const tokenData: any = await tokenResponse.json();
     const athleteId = tokenData.athlete.id;
     const athleteName = tokenData.athlete.firstname;
     const accessToken = tokenData.access_token;
@@ -103,7 +119,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     try {
       await storeStravaTokens(athleteId, tokenData);
     } catch (e) {
-      fastify.log.error('Failed to persist Strava tokens:', e);
+      fastify.log.error({ err: e }, 'Failed to persist Strava tokens');
       return reply.code(500).send({
         error: 'Token storage failed',
         detail: e instanceof Error ? e.message : String(e),
@@ -134,13 +150,13 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
           <div class="container">
             <div class="logo">S</div>
             <h1>Strava Linked</h1>
-            <p>Welcome, ${athleteName}!</p>
+            <p>Welcome, ${escapeHtml(String(athleteName))}.</p>
             <p style="color: #666; font-size: 14px; margin-top: 20px;">Opening SCORA...</p>
             <a href="#" id="fallback">Open SCORA</a>
             <div class="footer"><p>If the app doesn't open, tap the button above.</p></div>
           </div>
           <script>
-            var deepLink = '${deepLink}';
+            var deepLink = ${scriptString(deepLink)};
             document.getElementById('fallback').href = deepLink;
             setTimeout(function() { window.location.href = deepLink; }, 100);
           </script>
@@ -149,7 +165,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     `;
     return reply.type('text/html').send(html);
   } catch (error) {
-    fastify.log.error('Strava exception:', error);
+    fastify.log.error({ err: error }, 'Strava exception');
     return reply.code(500).send({
       error: 'Auth failed',
       detail: error instanceof Error ? error.message : String(error),
@@ -178,60 +194,43 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
     error?: string;
   };
 
+  // Every outcome hands back to the app, which says what happened.
   if (oauthError) {
-    return reply.type('text/html').send(
-      `<html><body style="font-family:system-ui;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Oura connection cancelled</h1><p style="color:#999">${oauthError}</p></div></body></html>`
-    );
+    return reply.type('text/html').send(resultPage({
+      title: 'Oura not connected',
+      lines: [oauthErrorMessage(oauthError)],
+      deepLink: 'scora://oura/failed?reason=cancelled',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
   if (!code || !state) {
-    return reply.code(400).type('text/html').send(
-      `<html><body style="font-family:system-ui;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Missing authorization</h1><p style="color:#999">No code/state received from Oura.</p></div></body></html>`
-    );
+    return reply.code(400).type('text/html').send(resultPage({
+      title: 'Oura not connected',
+      lines: ['No authorization came back from Oura.'],
+      deepLink: 'scora://oura/failed?reason=missing',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
 
   try {
     const tokenData = await exchangeOuraCode(code);
     await storeOuraTokens(state, tokenData); // state === athleteId
   } catch (e) {
-    fastify.log.error('Oura auth failed:', e);
-    return reply.code(500).send({
-      error: 'Oura connection failed',
-      detail: e instanceof Error ? e.message : String(e),
-    });
+    fastify.log.error({ err: e }, 'Oura auth failed');
+    return reply.code(500).type('text/html').send(resultPage({
+      title: 'Oura not connected',
+      lines: ['Something went wrong linking Oura. Nothing was saved.'],
+      deepLink: 'scora://oura/failed?reason=exchange',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
 
   // Reopen the app; the dashboard reloads and the Oura cards light up.
-  const deepLink = 'scora://oura/success';
-  const html = `
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          body { background: #000; color: #fff; font-family: system-ui; margin: 0; padding: 40px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-          .container { max-width: 400px; text-align: center; }
-          .logo { font-size: 100px; margin-bottom: 20px; }
-          h1 { font-size: 40px; margin: 0 0 20px; font-weight: 700; }
-          p { color: #999; font-size: 16px; margin: 0 0 30px; }
-          a { display: inline-block; padding: 14px 32px; background: #fff; color: #000; text-decoration: none; border-radius: 4px; font-weight: 600; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="logo">S</div>
-          <h1>Oura Connected</h1>
-          <p style="color:#666;font-size:14px;margin-top:20px;">Opening SCORA...</p>
-          <a href="#" id="fallback">Open SCORA</a>
-        </div>
-        <script>
-          var deepLink = '${deepLink}';
-          document.getElementById('fallback').href = deepLink;
-          setTimeout(function() { window.location.href = deepLink; }, 100);
-        </script>
-      </body>
-    </html>
-  `;
-  return reply.type('text/html').send(html);
+  return reply.type('text/html').send(resultPage({
+    title: 'Oura connected',
+    lines: ['Opening SCORA...'],
+    deepLink: 'scora://oura/success',
+  }));
 });
 
 // CDV endpoint - simple and safe
@@ -265,7 +264,7 @@ fastify.post('/api/cdv', async (request, reply) => {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
 
-    const activities: any[] = await stravaRes.json();
+    const activities = (await stravaRes.json()) as any[];
 
     const M = 1609.34;
     const now = Date.now();
@@ -377,6 +376,8 @@ PATTERN-AWARENESS (allowed, NOT prescription):
 OUTPUT FORMAT (exactly):
 - Line 1: one-sentence voice read that directly answers the question (may include a pattern observation if relevant).
 - Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <primed|steady|moderate|back-off|rest|taper OR short trend like +12% / flat / down>
+- Last line: CHART: <kind>, the one chart that best shows the data behind your answer. SCORA draws it from the real data; you only pick the kind:
+${CHART_MENU}
 Only cite metrics that exist in the data.`;
 
     const userPrompt = `Athlete question: "${message}"
@@ -401,7 +402,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     try {
       quota = await consumeCdvQuota(athleteId);
     } catch (e) {
-      fastify.log.error('CDV quota check failed — allowing query (fail-open):', e);
+      fastify.log.error({ err: e }, 'CDV quota check failed — allowing query (fail-open)');
     }
     if (quota && !quota.allowed) {
       return reply.code(429).send({
@@ -432,12 +433,16 @@ Answer THIS question specifically using the data above. If the data can't answer
 
     if (!openaiRes.ok) {
       const err = await openaiRes.text();
-      fastify.log.error('OpenAI error:', err);
+      fastify.log.error({ err: err }, 'OpenAI error');
       return reply.code(500).send({ error: 'LLM failed', detail: err });
     }
 
-    const llmResult = await openaiRes.json();
-    const responseText = llmResult.choices[0].message.content;
+    const llmResult: any = await openaiRes.json();
+    const rawText: string = llmResult.choices[0].message.content;
+    // The LLM picks a chart kind; the spec and its data come from the activities.
+    const chartKind = parseChartKind(rawText);
+    const chart = chartKind ? buildChartSpec(chartKind, activities, now) : null;
+    const responseText = stripChartLine(rawText);
 
     // Parse voice and drivers
     const lines = responseText.split('\n');
@@ -475,9 +480,10 @@ Answer THIS question specifically using the data above. If the data can't answer
       },
       remaining: quota?.remaining,
       limit: quota?.limit,
+      ...(chart ? { chart } : {}),
     });
   } catch (error) {
-    fastify.log.error('CDV exception:', error);
+    fastify.log.error({ err: error }, 'CDV exception');
     return reply.code(500).send({ error: 'CDV failed', detail: error instanceof Error ? error.message : String(error) });
   }
 });
@@ -486,7 +492,7 @@ Answer THIS question specifically using the data above. If the data can't answer
 // six dashboard cards, all computed from the athlete's real Strava data.
 fastify.post('/api/read', async (request, reply) => {
   try {
-    const { athleteId } = (request.body as any) || {};
+    const { athleteId, today: clientToday } = (request.body as any) || {};
     if (!athleteId) {
       return reply.code(400).send({ error: 'Missing: athleteId' });
     }
@@ -501,13 +507,16 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
-    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
+    // Everything since 35 days ago (the driver record needs a full 28 days;
+    // 50 most recent activities can fall short for multi-sport athletes).
+    const after = Math.floor(Date.now() / 1000) - 35 * 86400;
+    const stravaRes = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${after}`, {
       headers: { Authorization: `Bearer ${stravaToken}` },
     });
     if (!stravaRes.ok) {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const activities: any[] = await stravaRes.json();
+    const activities = (await stravaRes.json()) as any[];
 
     // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
     // cards fall back to connect prompts. Never blocks the read on Oura errors.
@@ -547,12 +556,25 @@ fastify.post('/api/read', async (request, reply) => {
       recoverySource
     );
 
+    // Posture is decided by rules from the driver record, not by the LLM.
+    // No race source is wired yet, so race_in_next_7d stays null.
+    const posture = postureForRead(activities, recovery);
+    const postureOut = {
+      posture: posture.result.posture,
+      rule: posture.result.rule,
+      engineVersion: posture.result.engine_version,
+      completeness: posture.record.completeness,
+    };
+
+    readSnapshots.set(athleteId, { cards, drivers: [...drivers, ...posture.evidence], posture: posture.result.posture });
+
     // With no drivers there is nothing the voice can honestly say. Don't invent.
     if (drivers.length === 0) {
       return reply.send({
         read: {
           voice: 'Not enough recent activity to read yet. Once a few runs land in Strava, the morning read fills in.',
         },
+        posture: postureOut,
         cards,
         drivers,
         connections,
@@ -560,22 +582,54 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
+    // The athlete's own plan for today, if they pasted one. The read may name
+    // it; it never changes it (CLAUDE.md §1.3). Never blocks the read.
+    const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+    let plan = planForRead([], today);
+    try {
+      // A week ahead, so "nothing scheduled today" is known when a plan exists.
+      plan = planForRead(await planStore().workoutsBetween(String(athleteId), today, addDays(today, 6)), today);
+    } catch (e) {
+      fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
+    // else the curated pattern library, else nothing. Never blocks the read.
+    const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
+    const knowledge = await knowledgeForRead(
+      {
+        posture: posture.result.posture,
+        drivers: posture.record.drivers,
+        completeness: posture.record.completeness,
+        scheduled: plan.scheduled,
+      },
+      knowledgeDeps
+    );
+
+    // The numbers behind the posture are drivers too, so naming it is backed.
+    // The numbers behind the posture and today's planned session are drivers
+    // too, so naming either is backed.
+    const readDrivers = [...drivers, ...posture.evidence, ...(plan.driver ? [plan.driver] : [])];
+
     const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
 
 HARD RULES:
 - Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep, HRV, or recovery unless present).
 - Numeric-first: reference the raw value, then say what it means.
-- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". You may name a posture (primed, steady, moderate, back-off, rest, taper) as an observation, not an instruction.
+- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction.
+- The athlete's plan is theirs: never suggest skipping, moving, shortening, delaying or easing a planned session, even when the posture and the plan disagree. Name both and stop.
 - Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
 
 OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;
 
-    const driverBlock = drivers
+    const driverBlock = readDrivers
       .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
       .join('\n');
     const userPrompt = `DRIVERS (the only values you may cite):
 ${driverBlock}
 
+${posture.promptLine}${plan.promptLine ? `\n${plan.promptLine}` : ''}
+${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 
     let voice: string;
@@ -583,7 +637,7 @@ Write today's read using only these drivers.`;
       const result = await generateValidatedVoice({
         systemPrompt,
         userPrompt,
-        drivers,
+        drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers",
         log: fastify.log,
@@ -597,19 +651,171 @@ Write today's read using only these drivers.`;
       });
     }
 
+    const generatedAt = new Date().toISOString();
+    if (knowledge.mode === 'library' && knowledgeDeps.sb) {
+      recordCitations(knowledgeDeps.sb, athleteId, generatedAt, knowledge.chunks).catch((e) =>
+        fastify.log.warn(`read_citations insert failed: ${e instanceof Error ? e.message : e}`)
+      );
+    }
+
     return reply.send({
       read: { voice },
+      posture: postureOut,
+      knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
+      plan: { today: plan.driver?.value ?? null },
       cards,
-      drivers,
+      drivers: readDrivers,
       connections,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
     });
   } catch (error) {
-    fastify.log.error('Read exception:', error);
+    fastify.log.error({ err: error }, 'Read exception');
     return reply.code(500).send({
       error: 'Read failed',
       detail: error instanceof Error ? error.message : String(error),
     });
+  }
+});
+
+// Card tap-to-expand (Free tier, card level). Interprets one dashboard card
+// from the athlete's last read. Needs a read in the last 10 minutes; on 409
+// the app keeps showing the card's own translation.
+fastify.post('/api/card-expand', async (request, reply) => {
+  const { athleteId, cardId } = (request.body as any) || {};
+  if (!athleteId || !cardId) {
+    return reply.code(400).send({ error: 'Missing: athleteId, cardId' });
+  }
+  const snapshot = readSnapshots.get(String(athleteId));
+  if (!snapshot) {
+    return reply.code(409).send({ error: 'No recent read. Refresh the dashboard first.' });
+  }
+  const card = snapshot.cards.find((c) => c.id === cardId);
+  if (!card) {
+    return reply.code(404).send({ error: `Unknown card: ${cardId}` });
+  }
+
+  const plan = planCardExpansion(card, snapshot);
+  if (plan.kind === 'static') {
+    return reply.send({ cardId, reply: plan.reply, drivers: [], generated: false });
+  }
+  try {
+    const result = await generateValidatedVoice({
+      systemPrompt: plan.systemPrompt,
+      userPrompt: plan.userPrompt,
+      drivers: plan.drivers,
+      maxTokens: 150,
+      leadIn: card.title,
+      log: fastify.log,
+    });
+    return reply.send({ cardId, reply: result.voice, drivers: plan.drivers, generated: true });
+  } catch (e) {
+    fastify.log.error(`Card expansion failed: ${e instanceof Error ? e.message : e}`);
+    return reply.send({ cardId, reply: card.translation ?? '', drivers: [], generated: false });
+  }
+});
+
+// Delivery preferences (doc 09 §1.4): time zone and morning push time, set
+// in onboarding. The Supabase client is created on first use.
+let _prefs: PrefsStore | null = null;
+const prefsStore: PrefsStore = new Proxy({} as PrefsStore, {
+  get(_t, key: keyof PrefsStore) {
+    if (!_prefs) {
+      const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase env not configured');
+      _prefs = supabasePrefsStore(createSupabaseClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
+    }
+    return (_prefs[key] as any).bind(_prefs);
+  },
+});
+
+fastify.get('/api/preferences', async (request, reply) => {
+  const { athleteId } = request.query as { athleteId?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  try {
+    const p = await prefsStore.get(athleteId);
+    return reply.send({ timezone: p.timezone, deliveryMinute: p.delivery_minute, onboarded: p.onboarded_at != null });
+  } catch (e) {
+    fastify.log.error(`Preferences load failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading preferences failed.' });
+  }
+});
+
+fastify.put('/api/preferences', async (request, reply) => {
+  const { athleteId, timezone, deliveryMinute, onboarded } = (request.body as any) || {};
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  if (timezone !== undefined && !isValidTimezone(timezone)) {
+    return reply.code(400).send({ error: 'Unknown time zone.' });
+  }
+  if (deliveryMinute !== undefined && !isValidDeliveryMinute(deliveryMinute)) {
+    return reply.code(400).send({ error: 'Delivery time must be a whole minute between 0 and 1439.' });
+  }
+  try {
+    const p = await prefsStore.update(String(athleteId), {
+      timezone, delivery_minute: deliveryMinute, onboarded: onboarded === true,
+    });
+    return reply.send({ timezone: p.timezone, deliveryMinute: p.delivery_minute, onboarded: p.onboarded_at != null });
+  } catch (e) {
+    fastify.log.error(`Preferences save failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Saving preferences failed.' });
+  }
+});
+
+// Manual plan entry (Free tier plan source, doc 09 §1.4). The athlete pastes
+// a plan; gpt-4o-mini transcribes it and plan-parse.ts keeps only rows whose
+// dates resolve and whose numbers appear in the pasted text.
+const isoDay = (v: unknown): string | null =>
+  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+const addDays = (day: string, n: number) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+let _planSb: ReturnType<typeof createClient> | null = null;
+const planStore = () => {
+  const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase env not configured');
+  _planSb = _planSb ?? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  return supabasePlanStore(_planSb);
+};
+
+fastify.post('/api/plan/manual', async (request, reply) => {
+  const { athleteId, text, today: clientToday } = (request.body as any) || {};
+  if (!athleteId || typeof text !== 'string') {
+    return reply.code(400).send({ error: 'Missing: athleteId, text' });
+  }
+  // The app sends its local date so weekday names resolve in the athlete's zone.
+  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  try {
+    const parsed = await parsePlanText(text, today, openAiPlanLlm(process.env.OPENAI_API_KEY || ''));
+    if (parsed.rows.length === 0) {
+      return reply.code(422).send({
+        error: 'No sessions with a day or date were found. Try one session per line, like "Tue: 45 min tempo".',
+        rejected: parsed.rejected.map((r) => r.reason),
+      });
+    }
+    const { planId } = await planStore().saveManualPlan(String(athleteId), text.trim(), parsed.rows);
+    return reply.send({
+      planId,
+      workouts: parsed.rows,
+      rejected: parsed.rejected.map((r) => r.reason),
+      adjusted: parsed.adjusted.map((r) => r.reason),
+    });
+  } catch (e) {
+    if (e instanceof PlanParseError) return reply.code(422).send({ error: e.message });
+    fastify.log.error(`Manual plan failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Saving the plan failed.' });
+  }
+});
+
+// The next 14 sessions of the active plan, up to 26 weeks ahead (a plan can
+// start next month).
+fastify.get('/api/plan', async (request, reply) => {
+  const { athleteId, today: clientToday } = request.query as { athleteId?: string; today?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  try {
+    const workouts = (await planStore().workoutsBetween(athleteId, today, addDays(today, 182))).slice(0, 14);
+    return reply.send({ today, workouts });
+  } catch (e) {
+    fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading the plan failed.' });
   }
 });
 
@@ -642,7 +848,7 @@ fastify.post('/api/weekly', async (request, reply) => {
     if (!stravaRes.ok) {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const activities: any[] = await stravaRes.json();
+    const activities = (await stravaRes.json()) as any[];
 
     let ouraSummary = null;
     try {
@@ -710,7 +916,7 @@ Write this week's review using only these drivers.`;
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    fastify.log.error('Weekly exception:', error);
+    fastify.log.error({ err: error }, 'Weekly exception');
     return reply.code(500).send({
       error: 'Weekly read failed',
       detail: error instanceof Error ? error.message : String(error),
@@ -728,7 +934,7 @@ fastify.post('/api/register-device', async (request, reply) => {
     await registerDeviceToken(athleteId, deviceToken);
     return reply.send({ ok: true });
   } catch (e) {
-    fastify.log.error('register-device failed:', e);
+    fastify.log.error({ err: e }, 'register-device failed');
     return reply.code(500).send({
       error: 'Failed to register device',
       detail: e instanceof Error ? e.message : String(e),
@@ -765,7 +971,7 @@ fastify.post('/api/push/test', async (request, reply) => {
     }
     return reply.send({ sent: results.filter((r) => r.ok).length, results });
   } catch (e) {
-    fastify.log.error('push test failed:', e);
+    fastify.log.error({ err: e }, 'push test failed');
     return reply.code(500).send({
       error: 'Push test failed',
       detail: e instanceof Error ? e.message : String(e),
@@ -779,7 +985,7 @@ const start = async () => {
     console.log('API running on 0.0.0.0:3000');
     console.log('POST /api/cdv - Chat-driven analysis');
     // Push scheduler (daily + weekly). No-op until APNS_* env is configured.
-    startScheduler(3000, fastify.log);
+    startScheduler(3000, fastify.log, prefsStore);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

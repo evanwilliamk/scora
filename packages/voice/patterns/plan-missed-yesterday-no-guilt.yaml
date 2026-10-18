@@ -1,0 +1,22 @@
+# Pattern Library v0.3 — doc 06 §6.9
+# Yesterday's planned workout didn't happen. Don't shame. Move forward.
+id: plan-missed-yesterday-no-guilt-v1
+priority: 55
+posture_filter: [primed, steady, moderate]
+requires_scheduled_workout: true
+driver_rule: |
+  yesterday_workout_missed = true
+  AND consecutive_missed_days < 3
+min_data_completeness: 0.3
+voice_version: v0.3.0
+tone_notes: |
+  Athletes miss workouts. Voice never moralizes. Just picks up.
+slot_drivers:
+  - yesterday_workout_planned_intensity
+  - scheduled_workout.planned_intensity
+template: |
+  Yesterday's {{yesterday_workout_planned_intensity}} didn't happen. Today the plan continues with {{scheduled_workout.planned_intensity}}.
+llm_hint: |
+  Never "you should have" or "make up for it" or "get back on track." "The
+  plan continues" is the entire ethos.
+exclude_if_recently_fired: 3

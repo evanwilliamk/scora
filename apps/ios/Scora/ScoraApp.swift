@@ -7,7 +7,12 @@ struct ScoraApp: App {
   
   var body: some Scene {
     WindowGroup {
-      if tokenManager.isAuthenticated {
+      if tokenManager.isAuthenticated && tokenManager.needsOnboarding {
+        OnboardingView(tokenManager: tokenManager, onFinish: {})
+          .onOpenURL { url in
+            handleDeepLink(url)
+          }
+      } else if tokenManager.isAuthenticated {
         DashboardView(tokenManager: tokenManager)
           .onOpenURL { url in
             handleDeepLink(url)
@@ -34,10 +39,14 @@ struct ScoraApp: App {
       }
     }
 
-    // Oura finished linking on the web — tell the dashboard to reload so the
-    // Sleep + Recovery cards pick up the new data.
-    if url.host == "oura" && url.path == "/success" {
-      NotificationCenter.default.post(name: Notification.Name("ouraConnected"), object: nil)
+    // Oura linking finished on the web. Success reloads the dashboard so the
+    // Sleep + Recovery cards pick up the new data; either way the dashboard
+    // shows a short banner saying what happened.
+    if let result = OuraLinkResult(url: url) {
+      if result.connected {
+        NotificationCenter.default.post(name: Notification.Name("ouraConnected"), object: nil)
+      }
+      NotificationCenter.default.post(name: OuraLinkResult.notification, object: result)
     }
   }
 }

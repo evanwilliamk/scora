@@ -1,0 +1,22 @@
+# Pattern Library v0.3 — doc 06 §6.8
+# The morning after a plan adaptation. Acknowledge the change, read today's adjusted work.
+id: plan-was-adapted-yesterday-follow-up-v1
+priority: 60
+posture_filter: [primed, steady, moderate, back-off, rest]
+requires_scheduled_workout: true
+driver_rule: |
+  yesterday_adaptation_triggered = true
+min_data_completeness: 0.4
+voice_version: v0.3.0
+tone_notes: |
+  Continuity. The athlete saw the adaptation notice yesterday; today's read
+  acknowledges the shift and moves forward.
+slot_drivers:
+  - yesterday_adaptation_type
+  - scheduled_workout.planned_intensity
+template: |
+  The plan shifted yesterday to give the body a day. Today's {{scheduled_workout.planned_intensity}} picks up where you'd expect.
+llm_hint: |
+  Short. The athlete already knows what happened; voice just affirms the plan
+  is back on track.
+exclude_if_recently_fired: 4

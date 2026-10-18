@@ -9,9 +9,9 @@
 - [ ] Dashboard integration — show connected Strava data
 
 ### Oura
-- [ ] Success page (HTML, same pattern as Strava)
-- [ ] iOS deep link redirect
-- [ ] Landing page after deep link fires
+- [x] Success page (HTML, same pattern as Strava), plus cancel/failure pages (`claude/oura-success`)
+- [x] iOS deep link redirect (`scora://oura/success`, `scora://oura/failed?reason=`)
+- [x] Landing after deep link fires: dashboard banner + reload (`claude/oura-success`)
 - [ ] Dashboard integration — show sleep/HRV/temperature data
 
 ---
