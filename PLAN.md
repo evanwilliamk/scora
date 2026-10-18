@@ -61,7 +61,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
 - [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
 - [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
-- [ ] Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
+- [~] (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; runs with the daily read, see DECISIONS) Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`

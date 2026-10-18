@@ -2,6 +2,15 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/plan-adapt-job (on plan-schema + plan-assembler + driver-record)
+- Context: doc 07 v2 §6.2 describes a nightly job, but posture needs HealthKit data, which only the app sends with the read request.
+- Choice: when `/api/read` has decided today's posture and `PLAN_ADAPTATIONS=on`, tomorrow's workouts on the athlete's active SCORA plan go through `evaluateAdaptation`; changes are written by `apply_plan_adaptation` in one transaction. One automatic adaptation per workout (reruns and later reads that day change nothing). A displaced easy session becomes a rest day and is logged as `skipped` with its own reason. A downgrade replaces the structure with one continuous step at the same duration.
+- Reason text is a fixed sentence built from the decision (for example "Thursday's tempo is now an endurance run at the same 40 minutes. Today's posture reads back-off."), checked against the banned-phrase list in tests. The gpt-4o-mini adaptation-reason prompt (CLAUDE.md §6.4) can replace it later; copy is yours.
+- Alternative: a nightly cron that computes posture server-side (Strava + Oura only, so HealthKit-only athletes would never adapt).
+- To reverse: move the `adaptTomorrow` call from the read route into a cron in `scheduler.ts`.
+
 ### 2026-10-18: Plan tier schema shape
 - Status: DECIDED (reversible until applied to Supabase; Evan applies it)
 - Branch: claude/plan-schema (on claude/manual-plan)
