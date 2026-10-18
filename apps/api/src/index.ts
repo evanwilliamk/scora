@@ -791,7 +791,12 @@ fastify.post('/api/plan/manual', async (request, reply) => {
       });
     }
     const { planId } = await planStore().saveManualPlan(String(athleteId), text.trim(), parsed.rows);
-    return reply.send({ planId, workouts: parsed.rows, rejected: parsed.rejected.map((r) => r.reason) });
+    return reply.send({
+      planId,
+      workouts: parsed.rows,
+      rejected: parsed.rejected.map((r) => r.reason),
+      adjusted: parsed.adjusted.map((r) => r.reason),
+    });
   } catch (e) {
     if (e instanceof PlanParseError) return reply.code(422).send({ error: e.message });
     fastify.log.error(`Manual plan failed: ${e instanceof Error ? e.message : e}`);
