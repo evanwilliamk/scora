@@ -103,11 +103,11 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
 
     if (!tokenResponse.ok) {
       const errText = await tokenResponse.text();
-      fastify.log.error('Strava token error:', errText);
+      fastify.log.error({ err: errText }, 'Strava token error');
       return reply.code(400).send({ error: 'Token exchange failed', detail: errText });
     }
 
-    const tokenData = await tokenResponse.json();
+    const tokenData: any = await tokenResponse.json();
     const athleteId = tokenData.athlete.id;
     const athleteName = tokenData.athlete.firstname;
     const accessToken = tokenData.access_token;
@@ -119,7 +119,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     try {
       await storeStravaTokens(athleteId, tokenData);
     } catch (e) {
-      fastify.log.error('Failed to persist Strava tokens:', e);
+      fastify.log.error({ err: e }, 'Failed to persist Strava tokens');
       return reply.code(500).send({
         error: 'Token storage failed',
         detail: e instanceof Error ? e.message : String(e),
@@ -165,7 +165,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     `;
     return reply.type('text/html').send(html);
   } catch (error) {
-    fastify.log.error('Strava exception:', error);
+    fastify.log.error({ err: error }, 'Strava exception');
     return reply.code(500).send({
       error: 'Auth failed',
       detail: error instanceof Error ? error.message : String(error),
@@ -216,7 +216,7 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
     const tokenData = await exchangeOuraCode(code);
     await storeOuraTokens(state, tokenData); // state === athleteId
   } catch (e) {
-    fastify.log.error(`Oura auth failed: ${e instanceof Error ? e.message : String(e)}`);
+    fastify.log.error({ err: e }, 'Oura auth failed');
     return reply.code(500).type('text/html').send(resultPage({
       title: 'Oura not connected',
       lines: ['Something went wrong linking Oura. Nothing was saved.'],
@@ -264,7 +264,7 @@ fastify.post('/api/cdv', async (request, reply) => {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
 
-    const activities: any[] = await stravaRes.json();
+    const activities = (await stravaRes.json()) as any[];
 
     const M = 1609.34;
     const now = Date.now();
@@ -402,7 +402,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     try {
       quota = await consumeCdvQuota(athleteId);
     } catch (e) {
-      fastify.log.error('CDV quota check failed — allowing query (fail-open):', e);
+      fastify.log.error({ err: e }, 'CDV quota check failed — allowing query (fail-open)');
     }
     if (quota && !quota.allowed) {
       return reply.code(429).send({
@@ -433,11 +433,11 @@ Answer THIS question specifically using the data above. If the data can't answer
 
     if (!openaiRes.ok) {
       const err = await openaiRes.text();
-      fastify.log.error('OpenAI error:', err);
+      fastify.log.error({ err: err }, 'OpenAI error');
       return reply.code(500).send({ error: 'LLM failed', detail: err });
     }
 
-    const llmResult = await openaiRes.json();
+    const llmResult: any = await openaiRes.json();
     const rawText: string = llmResult.choices[0].message.content;
     // The LLM picks a chart kind; the spec and its data come from the activities.
     const chartKind = parseChartKind(rawText);
@@ -483,7 +483,7 @@ Answer THIS question specifically using the data above. If the data can't answer
       ...(chart ? { chart } : {}),
     });
   } catch (error) {
-    fastify.log.error('CDV exception:', error);
+    fastify.log.error({ err: error }, 'CDV exception');
     return reply.code(500).send({ error: 'CDV failed', detail: error instanceof Error ? error.message : String(error) });
   }
 });
@@ -516,7 +516,7 @@ fastify.post('/api/read', async (request, reply) => {
     if (!stravaRes.ok) {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const activities: any[] = await stravaRes.json();
+    const activities = (await stravaRes.json()) as any[];
 
     // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
     // cards fall back to connect prompts. Never blocks the read on Oura errors.
@@ -669,7 +669,7 @@ Write today's read using only these drivers.`;
       generatedAt,
     });
   } catch (error) {
-    fastify.log.error('Read exception:', error);
+    fastify.log.error({ err: error }, 'Read exception');
     return reply.code(500).send({
       error: 'Read failed',
       detail: error instanceof Error ? error.message : String(error),
@@ -843,7 +843,7 @@ fastify.post('/api/weekly', async (request, reply) => {
     if (!stravaRes.ok) {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const activities: any[] = await stravaRes.json();
+    const activities = (await stravaRes.json()) as any[];
 
     let ouraSummary = null;
     try {
@@ -911,7 +911,7 @@ Write this week's review using only these drivers.`;
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    fastify.log.error('Weekly exception:', error);
+    fastify.log.error({ err: error }, 'Weekly exception');
     return reply.code(500).send({
       error: 'Weekly read failed',
       detail: error instanceof Error ? error.message : String(error),
@@ -929,7 +929,7 @@ fastify.post('/api/register-device', async (request, reply) => {
     await registerDeviceToken(athleteId, deviceToken);
     return reply.send({ ok: true });
   } catch (e) {
-    fastify.log.error('register-device failed:', e);
+    fastify.log.error({ err: e }, 'register-device failed');
     return reply.code(500).send({
       error: 'Failed to register device',
       detail: e instanceof Error ? e.message : String(e),
@@ -966,7 +966,7 @@ fastify.post('/api/push/test', async (request, reply) => {
     }
     return reply.send({ sent: results.filter((r) => r.ok).length, results });
   } catch (e) {
-    fastify.log.error('push test failed:', e);
+    fastify.log.error({ err: e }, 'push test failed');
     return reply.code(500).send({
       error: 'Push test failed',
       detail: e instanceof Error ? e.message : String(e),
