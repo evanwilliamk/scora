@@ -123,7 +123,7 @@ test('ingested chunks come back through match_knowledge_chunks', async () => {
 
 test('ingest refuses vectors of the wrong size or count', async () => {
   const entries = parseExport(fixture).slice(0, 1);
-  const store = { upsertSource: async () => 'id', upsertChunk: async () => {}, pruneEntry: async () => {} };
+  const store = { upsertSource: async () => 'id', upsertChunk: async () => {}, pruneEntry: async () => {}, pruneMissing: async () => {} };
   await assert.rejects(ingest(entries, { embed: async () => [[1, 2, 3]], store }), /dims/);
   await assert.rejects(ingest(entries, { embed: async () => [], store }), /0 vectors for 1/);
 });
@@ -191,4 +191,23 @@ test('re-ingesting a shorter passage removes its stale chunks', async () => {
   await ingest(entry('Now one short passage.'), { embed: fakeEmbed([]), store });
   const after = await db.query<{ n: number; text: string }>(`select count(*)::int as n, min(text) as text from knowledge_chunks where fieldcopy_entry_id = 'shrink-1'`);
   assert.deepEqual(after.rows[0], { n: 1, text: 'Now one short passage.' });
+});
+
+test('an entry emptied out loses its chunks; sync removes entries missing from the export', async () => {
+  const store = sqlStore(db);
+  const two = parseExport([
+    { id: 'sync-a', source_title: 'Sync Book', passage: 'Passage A about sleep.' },
+    { id: 'sync-b', source_title: 'Sync Book', passage: 'Passage B about load.' },
+  ]);
+  await ingest(two, { embed: fakeEmbed([]), store });
+  const count = async (id: string) => (await db.query<{ n: number }>(`select count(*)::int as n from knowledge_chunks where fieldcopy_entry_id = '${id}'`)).rows[0].n;
+
+  // Edited down to whitespace: the chunker yields no chunks.
+  await ingest(parseExport([{ id: 'sync-a', source_title: 'Sync Book', passage: '   ' }]), { embed: fakeEmbed([]), store });
+  assert.equal(await count('sync-a'), 0);
+  assert.equal(await count('sync-b'), 1, 'without sync, other entries stay');
+
+  await ingest(parseExport([{ id: 'sync-c', source_title: 'Sync Book', passage: 'Only C now.' }]), { embed: fakeEmbed([]), store, sync: true });
+  assert.equal(await count('sync-b'), 0, 'sync removes entries not in the export');
+  assert.equal(await count('sync-c'), 1);
 });
