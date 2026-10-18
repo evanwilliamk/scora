@@ -21,13 +21,19 @@ export interface CalorieEstimate {
 
 const KCAL_PER_L_O2 = 5;
 
-// ACSM running equation: VO2 (ml/kg/min) = 3.5 + 0.2 x speed + 0.9 x speed x grade,
-// speed in m/min. Grade is net climb over distance, uphill only.
+// ACSM equations, speed in m/min, grade = climb over distance (uphill only).
+// Running (above ~134 m/min): VO2 = 3.5 + 0.2 x speed + 0.9 x speed x grade.
+// Below that the walking equation holds (hiking pace on a trail "run"):
+// VO2 = 3.5 + 0.1 x speed + 1.8 x speed x grade.
+export const ACSM_RUNNING_MIN_SPEED = 134;
+
 export function runningKcal(weightKg: number, distanceM: number, movingS: number, climbM = 0): number {
   const minutes = movingS / 60;
   const speed = distanceM / minutes;
   const grade = distanceM > 0 ? Math.max(0, climbM) / distanceM : 0;
-  const vo2 = 3.5 + 0.2 * speed + 0.9 * speed * grade;
+  const vo2 = speed >= ACSM_RUNNING_MIN_SPEED
+    ? 3.5 + 0.2 * speed + 0.9 * speed * grade
+    : 3.5 + 0.1 * speed + 1.8 * speed * grade;
   return (vo2 * weightKg / 1000) * KCAL_PER_L_O2 * minutes;
 }
 
@@ -77,4 +83,20 @@ export function estimateCalories(a: any, weightKg: number | null | undefined): C
     }
   }
   return null;
+}
+
+// Every activity since `afterSec`, page by page (Strava returns oldest first
+// with `after`, so one capped page could drop the newest).
+export async function fetchActivitiesSince(token: string, afterSec: number, fetchImpl: typeof fetch = fetch, maxPages = 5): Promise<any[]> {
+  const out: any[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await fetchImpl(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${afterSec}&page=${page}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Strava ${res.status}`);
+    const batch = (await res.json()) as any[];
+    out.push(...batch);
+    if (batch.length < 200) break;
+  }
+  return out;
 }
