@@ -201,7 +201,8 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
       // into a long_sleep and a short sleep). Newest night first.
       const byDay = new Map<string, any>();
       for (const p of (json.data || []) as any[]) {
-        if (p.type === 'nap' || !p.day) continue;
+        // Oura v2 types: long_sleep, sleep, late_nap, rest, deleted.
+        if (!p.day || ['nap', 'late_nap', 'rest', 'deleted'].includes(p.type)) continue;
         const cur = byDay.get(p.day);
         if (!cur || (p.total_sleep_duration ?? 0) > (cur.total_sleep_duration ?? 0)) byDay.set(p.day, p);
       }

@@ -164,11 +164,19 @@ test('postureForRead decides the posture and gives the prompt one line to name',
 
 // ---- review findings (2026-10-17) ----
 
-test('ACWR uses the days actually covered: 22 steady days read ~1.0, not moderate', () => {
+test('ACWR needs 27 days of runs: 22 steady days give no ratio, not a false moderate', () => {
   const acts = Array.from({ length: 22 }, (_, i) => run(i, 30, 140));
   const { drivers } = computeDriverRecord(acts, null, { now });
-  assert.equal(drivers.acwr, 1);
+  assert.equal(drivers.acwr, null);
   assert.equal(computePosture(drivers).posture, 'steady');
+});
+
+test('a comeback ramp after a break still shows in ACWR (re-review finding)', () => {
+  // A run 27 days ago, a two-week break, then 7 daily 60 min runs.
+  const acts = [run(27, 60, 140), ...Array.from({ length: 7 }, (_, i) => run(i, 60, 140))];
+  const { drivers } = computeDriverRecord(acts, null, { now });
+  assert.equal(drivers.acwr, 3.5);
+  assert.equal(computePosture(drivers).posture, 'back-off');
 });
 
 test('a Sydney morning run counts today (start_date is UTC, start_date_local is not)', () => {
