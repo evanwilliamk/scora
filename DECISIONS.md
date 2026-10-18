@@ -89,6 +89,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: behind `INLINE_CHARTS=on` (default off; Plan tier gating waits for Stripe). After validation, code links each driver's quoted value in the read (or its name: sleep, load, volume, HRV, resting HR) to a 28-day series: Strava run minutes and miles as rolling 7-day totals, so the newest point is the number the read cites (review fix; was per-day), and Oura nightly sleep, HRV and resting HR (nights with no value are left out, never filled in). One link per series, first mention. The chart marks the newest day and draws the average of the days before it. Oura sleep is now fetched for 29 days (was 9) so the chart can show a month. HealthKit-only athletes: the app now sends up to 28 dated nights (`claude/healthkit-nights`), and the API drops malformed days and implausible values instead of charting them.
 - Alternative: the LLM marks driver spans in its output. Rejected: the spans would need validating anyway, and code finds them reliably on numeric-first text.
 - To reverse: leave the flag off; the app shows plain text when `links` is absent.
+### 2026-10-18: Race predictions v1: Riegel range from recent efforts
+- Status: DECIDED (reversible); the formula is a coaching call worth a look
+- Branch: claude/race-predictions (on claude/plan-adapt-job)
+- Context: PRD §5.B.6 asks for a range from current fitness, plan progression, recent races and body state; it gives no formula.
+- Choice: `GET /api/plan/prediction`, behind `RACE_PREDICTIONS=on`. Runs of 3 km or more from the last 8 weeks are projected to the race with Riegel (exponent 1.06); Strava-tagged races (timed start to finish) are used instead of training runs when any exist. The range spans the best three projections, never narrower than ±2%. No prediction without 3 qualifying runs, or without a long run of half the race distance (capped at 25 km). Every effort used is returned with the range. Plan progression and body state are not in v1.
+- Alternatives: VDOT tables (Daniels), or a model fitted on HR and pace. Riegel is the simplest that is honest with a range.
+- To reverse: constants in `apps/api/src/race-prediction.ts` (PREDICTION), versioned.
 
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)

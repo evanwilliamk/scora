@@ -43,6 +43,7 @@ import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
 import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
 import { buildDriverSeries, inlineChartsEnabled, linkDrivers, parseHealthNights } from './driver-links';
 import type { SeriesKey } from './driver-links';
+import { predictRace, predictionsEnabled } from './race-prediction';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -908,6 +909,31 @@ fastify.post('/api/plan/generate', async (request, reply) => {
     }
     fastify.log.error(`Plan generation failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Building the plan failed.' });
+  }
+});
+
+// Race prediction (Plan tier, PRD §5.B.6): a range from the athlete's own
+// recent runs, with the efforts it was built from. `race` defaults to the
+// goal of the active SCORA plan. Off unless RACE_PREDICTIONS=on.
+fastify.get('/api/plan/prediction', async (request, reply) => {
+  if (!predictionsEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const { athleteId, race: raceParam, today: clientToday } = request.query as { athleteId?: string; race?: string; today?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  try {
+    const race = raceParam ?? (await adaptStore().activeScoraPlan(athleteId))?.template.goal_type;
+    if (!race) return reply.code(422).send({ error: 'No race given and no active plan with a goal race.' });
+    const token = await getValidStravaToken(athleteId);
+    const after = Math.floor(Date.now() / 1000) - 60 * 86400;
+    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${after}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    const activities = (await res.json()) as any[];
+    const today = isoDay(clientToday) ?? athleteLocalToday(activities);
+    return reply.send({ prediction: predictRace(activities, race, today) });
+  } catch (e) {
+    fastify.log.error(`Prediction failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Prediction failed.' });
   }
 });
 
