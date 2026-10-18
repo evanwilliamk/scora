@@ -26,6 +26,7 @@ import { startScheduler } from './scheduler';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore, withTimeout } from './plan-adapt';
+import { CALORIE_ENGINE_VERSION, caloriesEnabled, estimateCalories } from './calories';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -712,6 +713,34 @@ fastify.get('/api/plan', async (request, reply) => {
   } catch (e) {
     fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Loading the plan failed.' });
+  }
+});
+
+// Calorie engine (Plan tier, PRD §5.B.7): burn estimates for the last 14
+// days of activities, each with its method and inputs. Weight comes from the
+// athlete's Strava profile; without it there are no estimates. Off unless
+// CALORIE_ENGINE=on.
+fastify.get('/api/calories', async (request, reply) => {
+  if (!caloriesEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const { athleteId } = request.query as { athleteId?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  try {
+    const token = await getValidStravaToken(athleteId);
+    const headers = { Authorization: `Bearer ${token}` };
+    const after = Math.floor(Date.now() / 1000) - 14 * 86400;
+    const [athleteRes, actsRes] = await Promise.all([
+      fetch('https://www.strava.com/api/v3/athlete', { headers }),
+      fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=100&after=${after}`, { headers }),
+    ]);
+    if (!athleteRes.ok || !actsRes.ok) return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    const athlete = (await athleteRes.json()) as { weight?: number | null };
+    const activities = (await actsRes.json()) as any[];
+    const weight = typeof athlete.weight === 'number' && athlete.weight > 0 ? athlete.weight : null;
+    const estimates = activities.map((a) => estimateCalories(a, weight)).filter((e) => e !== null);
+    return reply.send({ version: CALORIE_ENGINE_VERSION, weight_kg: weight, estimates });
+  } catch (e) {
+    fastify.log.error(`Calories failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Calorie estimates failed.' });
   }
 });
 

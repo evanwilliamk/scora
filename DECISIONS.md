@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Calorie engine v1: ACSM running, measured work or METs for rides
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/calorie-engine (on claude/plan-adapt-job)
+- Context: PRD §5.B.7 lists weight, duration, HR, elevation and sport coefficients; no formula given. Burn only, never intake (CLAUDE.md §11).
+- Choice: `GET /api/calories` (last 14 days), behind `CALORIE_ENGINE=on`. Runs: ACSM running equation with uphill grade from elevation gain. Rides: Strava kilojoules when from a real power meter (`device_watts`), else a Compendium MET by average speed. Swims and other sports: no estimate in v1. Weight from the Strava profile; no weight, no estimate. HR is left out: HR equations need age and sex, which SCORA does not have.
+- Caveat: Strava sends weight only with `profile:read_all`; if the app's OAuth scope lacks it, nobody gets estimates until weight comes from HealthKit or onboarding.
+- To reverse: `apps/api/src/calories.ts`, versioned.
+
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-adapt-job (on plan-schema + plan-assembler + driver-record)
