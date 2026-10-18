@@ -25,6 +25,7 @@ import {
 import { startScheduler } from './scheduler';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
+import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore } from './plan-adapt';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -564,6 +565,18 @@ fastify.post('/api/read', async (request, reply) => {
       completeness: posture.record.completeness,
     };
 
+    // Plan tier: tomorrow's workout on a SCORA plan goes through the
+    // deterministic adaptation rules (doc 07 v2 §6.2). Off unless
+    // PLAN_ADAPTATIONS=on; never blocks or fails the read.
+    if (adaptationsEnabled()) {
+      const today = isoDay((request.body as any)?.today) ?? new Date().toISOString().slice(0, 10);
+      try {
+        await adaptTomorrow(String(athleteId), today, posture.result.posture, adaptStore());
+      } catch (e) {
+        fastify.log.error(`Plan adaptation failed for ${athleteId}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+
     // With no drivers there is nothing the voice can honestly say. Don't invent.
     if (drivers.length === 0) {
       return reply.send({
@@ -651,6 +664,10 @@ const planStore = () => {
   _planSb = _planSb ?? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   return supabasePlanStore(_planSb);
 };
+const adaptStore = () => {
+  planStore(); // same env check and client
+  return supabaseAdaptStore(_planSb!);
+};
 
 fastify.post('/api/plan/manual', async (request, reply) => {
   const { athleteId, text, today: clientToday } = (request.body as any) || {};
@@ -693,6 +710,19 @@ fastify.get('/api/plan', async (request, reply) => {
   } catch (e) {
     fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Loading the plan failed.' });
+  }
+});
+
+// Named plan adaptations, newest first (doc 07 v2 §5: GET /plan/adaptations).
+// Every change the engine made shows its reason; none are silent.
+fastify.get('/api/plan/adaptations', async (request, reply) => {
+  const { athleteId } = request.query as { athleteId?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  try {
+    return reply.send({ adaptations: await adaptStore().recent(athleteId, 20) });
+  } catch (e) {
+    fastify.log.error(`Adaptations load failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading plan changes failed.' });
   }
 });
 
