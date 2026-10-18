@@ -207,8 +207,6 @@ struct PlanView: View {
 
   private var upcomingSection: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
-      if let note { Text(note).font(.footnote).foregroundColor(.gray) }
       if !changes.isEmpty {
         Text("Plan changes").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
         ForEach(changes) { c in
@@ -220,8 +218,9 @@ struct PlanView: View {
             .background(Color(white: 0.08))
             .cornerRadius(10)
         }
-        Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
       }
+      Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+      if let note { Text(note).font(.footnote).foregroundColor(.gray) }
       ForEach(workouts) { w in
         VStack(alignment: .leading, spacing: 3) {
           HStack {
