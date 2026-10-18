@@ -96,8 +96,9 @@ const series = (key: SeriesKey, label: string, unit: string, points: SeriesPoint
   };
 };
 
-// Daily series for the last `days` local days ending today. Run days with no
-// run read 0 (a rest day is data); Oura nights with no value are left out.
+// Series for the last `days` local days ending today. Load and volume are
+// rolling 7-day totals (rest days count as 0); Oura nights with no value are
+// left out.
 export function buildDriverSeries(
   activities: any[],
   oura: OuraSummary | null | undefined,
@@ -112,14 +113,22 @@ export function buildDriverSeries(
   if (runs.length > 0) {
     const minutes = new Map<string, number>();
     const miles = new Map<string, number>();
+    // Load and volume are 7-day totals in the read, so each point is the
+    // total of the 7 days ending that day (the newest point is the cited one).
+    const lead = new Date(Date.parse(`${first}T00:00:00Z`) - 6 * DAY).toISOString().slice(0, 10);
     for (const a of runs) {
       const d = a.start_date_local.slice(0, 10);
-      if (d < first || d > today) continue;
+      if (d < lead || d > today) continue;
       minutes.set(d, (minutes.get(d) ?? 0) + (a.moving_time || 0) / 60);
       miles.set(d, (miles.get(d) ?? 0) + (a.distance || 0) / 1609.344);
     }
-    out.load = series('load', 'Run minutes per day', 'min', dates.map((date) => ({ date, value: Math.round(minutes.get(date) ?? 0) })));
-    out.volume = series('volume', 'Miles per day', 'mi', dates.map((date) => ({ date, value: round(miles.get(date) ?? 0, 1) })));
+    const week = (m: Map<string, number>, date: string) => {
+      let sum = 0;
+      for (let i = 0; i < 7; i++) sum += m.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * DAY).toISOString().slice(0, 10)) ?? 0;
+      return sum;
+    };
+    out.load = series('load', 'Run minutes, last 7 days', 'min', dates.map((date) => ({ date, value: Math.round(week(minutes, date)) })));
+    out.volume = series('volume', 'Miles, last 7 days', 'mi', dates.map((date) => ({ date, value: round(week(miles, date), 1) })));
   }
 
   const nights = (oura?.nights ?? []).filter((n) => n.day >= first && n.day <= today);

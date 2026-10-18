@@ -29,6 +29,15 @@ struct DriverSeries: Decodable, Identifiable, Equatable {
   // Load and volume are per-day totals (bars); body signals are a line.
   var isDailyTotal: Bool { key == "load" || key == "volume" }
 
+  static func localDay(_ s: String, zone: TimeZone = .current) -> Date? {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = zone
+    f.dateFormat = "yyyy-MM-dd"
+    f.isLenient = false
+    return f.date(from: s)
+  }
+
   static func format(_ v: Double, unit: String) -> String {
     if unit == "h" {
       let mins = Int((v * 60).rounded())
@@ -86,15 +95,16 @@ struct DriverChartView: View {
         }
       }
       Chart {
-        ForEach(series.points, id: \.date) { p in
+        ForEach(plotted, id: \.point.date) { item in
+          let p = item.point
           let isLatest = p.date == series.latest?.date
           if series.isDailyTotal {
-            BarMark(x: .value("Day", day(p.date), unit: .day), y: .value(series.unit, p.value))
+            BarMark(x: .value("Day", item.day, unit: .day), y: .value(series.unit, p.value))
               .foregroundStyle(isLatest ? Color.orange : Color(white: 0.45))
           } else {
-            LineMark(x: .value("Day", day(p.date), unit: .day), y: .value(series.unit, p.value))
+            LineMark(x: .value("Day", item.day, unit: .day), y: .value(series.unit, p.value))
               .foregroundStyle(Color(white: 0.6))
-            PointMark(x: .value("Day", day(p.date), unit: .day), y: .value(series.unit, p.value))
+            PointMark(x: .value("Day", item.day, unit: .day), y: .value(series.unit, p.value))
               .foregroundStyle(isLatest ? Color.orange : Color(white: 0.6))
           }
         }
@@ -115,11 +125,10 @@ struct DriverChartView: View {
     .preferredColorScheme(.dark)
   }
 
-  private func day(_ s: String) -> Date {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = TimeZone(identifier: "UTC")
-    f.dateFormat = "yyyy-MM-dd"
-    return f.date(from: s) ?? Date.distantPast
+  // Points the chart can place. Days are local calendar days, so they are
+  // read in the local zone (Charts groups .day by the local calendar); a day
+  // that does not parse is left out rather than drawn somewhere wrong.
+  private var plotted: [(point: SeriesPoint, day: Date)] {
+    series.points.compactMap { p in DriverSeries.localDay(p.date).map { (point: p, day: $0) } }
   }
 }
