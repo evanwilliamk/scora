@@ -61,6 +61,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
   3. Workout duration is computed from the structure; an authored `total_duration_est_min` must agree within 5 min (doc 07's own example says 55 for a 50 min structure, so the estimate is not trusted).
   4. The 10% weekly increase ban is checked against the highest earlier week, so a cutback week can return to its earlier peak.
   5. Step types are warmup, steady, interval, cooldown (doc 07 had no continuous step; added `steady`).
+  6. Review fixes: a workout labelled recovery, easy or endurance may not contain tempo, threshold or vo2max steps (strides, `sprint`, are allowed), because the adaptation engine reads only the label. A pattern with no sessions, or a `reviewed_on` that is not a real date, is refused. Several versions of one slug load side by side; the same slug and version twice is refused.
 - Why: a bad template must fail at boot with a named rule, not while an athlete's plan is built.
 - To reverse: `packages/plan-engine/src/template-loader.ts`, one check per block, each with a test.
 
@@ -70,7 +71,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: doc 07 v2 §6.2/§9 and CLAUDE.md §6.2 define the rules but not the move window, the volume unit or which plans adapt.
 - Choice:
   1. A move stays inside the plan week (Mon to Sun) and lands on the first later day that is rest or a single easy/recovery session, with no hard day either side. The displaced easy session is dropped. If no day qualifies, no adaptation (logged `skip_no_window`).
-  2. Weekly volume is measured in planned minutes (templates are duration-based). The ±10% guard only blocks a change that moves the week's minutes; a downgrade (same duration) is never blocked.
+  2. Weekly volume is measured in planned minutes (templates are duration-based). The ±10% guard blocks a change only if it leaves the week outside the band and further from the template than before; a downgrade (same duration) or a change that brings the week closer is never blocked. The week means Monday to Sunday; the caller also passes the next Monday so a move to Sunday never lands right before a hard session (review fix).
   3. back-off + threshold downgrades like intervals (doc 07 v2 lists both; CLAUDE.md lists intervals only).
   4. The engine only adapts `scora_ai` plans. Coach plans change only by the coach; external and pasted plans are never rewritten.
   5. Race freeze covers T-7 through race day, measured from the workout's date, and also stops a move landing inside it.

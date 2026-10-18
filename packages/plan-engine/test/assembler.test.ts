@@ -67,6 +67,9 @@ test('race date: start is the Monday that puts the race in the final week; nothi
   assert.equal(sun.workouts.length, 19);
   const sat = assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-14' });
   assert.deepEqual(sat.workouts.filter((w) => w.week === 4).map((w) => w.weekday), ['tuesday', 'wednesday', 'thursday']);
+  // Race-week minutes are the sessions actually left (review fix): 38 + 32 + 32.
+  assert.equal(sat.week_minutes[3], 102);
+  assert.deepEqual(sat.week_minutes.slice(0, 3), [252, 262, 270]);
 });
 
 test('assembly refuses bad dates with a named error', () => {
