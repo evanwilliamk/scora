@@ -14,6 +14,7 @@ import type {
   ExperienceLevel, PlanTemplate, Sport, StepIntensity, TemplatePhase, Weekday, WorkoutDefinition, WorkoutStep,
 } from './template-types';
 import type { Intensity } from './types';
+import { parseDate } from './dates';
 
 export type TemplateErrorCode =
   | 'not_mapping'
@@ -28,6 +29,7 @@ export type TemplateErrorCode =
   | 'load_percent'
   | 'volume_jump'
   | 'unreviewed'
+  | 'intensity_mismatch'
   | 'duplicate_slug';
 
 export class TemplateError extends Error {
@@ -40,6 +42,9 @@ export class TemplateError extends Error {
 // CLAUDE.md §4.3: weekly volume never jumps more than 10%. Measured against
 // the highest earlier week, so a cutback week can return to where it was.
 export const MAX_WEEKLY_INCREASE = 0.1;
+// Workouts labelled easy may not hide quality work.
+const EASY_LABELS: readonly Intensity[] = ['recovery', 'easy', 'endurance'];
+const HARD_STEP_INTENSITIES: readonly StepIntensity[] = ['tempo', 'threshold', 'vo2max'];
 // An authored total_duration_est_min may round, but not disagree.
 export const DURATION_ESTIMATE_TOLERANCE_MIN = 5;
 const LOAD_PERCENT_RANGE: [number, number] = [40, 150];
@@ -102,6 +107,13 @@ export function validateTemplate(raw: unknown, file: string, opts: ValidateOptio
   const status = o.status === undefined ? 'draft' : oneOf(o, 'status', ['draft', 'reviewed'] as const);
   const reviewed_by = isStr(o.reviewed_by) ? (o.reviewed_by as string).trim() : null;
   const reviewed_on = isStr(o.reviewed_on) ? String(o.reviewed_on).trim() : null;
+  if (reviewed_on !== null) {
+    try {
+      parseDate(reviewed_on);
+    } catch {
+      fail('bad_value', `"reviewed_on" must be a date (YYYY-MM-DD), got "${reviewed_on}"`);
+    }
+  }
   if (status === 'reviewed' && (!reviewed_by || !reviewed_on)) {
     fail('unreviewed', '"status: reviewed" needs "reviewed_by" and "reviewed_on"');
   }
@@ -183,6 +195,16 @@ export function validateTemplate(raw: unknown, file: string, opts: ValidateOptio
       }
       return fail('bad_step', `${at} type is "${String(s.type)}" (allowed: warmup, steady, interval, cooldown)`);
     });
+    // An easy-labelled session must be easy: the adaptation engine reads only
+    // the label, so a hidden threshold block would dodge the hard-day rules.
+    // Strides (sprint steps) are allowed.
+    if (EASY_LABELS.includes(intensity)) {
+      const hard = structure.find((st) =>
+        st.type === 'interval' ? HARD_STEP_INTENSITIES.includes(st.work_intensity) : HARD_STEP_INTENSITIES.includes(st.intensity));
+      if (hard) {
+        fail('intensity_mismatch', `workout "${id}" is labelled ${intensity} but has a ${hard.type === 'interval' ? hard.work_intensity : hard.intensity} step`);
+      }
+    }
     const duration_min = structure.reduce((t, s) => t + stepMinutes(s), 0);
     if (def.total_duration_est_min !== undefined) {
       const est = def.total_duration_est_min;
@@ -205,6 +227,7 @@ export function validateTemplate(raw: unknown, file: string, opts: ValidateOptio
     weekly_pattern[day] = (wp[day] as string).trim();
   }
   const slots = [...new Set(Object.values(weekly_pattern).filter((s) => s !== REST_SLOT))];
+  if (slots.length === 0) fail('pattern_day', 'weekly_pattern has no sessions, only rest days');
 
   // Every slot is filled in every phase, only with defined workouts.
   if (!isObj(o.workout_types_by_phase)) fail('missing_field', '"workout_types_by_phase" must be a mapping');
@@ -275,7 +298,7 @@ export function templateWeekMinutes(t: PlanTemplate): number[] {
   });
 }
 
-// Load every *.yaml under dir (recursively). Slugs must be unique.
+// Load every *.yaml under dir (recursively). Slug and version pairs must be unique.
 export function loadTemplates(dir: string, opts: ValidateOptions = {}): PlanTemplate[] {
   const files: string[] = [];
   const walk = (d: string) => {
@@ -286,6 +309,8 @@ export function loadTemplates(dir: string, opts: ValidateOptions = {}): PlanTemp
     }
   };
   walk(dir);
+  // Every version of a template stays loadable (athletes are pinned to the
+  // version they started on); the same slug and version twice is an error.
   const seen = new Map<string, string>();
   return files.map((p) => {
     const file = relative(dir, p);
@@ -296,9 +321,10 @@ export function loadTemplates(dir: string, opts: ValidateOptions = {}): PlanTemp
       throw new TemplateError('not_mapping', `YAML does not parse: ${(e as Error).message}`, file);
     }
     const t = validateTemplate(raw, file, opts);
-    const prior = seen.get(t.slug);
-    if (prior) throw new TemplateError('duplicate_slug', `slug "${t.slug}" is also used by ${prior}`, file);
-    seen.set(t.slug, file);
+    const key = `${t.slug}@${t.version}`;
+    const prior = seen.get(key);
+    if (prior) throw new TemplateError('duplicate_slug', `${key} is also defined in ${prior}`, file);
+    seen.set(key, file);
     return t;
   });
 }

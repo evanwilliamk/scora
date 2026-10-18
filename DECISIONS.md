@@ -12,6 +12,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
   3. Workout duration is computed from the structure; an authored `total_duration_est_min` must agree within 5 min (doc 07's own example says 55 for a 50 min structure, so the estimate is not trusted).
   4. The 10% weekly increase ban is checked against the highest earlier week, so a cutback week can return to its earlier peak.
   5. Step types are warmup, steady, interval, cooldown (doc 07 had no continuous step; added `steady`).
+  6. Review fixes: a workout labelled recovery, easy or endurance may not contain tempo, threshold or vo2max steps (strides, `sprint`, are allowed), because the adaptation engine reads only the label. A pattern with no sessions, or a `reviewed_on` that is not a real date, is refused. Several versions of one slug load side by side; the same slug and version twice is refused.
 - Why: a bad template must fail at boot with a named rule, not while an athlete's plan is built.
 - To reverse: `packages/plan-engine/src/template-loader.ts`, one check per block, each with a test.
 
