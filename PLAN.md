@@ -50,7 +50,7 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 - [!] Strava scheduled activities ingestion: not possible, Strava API v3 has no planned-workout endpoint (checked 2026-10-17). Proposed replacement: iCal feed import (Q17 in Evan's questions)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys)
 
-## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags, no deploy or money)
+## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags that default off, no deploy or money)
 
 - [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`)
 - [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, on `claude/plan-engine-adaptation`)
@@ -61,26 +61,17 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 - [~] Adaptation reasons worded by gpt-4o-mini, checked in code, `ADAPTATION_REASON_LLM=on` (`claude/adaptation-reason-llm`, on `claude/plan-adapt-job`)
 - [~] iOS: local date on the read; Your Plan sheet shows the last 3 plan changes (`claude/ios-plan-changes`, on `claude/plan-adapt-job`)
 - [~] Inline chart-expansion (CLAUDE.md §3.4): drivers in the read open 28-day charts, `INLINE_CHARTS=on` (`claude/inline-charts`, on `claude/plan-adapt-job`; seen on the simulator with the DEBUG `-demo-read` launch argument)
-- [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
+- [~] HealthKit dated nights for the charts, so athletes without Oura get sleep, HRV and resting HR charts (`claude/healthkit-nights`, on `claude/inline-charts`)
+- [~] Race predictions v1 (PRD §5.B.6): a range from recent efforts, `RACE_PREDICTIONS=on` (`claude/race-predictions`, on `claude/plan-adapt-job`); shown on Your Plan by `claude/ios-race-prediction`
+- [~] Calorie engine v1 (PRD §5.B.7): burn estimates with method and inputs, `CALORIE_ENGINE=on` (`claude/calorie-engine`, on `claude/plan-adapt-job`; API only)
+- [!] Calorie engine needs body weight; Strava only sends it with `profile:read_all` (Q21)
+- [!] Rest posture with no move window: hard session currently stays (Q19)
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
-- [ ] HealthKit dated nights from the app, so HealthKit-only athletes get sleep and HRV charts (today only Oura nights are dated)
 - [ ] Plan tier gating for the flags above, once the Stripe item exists (Evan)
 
 ## Later phases (not started, see the 90-day plan)
 
-- Phase 2 (rest): Stripe subscriptions, WorkoutKit, WhatsApp doorbell, inline chart-expansion
-- [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`). Done when every rule and guard has a unit test and the package typechecks
-- [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, stacked on `claude/plan-engine-adaptation`) (doc 07 v2 §4.2.1, CLAUDE.md §4.3 plan bans). Done when a malformed or rule-breaking template fails to load with a named error, tested on test fixtures only
-- [~] (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`) Assembler: template + start date + race date + current weekly volume to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
-- [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
-- [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
-- [~] Inline chart-expansion (Plan tier, CLAUDE.md §3.4): drivers in the read link to 28-day charts, behind `INLINE_CHARTS=on` (`claude/inline-charts`, stacked on `claude/plan-adapt-job`; API + iOS, ScoraTests pass on the simulator, not seen in the running app because the API flag is off in production)
-- [~] HealthKit dated nights from the app, so athletes without Oura get sleep, HRV and resting HR charts (`claude/healthkit-nights`, on `claude/inline-charts`)
-- [~] Race predictions v1 (PRD §5.B.6): range from recent efforts, `RACE_PREDICTIONS=on` (`claude/race-predictions`, on `claude/plan-adapt-job`; API only, no iOS display yet)
-- [~] Race predictions v1 (PRD §5.B.6): range from recent efforts, `RACE_PREDICTIONS=on` (`claude/race-predictions`, on `claude/plan-adapt-job`; shown on the Your Plan sheet by `claude/ios-race-prediction`)
-- [~] Calorie engine v1 (PRD §5.B.7): burn estimates with method and inputs, `CALORIE_ENGINE=on` (`claude/calorie-engine`, on `claude/plan-adapt-job`; API only; needs weight from Strava `profile:read_all` or HealthKit)
-- [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
-- [~] (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; runs with the daily read, see DECISIONS) Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
+- Phase 2 (rest): Stripe subscriptions, WorkoutKit, WhatsApp doorbell
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`
