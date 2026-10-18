@@ -75,6 +75,48 @@ struct PlanErrorResponse: Decodable {
   let error: String
 }
 
+// Race prediction from GET /api/plan/prediction (PRD §5.B.6). Always a range.
+struct RacePrediction: Decodable, Equatable {
+  let ok: Bool
+  let race: String
+  let lowS: Int?
+  let highS: Int?
+  let efforts: [Effort]?
+  let usedRaces: Bool?
+  let needed: String?
+
+  struct Effort: Decodable, Equatable {
+    let date: String
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case ok, race, efforts, needed
+    case lowS = "low_s", highS = "high_s", usedRaces = "used_races"
+  }
+
+  static func duration(_ s: Int) -> String {
+    let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+    return h > 0 ? "\(h):\(String(format: "%02d", m))" : "\(m):\(String(format: "%02d", sec))"
+  }
+
+  // "1:45 – 1:52" with what it rests on, or what is missing.
+  var headline: String? {
+    guard ok, let lowS, let highS else { return nil }
+    return "\(Self.duration(lowS)) – \(Self.duration(highS))"
+  }
+
+  var basis: String {
+    if !ok { return needed.map { "No estimate yet: needs \($0)." } ?? "No estimate yet." }
+    let n = efforts?.count ?? 0
+    let what = usedRaces == true ? (n == 1 ? "your recent race" : "your recent races") : "your \(n) best runs of the last 8 weeks"
+    return "Based on \(what)."
+  }
+}
+
+struct PredictionResponse: Decodable {
+  let prediction: RacePrediction
+}
+
 enum PlanDay {
   // Today in the athlete's own zone, so "Tue" resolves to their Tuesday.
   static func today(_ now: Date = Date(), zone: TimeZone = .current) -> String {
@@ -106,6 +148,7 @@ struct PlanView: View {
 
   @State private var text = ""
   @State private var workouts: [PlanWorkout] = []
+  @State private var prediction: RacePrediction?
   @State private var note: String?
   @State private var errorText: String?
   @State private var isSaving = false
@@ -181,6 +224,16 @@ struct PlanView: View {
 
   private var upcomingSection: some View {
     VStack(alignment: .leading, spacing: 10) {
+      if let prediction {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Race estimate").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+          if let h = prediction.headline {
+            Text(h).font(.system(size: 22, weight: .regular, design: .serif)).foregroundColor(.white)
+          }
+          Text(prediction.basis).font(.footnote).foregroundColor(.gray)
+        }
+        .padding(.bottom, 4)
+      }
       Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
       if let note { Text(note).font(.footnote).foregroundColor(.gray) }
       ForEach(workouts) { w in
@@ -215,6 +268,19 @@ struct PlanView: View {
           let decoded = try? JSONDecoder().decode(PlanListResponse.self, from: data)
     else { return }
     await MainActor.run { workouts = decoded.workouts }
+    await loadPrediction()
+  }
+
+  // Off (404) until predictions are switched on; then shown above the plan.
+  private func loadPrediction() async {
+    var comps = URLComponents(string: "\(apiBase)/api/plan/prediction")
+    comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId), URLQueryItem(name: "today", value: PlanDay.today())]
+    guard let url = comps?.url,
+          let (data, resp) = try? await URLSession.shared.data(from: url),
+          (resp as? HTTPURLResponse)?.statusCode == 200,
+          let decoded = try? JSONDecoder().decode(PredictionResponse.self, from: data)
+    else { return }
+    await MainActor.run { prediction = decoded.prediction }
   }
 
   private func savePlan() async {
