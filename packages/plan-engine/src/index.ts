@@ -16,3 +16,18 @@ export {
   WEEKLY_VOLUME_TOLERANCE,
 } from './constants';
 export { evaluateAdaptation, matchRule, weekMinutes } from './adaptation-rules';
+
+export type {
+  ExperienceLevel, PlanTemplate, Sport, StepIntensity, TemplatePhase, Weekday, WorkoutDefinition, WorkoutStep,
+} from './template-types';
+export { EXPERIENCE_LEVELS, REST_SLOT, SPORTS, STEP_INTENSITIES, WEEKDAYS } from './template-types';
+export type { TemplateErrorCode, ValidateOptions } from './template-loader';
+export {
+  DURATION_ESTIMATE_TOLERANCE_MIN, MAX_WEEKLY_INCREASE, TemplateError, loadTemplates, phaseOf, stepMinutes,
+  templateWeekMinutes, validateTemplate, workoutFor,
+} from './template-loader';
+
+import { fileURLToPath } from 'node:url';
+
+// The template library folder (packages/plan-templates).
+export const TEMPLATE_DIR = fileURLToPath(new URL('../../plan-templates/', import.meta.url));

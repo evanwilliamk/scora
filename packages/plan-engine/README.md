@@ -18,6 +18,12 @@ Guards: only SCORA's own plans (never a coach's or an external plan), only futur
 
 Thresholds live in `src/constants.ts`. Change one, bump `ADAPTATION_ENGINE_VERSION`.
 
-Not yet wired into `apps/api` (no `training_plans` table or plan generation yet). Template loader and assembler come next.
+## Templates
+
+`loadTemplates(TEMPLATE_DIR)` reads the YAML library in `packages/plan-templates` (format in its README) and refuses any template that breaks the schema or the plan bans, with a `TemplateError` naming the rule (`code`: `volume_jump`, `slot_unmapped`, `unknown_workout`, `duration_mismatch`, `unreviewed`, ...). Workout durations are derived from each structure, never trusted from the estimate. Drafts only load with `{ allowDrafts: true }`.
+
+The library is empty: templates are coach-authored and reviewed (doc 07 v2 §8.3). `test/fixtures/four-week.yaml` is a test fixture, not training content.
+
+Not yet wired into `apps/api` (no `training_plans` table or plan generation yet). The assembler comes next.
 
 Tests: `npm test` (from this folder).

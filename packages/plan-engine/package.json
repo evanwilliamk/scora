@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SCORA plan engine: deterministic plan adaptation rules (doc 07 v2 §6.2, §9). No LLM decides an adaptation.",
+  "description": "SCORA plan engine: template loader and deterministic adaptation rules (doc 07 v2 \u00a74.2, \u00a76.2, \u00a79). No LLM writes a template or decides an adaptation.",
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@scora/posture": "*"
+    "@scora/posture": "*",
+    "yaml": "^2.4.5"
   },
   "devDependencies": {
     "tsx": "^4.7.0",
