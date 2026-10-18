@@ -105,3 +105,21 @@ test('no SCORA plan is generated while a coach plan is active', async () => {
   await db.query(`insert into training_plans (athlete_id, source, start_date, end_date) values ('k2', 'coach', '2026-10-19', '2026-12-31')`);
   assert.equal(await code(generatePlan('k2', req, '2026-10-21', templates, sqlGenerateStore(db))), 'coach_plan_active');
 });
+
+test('review fixes: a generated plan replaces an active pasted plan too', async () => {
+  await db.query(`insert into training_plans (athlete_id, source, external_source, start_date, end_date) values ('m1', 'external', 'manual', '2026-10-19', '2026-11-30')`);
+  await generatePlan('m1', req, '2026-10-21', templates, sqlGenerateStore(db));
+  const rows = (await db.query<any>(`select source, current_status from training_plans where athlete_id = 'm1' order by created_at`)).rows;
+  assert.deepEqual(rows.map((r) => [r.source, r.current_status]), [['external', 'replaced'], ['scora_ai', 'active']]);
+});
+
+test('review fixes: a template changed under the same version is refused; review state may move forward', async () => {
+  const store = sqlGenerateStore(db);
+  const [t] = templates;
+  const changed = { ...t, workout_definitions: { ...t.workout_definitions, easy_run: { ...t.workout_definitions.easy_run, duration_min: 45 } } };
+  assert.match(await code(generatePlan('x1', req, '2026-10-21', [changed], store)), /changed without a version bump/);
+  const reviewed = { ...t, status: 'reviewed' as const, reviewed_by: 'A Coach', reviewed_on: '2026-10-17' };
+  await generatePlan('x2', req, '2026-10-21', [reviewed], store);
+  const row = (await db.query<any>(`select status, reviewed_by from plan_templates where slug = 'test-fixture-4wk'`)).rows[0];
+  assert.deepEqual(row, { status: 'reviewed', reviewed_by: 'A Coach' });
+});

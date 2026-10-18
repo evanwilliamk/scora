@@ -10,6 +10,7 @@ as $$
 declare
   v_athlete text := p->>'athlete_id';
   v_template uuid;
+  v_stored jsonb;
   v_plan uuid;
 begin
   if jsonb_typeof(p->'workouts') <> 'array' or jsonb_array_length(p->'workouts') = 0 then
@@ -25,11 +26,23 @@ begin
     t->>'author', t->>'status', t->>'reviewed_by', (t->>'reviewed_on')::date, t
   from (select p->'template' as t) x
   on conflict (slug, version) do nothing;
-  select id into v_template from plan_templates
+  select id, structure_json into v_template, v_stored from plan_templates
   where slug = p->'template'->>'slug' and version = p->'template'->>'version';
+  -- A version is immutable: the same slug and version with different training
+  -- content is an authoring error, never a silent swap. Review fields may
+  -- move forward (draft to reviewed) without a new version.
+  if (v_stored - 'status'::text - 'reviewed_by'::text - 'reviewed_on'::text) <> ((p->'template') - 'status'::text - 'reviewed_by'::text - 'reviewed_on'::text) then
+    raise exception 'Template %@% changed without a version bump', p->'template'->>'slug', p->'template'->>'version';
+  end if;
+  update plan_templates
+  set status = p->'template'->>'status', reviewed_by = p->'template'->>'reviewed_by',
+      reviewed_on = (p->'template'->>'reviewed_on')::date, structure_json = p->'template', updated_at = now()
+  where id = v_template and status <> p->'template'->>'status';
 
+  -- The new plan is the athlete's plan: an active SCORA or pasted plan is
+  -- marked replaced (rows kept). Coach plans are refused before this runs.
   update training_plans set current_status = 'replaced', updated_at = now()
-  where athlete_id = v_athlete and source = 'scora_ai' and current_status = 'active';
+  where athlete_id = v_athlete and source in ('scora_ai', 'external') and current_status = 'active';
 
   insert into training_plans (athlete_id, source, template_id, goal_race_type, goal_race_date, start_date, end_date,
     weekly_volume_start_km)
