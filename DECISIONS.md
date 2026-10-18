@@ -2,6 +2,15 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Plan assembler: no athlete scaling beyond template choice
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/plan-assembler
+- Context: doc 07 v2 §6.1 step 4 says "apply current_weekly_km to scale durations" but gives no formula; any formula is a coaching call.
+- Choice: the athlete's weekly km only picks the template (its `weekly_volume_range_km`); workouts use the template's minutes as written, with the template's own `week_load_percent`. Load percent scales continuous steps only, never interval reps or durations. Race must fall in the final week; nothing is scheduled on or after race day. Matching ties go to the highest version.
+- Alternative: linear scaling within the template's range (for example 0.9x at the bottom, 1.1x at the top), clamped. Easy to add in `assemblePlan`; needs a coach's view on whether interval work should scale.
+- Why: keeps every number traceable to a reviewed template (CLAUDE.md §6.3).
+- To reverse: add a scale factor to `scaleStructure` calls in `packages/plan-engine/src/assembler.ts`.
+
 ### 2026-10-18: Plan template format and load checks
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-templates-loader
