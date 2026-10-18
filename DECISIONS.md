@@ -2,6 +2,19 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Plan template format and load checks
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/plan-templates-loader
+- Context: doc 07 v2 §4.2.1 gives the structure_json shape but no per-week progression, no review state and no rules for which checks run at load.
+- Choice:
+  1. YAML follows doc 07's shape plus `status` (draft/reviewed), `reviewed_by`, `reviewed_on`, and optional `week_load_percent` (one per week, default 100). Drafts never load in production (doc 07 v2 §8.3).
+  2. Every weekly_pattern slot must be filled in every phase; a phase cycles its list in order week to week (deterministic).
+  3. Workout duration is computed from the structure; an authored `total_duration_est_min` must agree within 5 min (doc 07's own example says 55 for a 50 min structure, so the estimate is not trusted).
+  4. The 10% weekly increase ban is checked against the highest earlier week, so a cutback week can return to its earlier peak.
+  5. Step types are warmup, steady, interval, cooldown (doc 07 had no continuous step; added `steady`).
+- Why: a bad template must fail at boot with a named rule, not while an athlete's plan is built.
+- To reverse: `packages/plan-engine/src/template-loader.ts`, one check per block, each with a test.
+
 ### 2026-10-18: Plan adaptation rules, details the spec left open
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-engine-adaptation
