@@ -61,8 +61,9 @@ const pct = (curr: number, prev: number): string => {
 };
 
 const hoursMin = (seconds: number): string => {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
+  const total = Math.round(seconds / 60); // round first, so 6:59.5 is 7:00, never 6:60
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return `${h}:${m.toString().padStart(2, '0')}`;
 };
 

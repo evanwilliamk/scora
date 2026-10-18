@@ -623,7 +623,7 @@ fastify.post('/api/read', async (request, reply) => {
 
     // The athlete's own plan for today, if they pasted one. The read may name
     // it; it never changes it (CLAUDE.md §1.3). Never blocks the read.
-    const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+    const today = isoDay(clientToday) ?? athleteLocalToday(activities);
     let plan = planForRead([], today);
     try {
       // A week ahead, so "nothing scheduled today" is known when a plan exists.

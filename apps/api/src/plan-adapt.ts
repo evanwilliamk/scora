@@ -332,7 +332,9 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
 // Each change's stored reason is a driver, so the voice may quote it.
 export function planChangeContext(rows: PlanAdaptationRow[]): { drivers: Driver[]; promptLine: string } {
   if (rows.length === 0) return { drivers: [], promptLine: '' };
-  const reasons = rows.map((r) => r.reason_text.trim()).filter(Boolean);
+  // Only the first sentence (the change itself): later sentences describe the
+  // posture or sleep on the day the change was made, which may not be today.
+  const reasons = rows.map((r) => (r.reason_text.trim().match(/^.*?[.?](?=\s|$)/)?.[0] ?? r.reason_text.trim())).filter(Boolean);
   return {
     drivers: reasons.map((value) => ({ metric: 'Plan change', value })),
     promptLine: `PLAN CHANGE (already made by SCORA's plan engine; you may observe it, never argue with it, add to it or suggest another): ${reasons.join(' ')}`,

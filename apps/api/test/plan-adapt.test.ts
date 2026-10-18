@@ -242,8 +242,8 @@ test('the read sees changes touching today, as quotable drivers (CLAUDE.md §1.3
   assert.equal(rows.length, 1);
   const ctx = planChangeContext(rows);
   assert.match(ctx.promptLine, /^PLAN CHANGE \(already made by SCORA's plan engine; you may observe it, never argue with it/);
-  assert.deepEqual(ctx.drivers, [{ metric: 'Plan change', value: rows[0].reason_text }]);
+  assert.deepEqual(ctx.drivers, [{ metric: 'Plan change', value: "Thursday's tempo is now an endurance run at the same 40 minutes." }]); // first sentence only: no stale posture
   // The stored reason passes the voice validator when it is a driver.
-  assert.deepEqual(validateVoice(`${rows[0].reason_text}`, ctx.drivers as any), { ok: true, bannedHits: [], unbackedNumbers: [] });
+  assert.deepEqual(validateVoice(ctx.drivers[0].value, ctx.drivers as any), { ok: true, bannedHits: [], unbackedNumbers: [] });
   assert.deepEqual(planChangeContext([]), { drivers: [], promptLine: '' });
 });
