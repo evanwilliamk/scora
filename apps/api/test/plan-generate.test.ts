@@ -109,7 +109,7 @@ test('no SCORA plan is generated while a coach plan is active', async () => {
 test('review fixes: a generated plan replaces an active pasted plan too', async () => {
   await db.query(`insert into training_plans (athlete_id, source, external_source, start_date, end_date) values ('m1', 'external', 'manual', '2026-10-19', '2026-11-30')`);
   await generatePlan('m1', req, '2026-10-21', templates, sqlGenerateStore(db));
-  const rows = (await db.query<any>(`select source, current_status from training_plans where athlete_id = 'm1' order by created_at`)).rows;
+  const rows = (await db.query<any>(`select source, current_status from training_plans where athlete_id = 'm1' order by source`)).rows;
   assert.deepEqual(rows.map((r) => [r.source, r.current_status]), [['external', 'replaced'], ['scora_ai', 'active']]);
 });
 
