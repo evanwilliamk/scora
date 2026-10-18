@@ -17,6 +17,7 @@
 		84D45B012FF6BF3900E8AC69 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B002FF6BF3900E8AC69 /* DashboardView.swift */; };
 		84D45B032FF6BF3900E8AC69 /* WeeklyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */; };
 		5C0A1A022FF6BF3900E8AC69 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0A1A012FF6BF3900E8AC69 /* PlanView.swift */; };
+		5C0A1D022FF6BF3900E8AC69 /* WeekSoFarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0A1D012FF6BF3900E8AC69 /* WeekSoFarView.swift */; };
 		5C0A1A042FF6BF3900E8AC69 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0A1A032FF6BF3900E8AC69 /* OnboardingView.swift */; };
 		5C0A1B022FF6BF3900E8AC69 /* DriverChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0A1B012FF6BF3900E8AC69 /* DriverChart.swift */; };
 		5C0A1B042FF6BF3900E8AC69 /* DemoMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0A1B032FF6BF3900E8AC69 /* DemoMode.swift */; };
@@ -58,6 +59,7 @@
 		84D45B002FF6BF3900E8AC69 /* DashboardView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WeeklyView.swift; sourceTree = "<group>"; };
 		5C0A1A012FF6BF3900E8AC69 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
+		5C0A1D012FF6BF3900E8AC69 /* WeekSoFarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekSoFarView.swift; sourceTree = "<group>"; };
 		5C0A1A032FF6BF3900E8AC69 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		5C0A1B012FF6BF3900E8AC69 /* DriverChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriverChart.swift; sourceTree = "<group>"; };
 		5C0A1B032FF6BF3900E8AC69 /* DemoMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoMode.swift; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 				84D45B002FF6BF3900E8AC69 /* DashboardView.swift */,
 				84D45B022FF6BF3900E8AC69 /* WeeklyView.swift */,
 				5C0A1A012FF6BF3900E8AC69 /* PlanView.swift */,
+				5C0A1D012FF6BF3900E8AC69 /* WeekSoFarView.swift */,
 				5C0A1A032FF6BF3900E8AC69 /* OnboardingView.swift */,
 				5C0A1B012FF6BF3900E8AC69 /* DriverChart.swift */,
 				5C0A1B032FF6BF3900E8AC69 /* DemoMode.swift */,
@@ -298,6 +301,7 @@
 				84D45B012FF6BF3900E8AC69 /* DashboardView.swift in Sources */,
 				84D45B032FF6BF3900E8AC69 /* WeeklyView.swift in Sources */,
 				5C0A1A022FF6BF3900E8AC69 /* PlanView.swift in Sources */,
+				5C0A1D022FF6BF3900E8AC69 /* WeekSoFarView.swift in Sources */,
 				5C0A1A042FF6BF3900E8AC69 /* OnboardingView.swift in Sources */,
 				5C0A1B022FF6BF3900E8AC69 /* DriverChart.swift in Sources */,
 				5C0A1B042FF6BF3900E8AC69 /* DemoMode.swift in Sources */,

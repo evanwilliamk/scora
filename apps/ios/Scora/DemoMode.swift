@@ -8,6 +8,13 @@ enum DemoMode {
   static var isOn: Bool { ProcessInfo.processInfo.arguments.contains("-demo-read") }
   static var opensChart: Bool { ProcessInfo.processInfo.arguments.contains("-demo-chart") }
 
+  static let week = WeekSoFar(
+    days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], [40, 0, 80, 0, nil, nil, nil] as [Int?]).enumerated().map { i, p in
+      WeekSoFarDay(date: "2026-10-\(19 + i)", weekday: p.0, runMin: p.1)
+    },
+    line: "3 runs, 120 min since Monday; 95 min by this point last week."
+  )
+
   static let read: DailyRead = {
     let voice = "Sleep held at 7:12 for the second night and HRV is 52ms, above your week. Load is 412 min, close to last week."
     let ns = voice as NSString

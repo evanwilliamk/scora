@@ -35,6 +35,7 @@ import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { planForRead } from './plan-read';
 import { numericLine } from './numeric-line';
+import { weekSoFar } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, supabaseGenerateStore,
@@ -725,6 +726,7 @@ Write today's read using only these drivers.`;
 
     return reply.send({
       read: { voice, numbers: numericLine(readDrivers), ...(charts ?? {}) },
+      weekSoFar: weekSoFar(activities, today),
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
       plan: { today: plan.driver?.value ?? null },

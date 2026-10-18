@@ -176,6 +176,13 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(r.posture?.posture, "steady")
     }
 
+    func testWeekSoFarDecodesAndScalesBars() throws {
+        let json = #"{"read":{"voice":"x"},"weekSoFar":{"days":[{"date":"2026-10-19","weekday":"Mon","run_min":40},{"date":"2026-10-20","weekday":"Tue","run_min":0},{"date":"2026-10-21","weekday":"Wed","run_min":80},{"date":"2026-10-22","weekday":"Thu","run_min":null}],"runs":2,"total_min":120,"last_week_to_date_min":95,"line":"2 runs, 120 min since Monday; 95 min by this point last week."},"cards":[],"generatedAt":null}"#
+        let r = try JSONDecoder().decode(ReadResponse.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(r.weekSoFar?.heights, [0.5, 0, 1, nil])
+        XCTAssertEqual(r.weekSoFar?.line, "2 runs, 120 min since Monday; 95 min by this point last week.")
+    }
+
     func testReadWithoutChartsStillDecodes() throws {
         let json = #"{"read":{"voice":"Plain read."},"cards":[],"generatedAt":null}"#.data(using: .utf8)!
         let r = try JSONDecoder().decode(ReadResponse.self, from: json)

@@ -50,6 +50,7 @@ struct ReadPosture: Decodable, Equatable {
 struct ReadResponse: Decodable {
   let read: DailyRead
   let posture: ReadPosture?
+  let weekSoFar: WeekSoFar?
   let cards: [DashboardCard]
   let generatedAt: String?
 }
@@ -89,6 +90,7 @@ struct DashboardView: View {
 
   @State private var read: DailyRead?
   @State private var posture: String?
+  @State private var week: WeekSoFar?
   @State private var cards: [DashboardCard] = []
   @State private var isLoading = false
   @State private var errorText: String?
@@ -127,6 +129,7 @@ struct DashboardView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
           todaysRead
+          if let week { WeekSoFarView(week: week) }
           if !cards.isEmpty {
             LazyVGrid(columns: columns, spacing: 12) {
               ForEach(cards) { card in
@@ -389,6 +392,7 @@ struct DashboardView: View {
       await MainActor.run {
         read = DemoMode.read
         posture = "steady"
+        week = DemoMode.week
         if DemoMode.opensChart { chartSeries = DemoMode.read.series?["hrv"] }
       }
       return
@@ -424,6 +428,7 @@ struct DashboardView: View {
       await MainActor.run {
         read = decoded.read
         posture = decoded.posture?.posture
+        week = decoded.weekSoFar
         cards = decoded.cards
         expansions = [:] // a new read means new numbers to interpret
         readGeneration += 1

@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Week So Far line is built in code, not by the LLM
+- Status: DECIDED (reversible; copy is yours)
+- Branch: claude/week-so-far
+- Context: PRD §5.A.3 asks for a mini visual plus a "one-line voice" for the week so far.
+- Choice: the line is a fixed sentence from the same numbers as the bars ("3 runs, 120 min since Monday; 95 min by this point last week."), so it costs no LLM call and cannot cite an unbacked number. Run minutes only (rides and swims not counted yet); planned minutes are not overlaid yet.
+- Alternative: a short gpt-4o line through the voice validators, at one more call per read.
+- To reverse: `apps/api/src/week-so-far.ts`.
+
 ### 2026-10-18: The read observes plan changes touching today
 - Status: DECIDED (reversible)
 - Branch: claude/read-sees-plan-changes (on claude/integration-2026-10-18)
