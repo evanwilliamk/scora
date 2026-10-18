@@ -37,7 +37,8 @@ export interface DashboardData {
 }
 
 const inWindow = (a: any, fromMs: number, toMs: number) => {
-  const t = new Date(a.start_date_local || a.start_date).getTime();
+  // start_date is true UTC; start_date_local is wall-clock time with a Z.
+  const t = new Date(a.start_date || a.start_date_local).getTime();
   return t > fromMs && t <= toMs;
 };
 
@@ -212,7 +213,7 @@ export function buildDashboard(
     const longest = last30.reduce((m, a) => ((a.distance || 0) > (m.distance || 0) ? a : m));
     const longestMiles = +((longest.distance || 0) / M).toFixed(1);
     const daysSince = Math.floor(
-      (now - new Date(longest.start_date_local || longest.start_date).getTime()) / day
+      (now - new Date(longest.start_date || longest.start_date_local).getTime()) / day
     );
     cards.push({
       id: 'long_effort',
