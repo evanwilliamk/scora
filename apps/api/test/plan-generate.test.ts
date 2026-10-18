@@ -73,8 +73,8 @@ test('a new plan replaces the active one; the template row is reused, not duplic
   const store = sqlGenerateStore(db);
   const first = (await db.query<any>(`select id from training_plans where athlete_id = 'g1' and current_status = 'active'`)).rows[0].id;
   const { planId } = await generatePlan('g1', { ...req, goal_race_date: '2026-11-22' }, '2026-10-26', templates, store);
-  const rows = (await db.query<any>(`select id, current_status from training_plans where athlete_id = 'g1' order by created_at`)).rows;
-  assert.deepEqual(rows.map((r) => [r.id === first, r.current_status]), [[true, 'replaced'], [false, 'active']]);
+  const rows = (await db.query<any>(`select id, current_status from training_plans where athlete_id = 'g1' order by current_status`)).rows;
+  assert.deepEqual(rows.map((r) => [r.id === first, r.current_status]), [[false, 'active'], [true, 'replaced']]);
   assert.ok(planId);
   const t = await db.query(`select 1 from plan_templates where slug = 'test-fixture-4wk'`);
   assert.equal(t.rows.length, 1);
@@ -109,7 +109,7 @@ test('no SCORA plan is generated while a coach plan is active', async () => {
 test('review fixes: a generated plan replaces an active pasted plan too', async () => {
   await db.query(`insert into training_plans (athlete_id, source, external_source, start_date, end_date) values ('m1', 'external', 'manual', '2026-10-19', '2026-11-30')`);
   await generatePlan('m1', req, '2026-10-21', templates, sqlGenerateStore(db));
-  const rows = (await db.query<any>(`select source, current_status from training_plans where athlete_id = 'm1' order by created_at`)).rows;
+  const rows = (await db.query<any>(`select source, current_status from training_plans where athlete_id = 'm1' order by source`)).rows;
   assert.deepEqual(rows.map((r) => [r.source, r.current_status]), [['external', 'replaced'], ['scora_ai', 'active']]);
 });
 
