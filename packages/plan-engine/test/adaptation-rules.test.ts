@@ -237,3 +237,36 @@ test('date helpers: UTC arithmetic, Monday-to-Sunday weeks, bad input throws', (
   assert.throws(() => addDays('2026-13-40', 1));
   assert.throws(() => daysBetween('10/19/2026', '2026-10-20'));
 });
+
+test("a move to Sunday sees the next Monday's hard session (review fix)", () => {
+  const sat = w('sat', '2026-10-24', 'tempo', 50);
+  const week = [sat, w('sun', '2026-10-25', 'rest', null), w('nextmon', '2026-10-26', 'intervals', 60)];
+  const r = evaluateAdaptation(input({ workout: sat, plan: plan({ week, template_week_minutes: 50 }), today: '2026-10-23' }));
+  assert.deepEqual(r, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
+  // Without the Monday session, Sunday is open.
+  const open = evaluateAdaptation(input({ workout: sat, plan: plan({ week: week.slice(0, 2), template_week_minutes: 50 }), today: '2026-10-23' }));
+  assert.equal(open.type, 'moved');
+});
+
+test("rows outside the plan week never count toward the week's minutes", () => {
+  const week = [...spacedWeek, w('nextmon', '2026-10-26', 'easy', 60), w('prevsun', '2026-10-18', 'long', 120)];
+  const r = evaluateAdaptation(input({ plan: plan({ week }) }));
+  assert.equal(r.type, 'moved');
+  if (r.type === 'moved') assert.equal(r.facts.week_minutes_before, 230);
+});
+
+test('the volume guard lets a change bring the week closer to the template', () => {
+  // Week at 270 vs a 200 call (35% over). Displacing Wednesday's 40 leaves
+  // 230 (15% over): still outside the band, but closer, so it is allowed and
+  // Wednesday wins over the later rest day.
+  const week = spacedWeek.map((x) => (x.id === 'fri' ? { ...x, planned_duration_min: 70 } : x));
+  const r = evaluateAdaptation(input({ plan: plan({ week, template_week_minutes: 200 }) }));
+  assert.equal(r.type, 'moved');
+  if (r.type === 'moved') assert.deepEqual([r.to, r.displaced_workout_id, r.facts.week_minutes_after], ['2026-10-21', 'wed', 230]);
+});
+
+test('impossible calendar dates are refused, not rolled over (review fix)', () => {
+  assert.throws(() => addDays('2026-02-30', 0), /invalid date/);
+  assert.throws(() => daysBetween('2026-02-29', '2026-03-01'), /invalid date/); // 2026 is not a leap year
+  assert.equal(addDays('2028-02-29', 1), '2028-03-01');
+});

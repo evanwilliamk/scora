@@ -21,7 +21,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: doc 07 v2 §6.2/§9 and CLAUDE.md §6.2 define the rules but not the move window, the volume unit or which plans adapt.
 - Choice:
   1. A move stays inside the plan week (Mon to Sun) and lands on the first later day that is rest or a single easy/recovery session, with no hard day either side. The displaced easy session is dropped. If no day qualifies, no adaptation (logged `skip_no_window`).
-  2. Weekly volume is measured in planned minutes (templates are duration-based). The ±10% guard only blocks a change that moves the week's minutes; a downgrade (same duration) is never blocked.
+  2. Weekly volume is measured in planned minutes (templates are duration-based). The ±10% guard blocks a change only if it leaves the week outside the band and further from the template than before; a downgrade (same duration) or a change that brings the week closer is never blocked. The week means Monday to Sunday; the caller also passes the next Monday so a move to Sunday never lands right before a hard session (review fix).
   3. back-off + threshold downgrades like intervals (doc 07 v2 lists both; CLAUDE.md lists intervals only).
   4. The engine only adapts `scora_ai` plans. Coach plans change only by the coach; external and pasted plans are never rewritten.
   5. Race freeze covers T-7 through race day, measured from the workout's date, and also stops a move landing inside it.
