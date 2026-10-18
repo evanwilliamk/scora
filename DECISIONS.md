@@ -33,6 +33,41 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: Supabase CLI local stack (needs Docker).
 - Why: real Postgres plus pgvector in-process, no services.
 - To reverse: delete the test and the two devDependencies.
+### 2026-10-18: Plan assembler: no athlete scaling beyond template choice
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/plan-assembler
+- Context: doc 07 v2 §6.1 step 4 says "apply current_weekly_km to scale durations" but gives no formula; any formula is a coaching call.
+- Choice: the athlete's weekly km only picks the template (its `weekly_volume_range_km`); workouts use the template's minutes as written, with the template's own `week_load_percent`. Load percent scales continuous steps only, never interval reps or durations. Race must fall in the final week; nothing is scheduled on or after race day. Matching ties go to the highest version.
+- Alternative: linear scaling within the template's range (for example 0.9x at the bottom, 1.1x at the top), clamped. Easy to add in `assemblePlan`; needs a coach's view on whether interval work should scale.
+- Why: keeps every number traceable to a reviewed template (CLAUDE.md §6.3).
+- To reverse: add a scale factor to `scaleStructure` calls in `packages/plan-engine/src/assembler.ts`.
+
+### 2026-10-18: Plan template format and load checks
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/plan-templates-loader
+- Context: doc 07 v2 §4.2.1 gives the structure_json shape but no per-week progression, no review state and no rules for which checks run at load.
+- Choice:
+  1. YAML follows doc 07's shape plus `status` (draft/reviewed), `reviewed_by`, `reviewed_on`, and optional `week_load_percent` (one per week, default 100). Drafts never load in production (doc 07 v2 §8.3).
+  2. Every weekly_pattern slot must be filled in every phase; a phase cycles its list in order week to week (deterministic).
+  3. Workout duration is computed from the structure; an authored `total_duration_est_min` must agree within 5 min (doc 07's own example says 55 for a 50 min structure, so the estimate is not trusted).
+  4. The 10% weekly increase ban is checked against the highest earlier week, so a cutback week can return to its earlier peak.
+  5. Step types are warmup, steady, interval, cooldown (doc 07 had no continuous step; added `steady`).
+- Why: a bad template must fail at boot with a named rule, not while an athlete's plan is built.
+- To reverse: `packages/plan-engine/src/template-loader.ts`, one check per block, each with a test.
+
+### 2026-10-18: Plan adaptation rules, details the spec left open
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/plan-engine-adaptation
+- Context: doc 07 v2 §6.2/§9 and CLAUDE.md §6.2 define the rules but not the move window, the volume unit or which plans adapt.
+- Choice:
+  1. A move stays inside the plan week (Mon to Sun) and lands on the first later day that is rest or a single easy/recovery session, with no hard day either side. The displaced easy session is dropped. If no day qualifies, no adaptation (logged `skip_no_window`).
+  2. Weekly volume is measured in planned minutes (templates are duration-based). The ±10% guard only blocks a change that moves the week's minutes; a downgrade (same duration) is never blocked.
+  3. back-off + threshold downgrades like intervals (doc 07 v2 lists both; CLAUDE.md lists intervals only).
+  4. The engine only adapts `scora_ai` plans. Coach plans change only by the coach; external and pasted plans are never rewritten.
+  5. Race freeze covers T-7 through race day, measured from the workout's date, and also stops a move landing inside it.
+- Why: keeps weekly volume and hard-day spacing as the template set them, which is what the plan-level bans in CLAUDE.md §4.3 protect.
+- To reverse: each is one function or constant in `packages/plan-engine/src/adaptation-rules.ts` or `constants.ts`, with a test naming it.
+
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library

@@ -51,6 +51,16 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 - Phase 2: Stripe subscriptions, plan engine + templates, WorkoutKit, WhatsApp doorbell, inline chart-expansion
   - [~] Plan tier DB migration: `plan_templates`, `plan_adaptations`, template/race columns on `training_plans`, WorkoutKit columns on `scheduled_workouts` (`claude/plan-schema`, stacked on `claude/manual-plan`; PGlite tests only, Evan applies it)
+
+## Phase 2: plan engine (started 2026-10-18; pure code, no deploy or money)
+
+- [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`). Done when every rule and guard has a unit test and the package typechecks
+- [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, stacked on `claude/plan-engine-adaptation`) (doc 07 v2 §4.2.1, CLAUDE.md §4.3 plan bans). Done when a malformed or rule-breaking template fails to load with a named error, tested on test fixtures only
+- [~] (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`) Assembler: template + start date + race date + current weekly volume to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
+- [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
+- [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
+- [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
+- [ ] Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`
