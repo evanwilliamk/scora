@@ -168,6 +168,9 @@ export interface OuraSummary {
   // which have no history yet, still fit the shape.
   restingHrHistory?: number[]; // lowest HR, prior ~7 nights
   sleepScoreHistory?: number[]; // daily sleep score, prior ~28 nights
+  // Dated nights, newest first, last night included: the series behind the
+  // inline charts (driver-links.ts). One entry per night (longest period).
+  nights?: { day: string; sleepSeconds: number | null; hrvMs: number | null; restingHr: number | null }[];
 }
 
 // Pull the last week of Oura data and reduce it to the values the two cards
@@ -194,7 +197,9 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
 
   // Detailed sleep periods: total_sleep_duration, average_hrv, lowest_heart_rate.
   try {
-    const res = await fetch(`${OURA_API}/sleep?${range}`, auth);
+    // 29 days so the inline charts can show a month; the 7-night fields
+    // below still read only the newest nights.
+    const res = await fetch(`${OURA_API}/sleep?${scoreRange}`, auth);
     if (res.ok) {
       const json: any = await res.json();
       // One period per night: the longest non-nap one (Oura can split a night
@@ -224,6 +229,12 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
         .slice(1, 8)
         .map((p) => p.lowest_heart_rate)
         .filter((v) => typeof v === 'number');
+      summary.nights = periods.map((p) => ({
+        day: p.day,
+        sleepSeconds: typeof p.total_sleep_duration === 'number' ? p.total_sleep_duration : null,
+        hrvMs: typeof p.average_hrv === 'number' ? p.average_hrv : null,
+        restingHr: typeof p.lowest_heart_rate === 'number' ? p.lowest_heart_rate : null,
+      }));
     }
   } catch {
     // leave sleep fields null
