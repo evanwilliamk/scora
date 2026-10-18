@@ -26,7 +26,7 @@ import { startScheduler } from './scheduler';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore, withTimeout } from './plan-adapt';
-import { predictRace, predictionsEnabled } from './race-prediction';
+import { fetchActivitiesSince, predictRace, predictionsEnabled } from './race-prediction';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -731,12 +731,12 @@ fastify.get('/api/plan/prediction', async (request, reply) => {
     const race = raceParam ?? (await adaptStore().activeScoraPlan(athleteId))?.template.goal_type;
     if (!race) return reply.code(422).send({ error: 'No race given and no active plan with a goal race.' });
     const token = await getValidStravaToken(athleteId);
-    const after = Math.floor(Date.now() / 1000) - 60 * 86400;
-    const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${after}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return reply.code(401).send({ error: 'Strava token invalid or expired' });
-    const activities = (await res.json()) as any[];
+    let activities: any[];
+    try {
+      activities = await fetchActivitiesSince(token, Math.floor(Date.now() / 1000) - 60 * 86400);
+    } catch {
+      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    }
     const today = isoDay(clientToday) ?? athleteLocalToday(activities);
     return reply.send({ prediction: predictRace(activities, race, today) });
   } catch (e) {

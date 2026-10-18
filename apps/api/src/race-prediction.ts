@@ -95,3 +95,24 @@ export function formatDuration(s: number): string {
   const sec = t % 60;
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 }
+
+// Every activity since `afterSec`, page by page. With `after`, Strava returns
+// the oldest first, so a single capped page would drop the newest runs.
+export async function fetchActivitiesSince(
+  token: string,
+  afterSec: number,
+  fetchImpl: typeof fetch = fetch,
+  maxPages = 5,
+): Promise<any[]> {
+  const out: any[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await fetchImpl(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${afterSec}&page=${page}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Strava ${res.status}`);
+    const batch = (await res.json()) as any[];
+    out.push(...batch);
+    if (batch.length < 200) break;
+  }
+  return out;
+}
