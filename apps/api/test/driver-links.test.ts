@@ -41,7 +41,7 @@ test('spans are UTF-16 offsets, so text after an emoji-free curly quote still li
   assert.equal(span(voice, l), '52ms');
 });
 
-test('load and volume: every local day for 28 days, rest days read 0, runs summed per day', () => {
+test('load and volume: 28 local days of rolling 7-day totals, rest days count as 0', () => {
   const acts = [
     { type: 'Run', start_date_local: '2026-10-17T07:00:00Z', moving_time: 1800, distance: 5000 },
     { type: 'Run', start_date_local: '2026-10-17T18:00:00Z', moving_time: 1200, distance: 3000 },
@@ -52,8 +52,9 @@ test('load and volume: every local day for 28 days, rest days read 0, runs summe
   const s = buildDriverSeries(acts, null, '2026-10-18');
   assert.equal(s.load!.points.length, 28);
   assert.equal(s.load!.points[0].date, '2026-09-21');
-  assert.deepEqual(s.load!.points.slice(-2), [{ date: '2026-10-17', value: 50 }, { date: '2026-10-18', value: 60 }]);
-  assert.deepEqual(s.volume!.points.slice(-1), [{ date: '2026-10-18', value: 6.2 }]);
+  // Rolling 7-day totals: the newest point is the week's load, as the read cites it.
+  assert.deepEqual(s.load!.points.slice(-3), [{ date: '2026-10-16', value: 0 }, { date: '2026-10-17', value: 50 }, { date: '2026-10-18', value: 110 }]);
+  assert.deepEqual(s.volume!.points.slice(-1), [{ date: '2026-10-18', value: 11.2 }]);
   assert.equal(s.load!.baseline, Math.round((50 / 27) * 10) / 10);
   assert.equal(s.sleep, undefined); // no Oura, no sleep chart
 });

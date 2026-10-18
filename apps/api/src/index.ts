@@ -642,11 +642,16 @@ Write today's read using only these drivers.`;
     // (CLAUDE.md §3.4). Spans are found in code on the validated text.
     let charts: { links: ReturnType<typeof linkDrivers>; series: ReturnType<typeof buildDriverSeries> } | undefined;
     if (inlineChartsEnabled()) {
-      const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
-      const series = buildDriverSeries(activities, recovery, today);
-      const links = linkDrivers(voice, readDrivers, new Set(Object.keys(series) as SeriesKey[]));
-      const used = new Set(links.map((l) => l.key));
-      charts = { links, series: Object.fromEntries(Object.entries(series).filter(([k]) => used.has(k as SeriesKey))) };
+      // Charts are extra: any failure leaves the read as plain text.
+      try {
+        const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+        const series = buildDriverSeries(activities, recovery, today);
+        const links = linkDrivers(voice, readDrivers, new Set(Object.keys(series) as SeriesKey[]));
+        const used = new Set(links.map((l) => l.key));
+        charts = { links, series: Object.fromEntries(Object.entries(series).filter(([k]) => used.has(k as SeriesKey))) };
+      } catch (e) {
+        fastify.log.error(`Inline charts failed for ${athleteId}: ${e instanceof Error ? e.message : e}`);
+      }
     }
 
     return reply.send({
@@ -669,8 +674,12 @@ Write today's read using only these drivers.`;
 // Manual plan entry (Free tier plan source, doc 09 §1.4). The athlete pastes
 // a plan; gpt-4o-mini transcribes it and plan-parse.ts keeps only rows whose
 // dates resolve and whose numbers appear in the pasted text.
-const isoDay = (v: unknown): string | null =>
-  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+// A real calendar date or null: 2026-13-01 and 2026-02-31 do not pass.
+const isoDay = (v: unknown): string | null => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v ? v : null;
+};
 const addDays = (day: string, n: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 let _planSb: ReturnType<typeof createClient> | null = null;
@@ -738,7 +747,10 @@ fastify.get('/api/plan/adaptations', async (request, reply) => {
   const { athleteId } = request.query as { athleteId?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {
-    return reply.send({ adaptations: await adaptStore().recent(athleteId, 20) });
+    const store = adaptStore();
+    // A coach's plan replaces SCORA's (CLAUDE.md §5.3): its old changes go too.
+    if (await store.hasActiveCoachPlan(athleteId)) return reply.send({ adaptations: [] });
+    return reply.send({ adaptations: await store.recent(athleteId, 20) });
   } catch (e) {
     fastify.log.error(`Adaptations load failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Loading plan changes failed.' });

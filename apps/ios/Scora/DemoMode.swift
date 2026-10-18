@@ -27,7 +27,7 @@ enum DemoMode {
     }
     let hrv: [Double] = [41, 44, 43, 47, 45, 46, 44, 48, 46, 49, 47, 50, 48, 52]
     let sleep: [Double] = [6.8, 7.1, 6.5, 7.4, 6.9, 7.0, 6.2, 7.3, 7.5, 6.8, 7.0, 6.6, 7.1, 7.2]
-    let load: [Double] = [45, 0, 60, 30, 0, 95, 40, 50, 0, 65, 35, 0, 110, 40]
+    let load: [Double] = [355, 340, 362, 371, 348, 380, 392, 375, 388, 401, 396, 384, 405, 412]
     let mean = { (xs: [Double]) in (xs.dropLast().reduce(0, +) / Double(xs.count - 1) * 10).rounded() / 10 }
     return DailyRead(
       voice: voice,
@@ -35,7 +35,7 @@ enum DemoMode {
       series: [
         "hrv": DriverSeries(key: "hrv", label: "HRV, nightly average", unit: "ms", points: days(hrv), baseline: mean(hrv)),
         "sleep": DriverSeries(key: "sleep", label: "Hours slept", unit: "h", points: days(sleep), baseline: mean(sleep)),
-        "load": DriverSeries(key: "load", label: "Run minutes per day", unit: "min", points: days(load), baseline: mean(load)),
+        "load": DriverSeries(key: "load", label: "Run minutes, last 7 days", unit: "min", points: days(load), baseline: mean(load)),
       ]
     )
   }()
