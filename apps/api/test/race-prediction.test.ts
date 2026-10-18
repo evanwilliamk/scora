@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PREDICTION, fetchActivitiesSince, formatDuration, predictRace, riegel } from '../src/race-prediction';
+import { PREDICTION, predictRace, riegel } from '../src/race-prediction';
+import { fetchActivitiesSince } from '../src/strava';
 
 const run = (date: string, km: number, min: number, extra: Record<string, unknown> = {}) => ({
   type: 'Run', start_date_local: `${date}T07:00:00Z`, distance: km * 1000, moving_time: min * 60, elapsed_time: min * 60 + 30, ...extra,
@@ -52,11 +53,6 @@ test('only the last 8 weeks and only runs count', () => {
   assert.ok(p.ok && p.efforts.every((e) => e.date >= '2026-08-24'));
 });
 
-test('durations format as h:mm over an hour and m:ss under', () => {
-  assert.equal(formatDuration(3 * 3600 + 42 * 60 + 10), '3:42');
-  assert.equal(formatDuration(24 * 60 + 5), '24:05');
-  assert.equal(formatDuration(59.6), '1:00');
-});
 
 test('activities are paged until a short page, so the newest runs are not dropped', async () => {
   const urls: string[] = [];

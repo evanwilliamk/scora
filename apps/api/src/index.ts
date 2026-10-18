@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
-import { storeStravaTokens, getValidStravaToken } from './strava';
+import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureForRead } from './drivers';
 import { SnapshotCache, planCardExpansion } from './card-expand';
@@ -45,7 +45,7 @@ import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
 import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
 import { buildDriverSeries, inlineChartsEnabled, linkDrivers, parseHealthNights } from './driver-links';
 import type { SeriesKey } from './driver-links';
-import { fetchActivitiesSince, predictRace, predictionsEnabled } from './race-prediction';
+import { predictRace, predictionsEnabled } from './race-prediction';
 import { CALORIE_ENGINE_VERSION, caloriesEnabled, estimateCalories } from './calories';
 import { createClient } from '@supabase/supabase-js';
 
