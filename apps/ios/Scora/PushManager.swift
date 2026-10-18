@@ -18,6 +18,9 @@ final class PushManager {
   }
 
   func requestAuthorization() {
+    #if DEBUG
+    if DemoMode.isOn { return } // no system prompts over the demo screen
+    #endif
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
       guard granted else { return }
       DispatchQueue.main.async {

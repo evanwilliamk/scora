@@ -19,6 +19,9 @@ class TokenManager: ObservableObject {
   
   init() {
     isAuthenticated = UserDefaults.standard.string(forKey: tokenKey) != nil
+    #if DEBUG
+    if DemoMode.isOn { isAuthenticated = true }
+    #endif
     athleteName = UserDefaults.standard.string(forKey: athleteNameKey) ?? ""
     needsOnboarding = OnboardingState.needsOnboarding
   }

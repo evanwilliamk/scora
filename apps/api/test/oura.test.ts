@@ -49,7 +49,11 @@ test('last night plus prior-night history, newest first, naps ignored', async ()
     return (Date.parse(q.get('end_date')!) - Date.parse(q.get('start_date')!)) / 86400000;
   };
   assert.equal(span(dailyUrl), 30, 'sleep scores cover ~29 nights for the baselines');
-  assert.equal(span(sleepUrl), 9);
+  assert.equal(span(sleepUrl), 30, 'sleep periods cover ~29 nights for the inline charts');
+  // Dated nights for the charts: one per night, newest first, nap excluded.
+  assert.equal(s.nights!.length, 9);
+  assert.equal(s.nights![0].day, day(17));
+  assert.notEqual(s.nights![0].hrvMs, 99);
 });
 
 test('a failing route leaves its fields null and never throws', async () => {

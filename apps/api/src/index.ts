@@ -41,6 +41,8 @@ import {
 import { TEMPLATE_DIR, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
 import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
+import { buildDriverSeries, inlineChartsEnabled, linkDrivers } from './driver-links';
+import type { SeriesKey } from './driver-links';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -690,8 +692,19 @@ Write today's read using only these drivers.`;
       );
     }
 
+    // Plan tier: drivers in the read link to the raw series behind them
+    // (CLAUDE.md §3.4). Spans are found in code on the validated text.
+    let charts: { links: ReturnType<typeof linkDrivers>; series: ReturnType<typeof buildDriverSeries> } | undefined;
+    if (inlineChartsEnabled()) {
+      const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+      const series = buildDriverSeries(activities, ouraSummary, today);
+      const links = linkDrivers(voice, readDrivers, new Set(Object.keys(series) as SeriesKey[]));
+      const used = new Set(links.map((l) => l.key));
+      charts = { links, series: Object.fromEntries(Object.entries(series).filter(([k]) => used.has(k as SeriesKey))) };
+    }
+
     return reply.send({
-      read: { voice },
+      read: { voice, ...(charts ?? {}) },
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
       plan: { today: plan.driver?.value ?? null },

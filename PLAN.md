@@ -50,23 +50,21 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 - [!] Strava scheduled activities ingestion: not possible, Strava API v3 has no planned-workout endpoint (checked 2026-10-17). Proposed replacement: iCal feed import (Q17 in Evan's questions)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys)
 
-## Phase 2: plan engine (started 2026-10-18; pure code, no deploy or money)
+## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags, no deploy or money)
 
-- [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`). Done when every rule and guard has a unit test and the package typechecks
-- [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, stacked on `claude/plan-engine-adaptation`) (doc 07 v2 §4.2.1, CLAUDE.md §4.3 plan bans). Done when a malformed or rule-breaking template fails to load with a named error, tested on test fixtures only
-- [~] Assembler: template + start date + race date to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5) (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
-- [~] DB migration: `plan_templates`, `plan_adaptations`, template/race columns on `training_plans`, WorkoutKit columns on `scheduled_workouts` (`claude/plan-schema`, stacked on `claude/manual-plan`; PGlite tests only, Evan applies it)
-- [~] Adaptations applied with the daily read + `GET /api/plan/adaptations` (doc 07 v2 §6.2), behind `PLAN_ADAPTATIONS=on` (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; see DECISIONS for why not a nightly cron)
-- [~] `POST /api/plan/generate`: match a reviewed template, assemble to the race, store plan + workouts in one transaction (doc 07 v2 §6.1), behind `PLAN_GENERATION=on` (`claude/plan-generate`, stacked on `claude/plan-adapt-job`). Useful once a reviewed template exists; Plan tier gating waits for Stripe
-- [~] (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`) Assembler: template + start date + race date + current weekly volume to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
-- [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
-- [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
-- [~] iOS: send the local date with `/api/read`; Your Plan sheet shows the last 3 named plan changes from `GET /api/plan/adaptations` (`claude/ios-plan-changes`, stacked on `claude/plan-adapt-job`; ScoraTests pass on the simulator, not seen in the running app because the endpoint is not deployed)
-- [~] Adaptation reason text from gpt-4o-mini (CLAUDE.md §6.4), checked in code, fixed sentence as fallback, behind `ADAPTATION_REASON_LLM=on` (`claude/adaptation-reason-llm`, stacked on `claude/plan-adapt-job`; stub LLM in tests, never called for real)
+- [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`)
+- [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, on `claude/plan-engine-adaptation`)
+- [~] Assembler: template + race date to a dated calendar (`claude/plan-assembler`, on `claude/plan-templates-loader`)
+- [~] DB migration: `plan_templates`, `plan_adaptations`, plan and WorkoutKit columns (`claude/plan-schema`, on `claude/manual-plan`; PGlite only, Evan applies it)
+- [~] Adaptations applied with the daily read + `GET /api/plan/adaptations`, `PLAN_ADAPTATIONS=on` (`claude/plan-adapt-job`, on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`)
+- [~] `POST /api/plan/generate` from reviewed templates, `PLAN_GENERATION=on` (`claude/plan-generate`, on `claude/plan-adapt-job`)
+- [~] Adaptation reasons worded by gpt-4o-mini, checked in code, `ADAPTATION_REASON_LLM=on` (`claude/adaptation-reason-llm`, on `claude/plan-adapt-job`)
+- [~] iOS: local date on the read; Your Plan sheet shows the last 3 plan changes (`claude/ios-plan-changes`, on `claude/plan-adapt-job`)
+- [~] Inline chart-expansion (CLAUDE.md §3.4): drivers in the read open 28-day charts, `INLINE_CHARTS=on` (`claude/inline-charts`, on `claude/plan-adapt-job`; seen on the simulator with the DEBUG `-demo-read` launch argument)
 - [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
-- [ ] Adaptation reason text from the gpt-4o-mini prompt (CLAUDE.md §6.4), validated, with today's fixed sentence as fallback
-- [ ] iOS: send the local date with `/api/read` (the adaptation hook falls back to the activity offset today), and show plan changes from `GET /api/plan/adaptations` on the Your Plan sheet
+- [ ] HealthKit dated nights from the app, so HealthKit-only athletes get sleep and HRV charts (today only Oura nights are dated)
+- [ ] Plan tier gating for the flags above, once the Stripe item exists (Evan)
 
 ## Later phases (not started, see the 90-day plan)
 
