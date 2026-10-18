@@ -110,6 +110,12 @@ final class ScoraTests: XCTestCase {
             XCTAssertEqual($0 as? WorkoutExportError, .unsupportedActivity("other"))
         }
         XCTAssertNoThrow(try WorkoutExport.customWorkout(steps: steady, plannedType: "run", displayName: "Easy"))
+        // Review fixes: a warmup-only session keeps its step as a block; swims are refused.
+        let warm = [PlanStep(type: "warmup", durationMin: 20, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        let w = try? WorkoutExport.customWorkout(steps: warm, plannedType: "run", displayName: "Shakeout")
+        XCTAssertEqual(w?.blocks.count, 1)
+        XCTAssertNil(w?.warmup)
+        XCTAssertThrowsError(try WorkoutExport.customWorkout(steps: steady, plannedType: "swim", displayName: "x"))
     }
 
     func testSkippedNote() {

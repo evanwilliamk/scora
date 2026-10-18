@@ -39,7 +39,8 @@ enum WorkoutExport {
     switch plannedType {
     case "run": return .running
     case "ride": return .cycling
-    case "swim": return .swimming
+    // Swims are left out: the plan does not say pool or open water, and the
+    // Watch needs to know which.
     default: throw WorkoutExportError.unsupportedActivity(plannedType)
     }
   }
@@ -60,12 +61,20 @@ enum WorkoutExport {
     var body = steps
     var warmup: WorkoutStep?
     var cooldown: WorkoutStep?
-    if let first = body.first, first.type == "warmup" {
+    // Only split off a warmup and cooldown when a main block remains;
+    // otherwise (a warmup-only session) every step stays a block, so the
+    // workout is never empty.
+    let mains = steps.enumerated().filter { i, s in
+      !((i == 0 && s.type == "warmup") || (i == steps.count - 1 && s.type == "cooldown"))
+    }
+    if mains.isEmpty {
+      body = steps
+    } else if let first = body.first, first.type == "warmup" {
       guard let m = first.durationMin, m > 0 else { throw WorkoutExportError.badStep(0) }
       warmup = WorkoutStep(goal: time(m))
       body.removeFirst()
     }
-    if let last = body.last, last.type == "cooldown" {
+    if !mains.isEmpty, let last = body.last, last.type == "cooldown" {
       guard let m = last.durationMin, m > 0 else { throw WorkoutExportError.badStep(steps.count - 1) }
       cooldown = WorkoutStep(goal: time(m))
       body.removeLast()
