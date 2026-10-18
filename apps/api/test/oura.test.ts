@@ -78,3 +78,16 @@ test('a night split into long_sleep plus a short sleep counts once, by its longe
   assert.deepEqual(s.restingHrHistory, [49, 50]);
   assert.equal(s.hrvWeekAvgMs, 53);
 });
+
+test('late naps, rests and deleted periods never stand in for a night', async () => {
+  const sleep = [
+    { day: day(17), type: 'late_nap', total_sleep_duration: 30000, average_hrv: 90, lowest_heart_rate: 40 },
+    { day: day(17), type: 'long_sleep', total_sleep_duration: 26000, average_hrv: 50, lowest_heart_rate: 48 },
+    { day: day(16), type: 'rest', total_sleep_duration: 27000, average_hrv: 80, lowest_heart_rate: 41 },
+    { day: day(15), type: 'deleted', total_sleep_duration: 28000, average_hrv: 70, lowest_heart_rate: 42 },
+  ];
+  stubOura({ sleep: { data: sleep }, daily_sleep: { data: [] }, daily_readiness: { data: [] } });
+  const s = await fetchOuraSummary('token');
+  assert.equal(s.sleepSeconds, 26000);
+  assert.deepEqual(s.restingHrHistory, []);
+});

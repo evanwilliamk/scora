@@ -46,7 +46,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Branch: claude/driver-record
 - Context: doc 07 v1 §8.2 (driver computation) is not in the repo, so the night worker defined each driver.
 - Choice:
-  - Load = run moving minutes (same unit as the Load card). Rides etc. excluded. acwr = load_7d / (load_28d / 4), null until the oldest fetched run is 21+ days old, so new accounts do not read back-off.
+  - Load = run moving minutes (same unit as the Load card). Rides etc. excluded. acwr = load_7d / (load_28d / 4), null until the oldest run in the 35-day fetch is 27+ days old, so new accounts do not read back-off (and no partial-window guess hides a comeback ramp).
   - Hard day = any run that is a Strava race/workout, or whose avg HR is at or above the athlete's own 80th percentile over 28 days (needs 5+ HR runs). Streak counts back from today, or from yesterday if nothing is recorded today.
   - Long effort = run of 90+ min moving time.
   - Sleep: last night's Oura score; delta vs mean of prior 7 nights (points); p25/p75 over prior 28 nights (needs 7+). Low night = below p25.

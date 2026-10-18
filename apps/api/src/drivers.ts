@@ -22,8 +22,10 @@ const STRAVA_RACE = 1;
 const STRAVA_WORKOUT = 3;
 
 // ACWR is only honest once the history covers the chronic window. Without
-// this a two-week-old account reads acwr ~2 and lands in back-off.
-const MIN_HISTORY_DAYS_FOR_ACWR = 21;
+// this a two-week-old account reads acwr ~2 and lands in back-off. With less
+// than 27 days of runs in the fetched 35, there is no ratio rather than a
+// guessed one (a short window can't tell a new account from a comeback).
+const MIN_HISTORY_DAYS_FOR_ACWR = 27;
 
 // A long effort is a run of at least 90 minutes moving time.
 const LONG_EFFORT_MIN_SECONDS = 90 * 60;
@@ -121,11 +123,8 @@ export function computeDriverRecord(
   if (runs.length > 0) {
     d.load_7d = movingMin(last7);
     d.load_28d = movingMin(last28);
-    // Chronic load per week over the days the history actually covers, so an
-    // athlete with 3 weeks of data is not read as a 4-week average.
     const oldest = Math.max(...runs.map((a) => daysAgo(a, now)));
-    const coveredDays = Math.min(28, oldest + 1);
-    const chronicWeekly = d.load_28d * 7 / coveredDays;
+    const chronicWeekly = d.load_28d / 4;
     d.acwr = oldest >= MIN_HISTORY_DAYS_FOR_ACWR && chronicWeekly > 0
       ? Math.round((d.load_7d / chronicWeekly) * 100) / 100
       : null;

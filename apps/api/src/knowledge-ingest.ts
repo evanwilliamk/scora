@@ -168,6 +168,9 @@ export interface KnowledgeStore {
   // Delete an entry's chunks with chunk_index >= keep (left over when an
   // edited passage now splits into fewer chunks).
   pruneEntry(fieldcopyEntryId: string, keep: number): Promise<void>;
+  // Full sync: delete every FieldCopy-sourced chunk whose entry is not in
+  // `keepEntryIds` (entries removed from the export).
+  pruneMissing(keepEntryIds: string[]): Promise<void>;
 }
 
 export interface IngestResult {
@@ -178,7 +181,9 @@ export interface IngestResult {
 
 export async function ingest(
   entries: ExportEntry[],
-  deps: { embed: Embedder; store: KnowledgeStore; batchSize?: number }
+  // sync: the export is the whole library, so entries missing from it are
+  // removed too. Off by default (a partial export must not wipe the rest).
+  deps: { embed: Embedder; store: KnowledgeStore; batchSize?: number; sync?: boolean }
 ): Promise<IngestResult> {
   const plan = planIngest(entries);
   const batch = deps.batchSize ?? EMBED_BATCH;
@@ -203,7 +208,10 @@ export async function ingest(
   }
   const perEntry = new Map<string, number>();
   for (const c of plan.chunks) perEntry.set(c.fieldcopy_entry_id, (perEntry.get(c.fieldcopy_entry_id) ?? 0) + 1);
-  for (const [entryId, keep] of perEntry) await deps.store.pruneEntry(entryId, keep);
+  // Every entry in the export, including ones that now produce no chunks
+  // (edited down to nothing), keeps only its current chunks.
+  for (const e of entries) await deps.store.pruneEntry(e.id, perEntry.get(e.id) ?? 0);
+  if (deps.sync) await deps.store.pruneMissing(entries.map((e) => e.id));
 
   return { sources: plan.sources.length, chunks: plan.chunks.length, embedCalls };
 }
@@ -259,6 +267,12 @@ export function sqlStore(db: { query: (sql: string, params?: any[]) => Promise<{
     async pruneEntry(entryId, keep) {
       await db.query('delete from knowledge_chunks where fieldcopy_entry_id = $1 and chunk_index >= $2', [entryId, keep]);
     },
+    async pruneMissing(keepEntryIds) {
+      await db.query(
+        'delete from knowledge_chunks where fieldcopy_entry_id is not null and not (fieldcopy_entry_id = any($1))',
+        [keepEntryIds]
+      );
+    },
   };
 }
 
@@ -301,6 +315,12 @@ export function supabaseStore(sb: SupabaseLike): KnowledgeStore {
     async pruneEntry(entryId, keep) {
       const r = await sb.from('knowledge_chunks').delete().eq('fieldcopy_entry_id', entryId).gte('chunk_index', keep);
       if (r.error) throw new IngestError(`Chunk prune failed: ${r.error.message}`);
+    },
+    async pruneMissing(keepEntryIds) {
+      // PostgREST 'not in' list; ids are FieldCopy UUIDs.
+      const list = `(${keepEntryIds.map((id) => `"${id.replace(/"/g, '')}"`).join(',')})`;
+      const r = await sb.from('knowledge_chunks').delete().not('fieldcopy_entry_id', 'is', null).not('fieldcopy_entry_id', 'in', list);
+      if (r.error) throw new IngestError(`Chunk sync failed: ${r.error.message}`);
     },
   };
 }
