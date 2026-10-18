@@ -62,21 +62,33 @@ test('the plan driver lets the voice cite the planned minutes and nothing else',
   assert.equal(validateVoice(voice, [...base, p.driver!]).ok, true);
 });
 
-test('voice that talks the athlete out of the plan fails validation (review finding)', () => {
+test('voice that talks the athlete out of the plan fails validation (review findings)', () => {
   const drivers = [{ metric: 'Load', value: '412 min' }, { metric: 'Plan today', value: 'tempo, 45 min' }];
   for (const v of [
     "Today's tempo can wait, and an easier day fits better.",
     'Load is 412 min, so skip the tempo.',
     'The 45 min tempo could move. Push it to Thursday.',
     'Hold off on the tempo until sleep comes back.',
-    'Ease off today; the body is behind.',
+    'Skipping the tempo would match the back-off read.',
+    'Swapping the tempo for an easy run fits the numbers.',
+    'Tomorrow looks like a better day for the tempo.',
+    'An easy run would suit the body better today.',
+    'Postponing the session is worth a thought.',
+    'A shorter session, 30 min instead of 45 min, fits.',
+    'Dial it back today.',
   ]) {
     assert.equal(validateVoice(v, drivers).bannedHits.includes('plan override'), true, v);
   }
-  // Naming both sides is fine.
   const ok = "Today's 45 min tempo is on the plan, and load sits at 412 min. Body and plan disagree this morning.";
   assert.equal(validateVoice(ok, drivers).ok, true);
   assert.equal(validateVoice('Your plan has rest today, and load sits at 412 min.', drivers).ok, true);
+});
+
+test('without a plan driver, descriptive phrases are not plan overrides', () => {
+  const drivers = [{ metric: 'Load', value: '412 min' }];
+  for (const v of ['Load has started to ease off after last week, now 412 min.', 'You tend to skip the Friday run; load is 412 min.']) {
+    assert.equal(validateVoice(v, drivers).ok, true, v);
+  }
 });
 
 test('a plan with nothing today says so', () => {

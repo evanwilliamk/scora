@@ -33,17 +33,17 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\byou'?re right,? i\b/i, label: 'sycophantic flip' },
   { re: /\b(medical|diagnos|prescrib)/i, label: 'clinical claim' },
   { re: /\btake a rest day\b/i, label: 'rest-day imperative' },
-  // Talking the athlete out of their plan (CLAUDE.md §1.3): the voice may name
-  // a session and the body's state, never change the session.
-  {
-    re: /\b(can wait|could wait|skip (it|today|the|this|that)|hold off|save (it|the \w+) for|swap (it|the|today)|(move|push|shift) (it|today'?s \w+|the \w+) to|an easier (day|session) (fits|would|makes)|ease off|take it easy today|cut (it|the \w+) short|shorten (it|the|today))\b/i,
-    label: 'plan override',
-  },
   {
     re: /\b(crush it|smash|beast mode|let'?s go|keep it up|great job|amazing|you'?ve got this|nailed it|let'?s crush)\b/i,
     label: 'hype',
   },
 ];
+
+// Talking the athlete out of their plan (CLAUDE.md §1.3). Checked only when
+// the read carries a 'Plan today' driver: the voice may name the session and
+// the body's state, never change the session.
+export const PLAN_DRIVER_METRIC = 'Plan today';
+const PLAN_OVERRIDE = /\b(skip(s|ping|ped)?\b|swap(s|ping|ped)?\b|postpon(e|es|ing|ed)\b|push(es|ed|ing)? (it|the \w+|today'?s \w+) (back|to)\b|(move|moves|moving|moved|shift|shifting) (it|the \w+|today'?s \w+) to\b|(can|could|should) wait\b|hold(ing)? off\b|sav(e|ing) (it|the \w+) for\b|cut(ting)? (it|the \w+) short\b|shorten(s|ing|ed)?\b|instead\b|(a )?better day for\b|(an )?eas(y|ier) (day|session|run|effort) (would|fits|makes|might)\b|lighter (day|session|option)\b|take it easy\b|dial(ing|led)? (it|things|the \w+) back\b|scal(e|ing) (it|the \w+) back\b)/i;
 
 const EXCLAMATION = /!/;
 // Any pictographic emoji (§3.7 no emoji).
@@ -61,6 +61,9 @@ export function validateVoice(voice: string, drivers: Driver[]): ValidationResul
   const bannedHits: string[] = [];
   for (const { re, label } of BANNED_PATTERNS) {
     if (re.test(voice)) bannedHits.push(label);
+  }
+  if (drivers.some((d) => d.metric === PLAN_DRIVER_METRIC) && PLAN_OVERRIDE.test(voice)) {
+    bannedHits.push('plan override');
   }
   if (EXCLAMATION.test(voice)) bannedHits.push('exclamation point');
   if (EMOJI.test(voice)) bannedHits.push('emoji');
