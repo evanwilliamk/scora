@@ -238,7 +238,10 @@ export function sqlAdaptStore(db: Db): AdaptStore {
         `select id, adaptation_type, to_char(original_date, 'YYYY-MM-DD') as original_date,
                 to_char(new_date, 'YYYY-MM-DD') as new_date, reason_code, reason_text,
                 to_char(triggered_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as triggered_at
-         from plan_adaptations where athlete_id = $1 order by triggered_at desc, id limit $2`,
+         from plan_adaptations a
+         where a.athlete_id = $1 and a.dismissed_at is null
+           and exists (select 1 from training_plans p where p.id = a.training_plan_id and p.current_status = 'active')
+         order by a.triggered_at desc, a.id limit $2`,
         [athleteId, limit],
       );
       return r.rows as PlanAdaptationRow[];
@@ -283,11 +286,12 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
     },
     async recent(athleteId, limit) {
       const r = await sb.from('plan_adaptations')
-        .select('id, adaptation_type, original_date, new_date, reason_code, reason_text, triggered_at')
-        .eq('athlete_id', athleteId).order('triggered_at', { ascending: false }).order('id').limit(limit);
+        .select('id, adaptation_type, original_date, new_date, reason_code, reason_text, triggered_at, training_plans!inner(current_status)')
+        .eq('athlete_id', athleteId).is('dismissed_at', null).eq('training_plans.current_status', 'active')
+        .order('triggered_at', { ascending: false }).order('id').limit(limit);
       check(r, 'Load adaptations');
       // Same shape as the SQL store: ISO 8601 in UTC with milliseconds.
-      return (r.data ?? []).map((a: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
+      return (r.data ?? []).map(({ training_plans: _p, ...a }: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
     },
   };
 }

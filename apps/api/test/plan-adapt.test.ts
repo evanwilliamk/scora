@@ -209,3 +209,14 @@ test('review fixes: recent() timestamps are ISO 8601 UTC, like the Supabase stor
   const [a] = await store.recent('a1', 1);
   assert.match(a.triggered_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 });
+
+test('review fixes: recent() shows only changes on an active plan, and not dismissed ones', async () => {
+  await seedPlan('v1', templateId);
+  await adaptTomorrow('v1', '2026-10-28', 'back-off', store, DRAFTS);
+  assert.equal((await store.recent('v1', 5)).length, 1);
+  await db.query(`update plan_adaptations set dismissed_at = now() where athlete_id = 'v1'`);
+  assert.equal((await store.recent('v1', 5)).length, 0);
+  await db.query(`update plan_adaptations set dismissed_at = null where athlete_id = 'v1'`);
+  await db.query(`update training_plans set current_status = 'replaced' where athlete_id = 'v1'`);
+  assert.equal((await store.recent('v1', 5)).length, 0);
+});
