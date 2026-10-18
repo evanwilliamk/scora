@@ -24,11 +24,11 @@ struct CardExpansion: Decodable {
   let reply: String
   let generated: Bool?
 
-  // What an open card shows: the expansion once it lands, else the card's own
-  // translation. An empty reply never blanks the card.
   // An expansion requested before the latest read cites old numbers.
   static func isCurrent(requested: Int, current: Int) -> Bool { requested == current }
 
+  // What an open card shows: the expansion once it lands, else the card's own
+  // translation. An empty reply never blanks the card.
   static func text(reply: String?, translation: String?) -> String? {
     if let reply, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return reply }
     if let translation, !translation.isEmpty { return translation }
@@ -162,6 +162,7 @@ struct DashboardView: View {
           if ouraBanner == result { withAnimation { ouraBanner = nil } }
         }
       }
+    }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
       Task { await loadRead() }
     }
