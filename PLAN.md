@@ -54,13 +54,14 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 
 - [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`). Done when every rule and guard has a unit test and the package typechecks
 - [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, stacked on `claude/plan-engine-adaptation`) (doc 07 v2 §4.2.1, CLAUDE.md §4.3 plan bans). Done when a malformed or rule-breaking template fails to load with a named error, tested on test fixtures only
-- [~] Assembler: template + start date + race date + current weekly volume to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5) (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
+- [~] Assembler: template + start date + race date to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5) (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
 - [~] DB migration: `plan_templates`, `plan_adaptations`, template/race columns on `training_plans`, WorkoutKit columns on `scheduled_workouts` (`claude/plan-schema`, stacked on `claude/manual-plan`; PGlite tests only, Evan applies it)
 - [~] Adaptations applied with the daily read + `GET /api/plan/adaptations` (doc 07 v2 §6.2), behind `PLAN_ADAPTATIONS=on` (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; see DECISIONS for why not a nightly cron)
+- [~] `POST /api/plan/generate`: match a reviewed template, assemble to the race, store plan + workouts in one transaction (doc 07 v2 §6.1), behind `PLAN_GENERATION=on` (`claude/plan-generate`, stacked on `claude/plan-adapt-job`). Useful once a reviewed template exists; Plan tier gating waits for Stripe
 - [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
-- [ ] `POST /plan/generate`: match template, assemble, store plan + workouts (doc 07 v2 §6.1); needs at least one reviewed template to be useful, and Plan tier gating waits for Stripe
 - [ ] Adaptation reason text from the gpt-4o-mini prompt (CLAUDE.md §6.4), validated, with today's fixed sentence as fallback
+- [ ] iOS: send the local date with `/api/read` (the adaptation hook falls back to the activity offset today), and show plan changes from `GET /api/plan/adaptations` on the Your Plan sheet
 
 ## Later phases (not started, see the 90-day plan)
 

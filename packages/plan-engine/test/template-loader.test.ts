@@ -127,3 +127,24 @@ test('a single rep needs no rest', () => {
   const v = validateTemplate(t, 'fixture.yaml', draftsOk);
   assert.equal(v.workout_definitions.fartlek.duration_min, 32);
 });
+
+test('review fixes: easy labels cannot hide quality work, all-rest weeks and bad review dates are refused', () => {
+  rejects((t) => { t.workout_definitions.easy_run.structure[0].intensity = 'threshold'; }, 'intensity_mismatch', /easy_run/);
+  rejects((t) => {
+    t.workout_definitions.easy_run.structure.push({ type: 'interval', reps: 4, work_duration_min: 3, work_intensity: 'vo2max', rest_duration_min: 2, rest_intensity: 'easy' });
+  }, 'intensity_mismatch', /vo2max/);
+  // Strides are fine on an easy day.
+  const ok = raw();
+  ok.workout_definitions.easy_run.structure.push({ type: 'interval', reps: 4, work_duration_min: 0.5, work_intensity: 'sprint', rest_duration_min: 1, rest_intensity: 'easy' });
+  assert.doesNotThrow(() => validateTemplate(ok, 'fixture.yaml', draftsOk));
+
+  rejects((t) => { for (const d of Object.keys(t.weekly_pattern)) t.weekly_pattern[d] = 'rest'; }, 'pattern_day', /no sessions/);
+  rejects((t) => { Object.assign(t, { status: 'reviewed', reviewed_by: 'A Coach', reviewed_on: 'soon' }); }, 'bad_value', /reviewed_on/);
+  rejects((t) => { Object.assign(t, { status: 'reviewed', reviewed_by: 'A Coach', reviewed_on: '2026-02-30' }); }, 'bad_value', /reviewed_on/);
+});
+
+test('two versions of one slug load side by side; the same version twice does not', () => {
+  const all = loadTemplates(here('./fixtures-versions/'), draftsOk);
+  assert.deepEqual(all.map((t) => t.version).sort(), ['0.0.1', '0.0.2']);
+  assert.throws(() => loadTemplates(here('./fixtures-dup/'), draftsOk), /test-fixture-4wk@0.0.1 is also defined/);
+});

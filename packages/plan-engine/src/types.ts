@@ -41,8 +41,10 @@ export interface PlanContext {
   source: PlanSource;
   goal_race_date: string | null;
   // Every scheduled workout in the plan week (Monday to Sunday) that holds the
-  // workout being evaluated. Rest days may be rows with intensity 'rest' or
-  // simply have no row.
+  // workout being evaluated, plus the following Monday's, so a move to Sunday
+  // can see a hard session right after it. Rows outside the week count only
+  // for that adjacency check, never toward the week's minutes. Rest days may
+  // be rows with intensity 'rest' or simply have no row.
   week: PlannedWorkout[];
   // The template's weekly call in minutes for that week. When unknown, the
   // week as currently scheduled is the baseline.

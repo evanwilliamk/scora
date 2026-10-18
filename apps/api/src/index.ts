@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
-import { postureForRead } from './drivers';
+import { athleteLocalToday, postureForRead } from './drivers';
 import { SnapshotCache, planCardExpansion } from './card-expand';
 import { CHART_MENU, parseChartKind, stripChartLine, buildChartSpec } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
@@ -34,7 +34,12 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
 import { planForRead } from './plan-read';
-import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore } from './plan-adapt';
+import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore, withTimeout } from './plan-adapt';
+import {
+  GenerateError, generatePlan, generationEnabled, parseGenerateRequest, supabaseGenerateStore,
+} from './plan-generate';
+import { TEMPLATE_DIR, loadTemplates } from '../../../packages/plan-engine/src/index';
+import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -572,9 +577,11 @@ fastify.post('/api/read', async (request, reply) => {
     // deterministic adaptation rules (doc 07 v2 §6.2). Off unless
     // PLAN_ADAPTATIONS=on; never blocks or fails the read.
     if (adaptationsEnabled()) {
-      const today = isoDay((request.body as any)?.today) ?? new Date().toISOString().slice(0, 10);
+      // The scheduler sends the athlete's local date; the app does not yet, so
+      // fall back to the newest activity's UTC offset, never the server's UTC day.
+      const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
       try {
-        await adaptTomorrow(String(athleteId), today, posture.result.posture, adaptStore());
+        await withTimeout(adaptTomorrow(String(athleteId), today, posture.result.posture, adaptStore()), 4000);
       } catch (e) {
         fastify.log.error(`Plan adaptation failed for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       }
@@ -835,9 +842,42 @@ fastify.get('/api/plan', async (request, reply) => {
   }
 });
 
+// SCORA plan generation (doc 07 v2 §6.1). Reviewed templates only; drafts
+// never load here. Off unless PLAN_GENERATION=on; Plan tier gating waits for
+// the Stripe item.
+let _templates: PlanTemplate[] | null = null;
+fastify.post('/api/plan/generate', async (request, reply) => {
+  if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const body = (request.body as any) || {};
+  if (!body.athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  const today = isoDay(body.today) ?? new Date().toISOString().slice(0, 10);
+  try {
+    _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
+    const req = parseGenerateRequest(body);
+    planStore(); // same env check and client
+    const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(_planSb!));
+    return reply.send({
+      planId,
+      template: { slug: plan.template_slug, version: plan.template_version },
+      start_date: plan.start_date,
+      end_date: plan.end_date,
+      workouts: plan.workouts.length,
+    });
+  } catch (e) {
+    if (e instanceof GenerateError) {
+      return reply.code(e.code === 'bad_request' ? 400 : 422).send({ error: e.message, code: e.code });
+    }
+    fastify.log.error(`Plan generation failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Building the plan failed.' });
+  }
+});
+
 // Named plan adaptations, newest first (doc 07 v2 §5: GET /plan/adaptations).
 // Every change the engine made shows its reason; none are silent.
 fastify.get('/api/plan/adaptations', async (request, reply) => {
+  // Off with the feature. Like /api/plan it trusts athleteId until Sign in
+  // with Apple lands (auth is Evan's item).
+  if (!adaptationsEnabled()) return reply.code(404).send({ error: 'Not found' });
   const { athleteId } = request.query as { athleteId?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {

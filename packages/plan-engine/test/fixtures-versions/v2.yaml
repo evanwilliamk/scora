@@ -1,0 +1,73 @@
+# TEST FIXTURE. Not training content: numbers exist only to exercise the
+# loader and assembler. Real templates are coach-authored and reviewed
+# (doc 07 v2 §8.3) and live in packages/plan-templates.
+slug: test-fixture-4wk
+sport: run
+goal_type: 10k
+duration_weeks: 4
+experience_level: regular
+weekly_volume_range_km: [30, 45]
+author: Test Fixture
+version: 0.0.2
+status: draft
+phases:
+  - { name: Base, weeks: [1, 2], focus: fixture base }
+  - { name: Build, weeks: [3], focus: fixture build }
+  - { name: Taper, weeks: [4], focus: fixture taper }
+week_load_percent: [100, 100, 100, 80]
+weekly_pattern:
+  monday: rest
+  tuesday: quality_a
+  wednesday: easy
+  thursday: quality_b
+  friday: rest
+  saturday: long_effort
+  sunday: easy
+workout_types_by_phase:
+  Base:
+    quality_a: [fartlek]
+    quality_b: [tempo_run]
+    long_effort: [long_easy, long_steady]
+    easy: [easy_run]
+  Build:
+    quality_a: [threshold_intervals]
+    quality_b: [tempo_run]
+    long_effort: [long_steady]
+    easy: [easy_run]
+  Taper:
+    quality_a: [fartlek]
+    quality_b: [tempo_run]
+    long_effort: [long_easy]
+    easy: [easy_run]
+workout_definitions:
+  easy_run:
+    intensity: easy
+    structure:
+      - { type: steady, duration_min: 40, intensity: easy }
+  fartlek:
+    intensity: intervals
+    structure:
+      - { type: warmup, duration_min: 10, intensity: easy }
+      - { type: interval, reps: 6, work_duration_min: 2, work_intensity: moderate, rest_duration_min: 2, rest_intensity: easy }
+      - { type: cooldown, duration_min: 10, intensity: easy }
+    total_duration_est_min: 42
+  tempo_run:
+    intensity: tempo
+    structure:
+      - { type: warmup, duration_min: 10, intensity: easy }
+      - { type: steady, duration_min: 20, intensity: tempo }
+      - { type: cooldown, duration_min: 10, intensity: easy }
+  threshold_intervals:
+    intensity: threshold
+    structure:
+      - { type: warmup, duration_min: 10, intensity: easy }
+      - { type: interval, reps: 3, work_duration_min: 8, work_intensity: threshold, rest_duration_min: 3, rest_intensity: easy }
+      - { type: cooldown, duration_min: 10, intensity: easy }
+  long_easy:
+    intensity: long
+    structure:
+      - { type: steady, duration_min: 90, intensity: easy }
+  long_steady:
+    intensity: long
+    structure:
+      - { type: steady, duration_min: 100, intensity: easy }
