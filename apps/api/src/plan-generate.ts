@@ -13,7 +13,7 @@ import { EXPERIENCE_LEVELS, SPORTS } from '../../../packages/plan-engine/src/ind
 
 export const generationEnabled = () => process.env.PLAN_GENERATION === 'on';
 
-export type GenerateErrorCode = 'bad_request' | 'template_not_available' | 'race_too_soon';
+export type GenerateErrorCode = 'bad_request' | 'template_not_available' | 'race_too_soon' | 'coach_plan_active';
 
 export class GenerateError extends Error {
   constructor(public code: GenerateErrorCode, message: string) {
@@ -31,6 +31,8 @@ export interface GenerateRequest {
 }
 
 export interface GenerateStore {
+  // A coach's plan replaces SCORA's; generation is hidden while one is active (CLAUDE.md §5.3).
+  hasActiveCoachPlan(athleteId: string): Promise<boolean>;
   // Returns the new plan id.
   createPlan(payload: CreatePlanPayload): Promise<string>;
 }
@@ -87,6 +89,9 @@ export async function generatePlan(
   templates: PlanTemplate[],
   store: GenerateStore,
 ): Promise<{ planId: string; plan: AssembledPlan }> {
+  if (await store.hasActiveCoachPlan(athleteId)) {
+    throw new GenerateError('coach_plan_active', 'Your coach sets your plan.');
+  }
   const template = matchTemplate(templates, req);
   if (!template) {
     throw new GenerateError('template_not_available', 'No plan template fits that race and volume yet.');
@@ -121,6 +126,13 @@ type Db = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
 
 export function sqlGenerateStore(db: Db): GenerateStore {
   return {
+    async hasActiveCoachPlan(athleteId) {
+      const r = await db.query(
+        `select 1 from training_plans where athlete_id = $1 and source = 'coach' and current_status = 'active' limit 1`,
+        [athleteId],
+      );
+      return r.rows.length > 0;
+    },
     async createPlan(payload) {
       const r = await db.query('select create_scora_plan($1::jsonb) as id', [JSON.stringify(payload)]);
       return r.rows[0].id as string;
@@ -128,8 +140,14 @@ export function sqlGenerateStore(db: Db): GenerateStore {
   };
 }
 
-export function supabaseGenerateStore(sb: { rpc: (fn: string, args: any) => any }): GenerateStore {
+export function supabaseGenerateStore(sb: { from: (t: string) => any; rpc: (fn: string, args: any) => any }): GenerateStore {
   return {
+    async hasActiveCoachPlan(athleteId) {
+      const r = await sb.from('training_plans').select('id')
+        .eq('athlete_id', athleteId).eq('source', 'coach').eq('current_status', 'active').limit(1);
+      if (r.error) throw new Error(`Load coach plan: ${r.error.message}`);
+      return (r.data ?? []).length > 0;
+    },
     async createPlan(payload) {
       // One transaction in Postgres (create_scora_plan, migration 20261018020000).
       const r = await sb.rpc('create_scora_plan', { p: payload });

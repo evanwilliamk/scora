@@ -17,7 +17,7 @@
 import {
   DISPLACEABLE_INTENSITIES, HARD_INTENSITIES, RACE_FREEZE_DAYS, WEEKLY_VOLUME_TOLERANCE,
 } from './constants';
-import { addDays, daysBetween, weekEnd } from './dates';
+import { addDays, daysBetween, weekEnd, weekStart } from './dates';
 import type {
   AdaptationDecision, AdaptationFacts, AdaptationInput, Intensity, NoAdaptation, NoChangeCode,
   PlannedWorkout, ReasonCode,
@@ -56,13 +56,14 @@ export const weekMinutes = (week: PlannedWorkout[]) => week.reduce((s, w) => s +
 
 const isHard = (w: PlannedWorkout) => HARD_INTENSITIES.includes(w.planned_intensity);
 
-// True when moving changes the week by more than the tolerance allows.
-// An adaptation that leaves the week's minutes as they were never trips it,
-// even if the week already sat outside the band.
+// True when a change leaves the week more than the tolerance away from the
+// template and further away than it was. An adaptation that keeps the week's
+// minutes, or brings them closer to the template call, never trips it.
 function breaksVolume(before: number, after: number, template: number): boolean {
   if (after === before) return false;
   if (template <= 0) return true;
-  return Math.abs(after - template) / template > WEEKLY_VOLUME_TOLERANCE + 1e-9;
+  const off = Math.abs(after - template);
+  return off / template > WEEKLY_VOLUME_TOLERANCE + 1e-9 && off > Math.abs(before - template);
 }
 
 function inRaceFreeze(date: string, race: string | null): boolean {
@@ -86,8 +87,12 @@ export function evaluateAdaptation(input: AdaptationInput): AdaptationDecision {
   }
 
   // The evaluated workout counts toward the week even if the caller left it
-  // out of plan.week.
-  const week = plan.week.some((w) => w.id === workout.id) ? plan.week : [...plan.week, workout];
+  // out of plan.week. Rows outside its Monday-to-Sunday week only count for
+  // the hard-day adjacency check.
+  const all = plan.week.some((w) => w.id === workout.id) ? plan.week : [...plan.week, workout];
+  const monday = weekStart(workout.scheduled_date);
+  const end = weekEnd(workout.scheduled_date);
+  const week = all.filter((w) => daysBetween(monday, w.scheduled_date) >= 0 && daysBetween(w.scheduled_date, end) >= 0);
   const before = weekMinutes(week);
   const template = plan.template_week_minutes ?? before;
   const facts = (after: number): AdaptationFacts => ({
@@ -116,10 +121,9 @@ export function evaluateAdaptation(input: AdaptationInput): AdaptationDecision {
   // Move: the next day in the same plan week that is a rest day or holds a
   // single easy session, does not sit next to another hard day (no clustering
   // of hard days), and is clear of race week. The original day becomes rest.
-  const others = week.filter((w) => w.id !== workout.id);
+  const others = all.filter((w) => w.id !== workout.id);
   const on = (d: string) => others.filter((w) => w.scheduled_date === d);
   const hardOn = (d: string) => on(d).some(isHard);
-  const end = weekEnd(workout.scheduled_date);
 
   let volumeBlocked = false;
   for (let d = addDays(workout.scheduled_date, 1); daysBetween(d, end) >= 0; d = addDays(d, 1)) {

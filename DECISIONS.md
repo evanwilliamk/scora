@@ -2,12 +2,21 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Plan generation route shape
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/plan-generate (on claude/plan-adapt-job)
+- Context: doc 07 v2 §6.1 describes POST /plan/generate; no reviewed templates exist yet and Plan tier gating needs Stripe.
+- Choice: `POST /api/plan/generate` behind `PLAN_GENERATION=on` (404 when off). Loads reviewed templates only. The race must fit the template from this week's Monday, otherwise `race_too_soon`; no match is `template_not_available`, never an improvised plan. Sessions before today are not stored. A new plan marks the active SCORA plan `replaced` (rows kept). Refused while a coach plan is active, with the copy "Your coach sets your plan." Triathlon sessions store `planned_type` 'other' until templates name a discipline per session. planned_description stays empty until the workout-description prompt exists.
+- Why: everything a plan contains traces to a reviewed template (CLAUDE.md §6.1, §6.3).
+- To reverse: `apps/api/src/plan-generate.ts` and migration `20261018020000_create_scora_plan.sql`.
+
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-adapt-job (on plan-schema + plan-assembler + driver-record)
 - Context: doc 07 v2 §6.2 describes a nightly job, but posture needs HealthKit data, which only the app sends with the read request.
 - Choice: when `/api/read` has decided today's posture and `PLAN_ADAPTATIONS=on`, tomorrow's workouts on the athlete's active SCORA plan go through `evaluateAdaptation`; changes are written by `apply_plan_adaptation` in one transaction. One automatic adaptation per workout (reruns and later reads that day change nothing). A displaced easy session becomes a rest day and is logged as `skipped` with its own reason. A downgrade replaces the structure with one continuous step at the same duration.
 - Reason text is a fixed sentence built from the decision (for example "Thursday's tempo is now an endurance run at the same 40 minutes. Today's posture reads back-off."), checked against the banned-phrase list in tests. The gpt-4o-mini adaptation-reason prompt (CLAUDE.md §6.4) can replace it later; copy is yours.
+- Review fixes: nothing adapts while a coach plan is active (CLAUDE.md §5.3); plans on draft templates never adapt in production; the week is re-read after each write so two sessions on one day cannot both move to the same day; the next Monday is fetched so a move to Sunday sees it; "today" falls back to the newest activity's UTC offset (the app does not send it yet), never the server's UTC day; the hook gives up after 4 s so a slow database cannot stall the read; `GET /api/plan/adaptations` is off with the flag. Like `/api/plan`, it trusts `athleteId` until Sign in with Apple lands.
 - Alternative: a nightly cron that computes posture server-side (Strava + Oura only, so HealthKit-only athletes would never adapt).
 - To reverse: move the `adaptTomorrow` call from the read route into a cron in `scheduler.ts`.
 
@@ -61,6 +70,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
   3. Workout duration is computed from the structure; an authored `total_duration_est_min` must agree within 5 min (doc 07's own example says 55 for a 50 min structure, so the estimate is not trusted).
   4. The 10% weekly increase ban is checked against the highest earlier week, so a cutback week can return to its earlier peak.
   5. Step types are warmup, steady, interval, cooldown (doc 07 had no continuous step; added `steady`).
+  6. Review fixes: a workout labelled recovery, easy or endurance may not contain tempo, threshold or vo2max steps (strides, `sprint`, are allowed), because the adaptation engine reads only the label. A pattern with no sessions, or a `reviewed_on` that is not a real date, is refused. Several versions of one slug load side by side; the same slug and version twice is refused.
 - Why: a bad template must fail at boot with a named rule, not while an athlete's plan is built.
 - To reverse: `packages/plan-engine/src/template-loader.ts`, one check per block, each with a test.
 
@@ -70,7 +80,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: doc 07 v2 §6.2/§9 and CLAUDE.md §6.2 define the rules but not the move window, the volume unit or which plans adapt.
 - Choice:
   1. A move stays inside the plan week (Mon to Sun) and lands on the first later day that is rest or a single easy/recovery session, with no hard day either side. The displaced easy session is dropped. If no day qualifies, no adaptation (logged `skip_no_window`).
-  2. Weekly volume is measured in planned minutes (templates are duration-based). The ±10% guard only blocks a change that moves the week's minutes; a downgrade (same duration) is never blocked.
+  2. Weekly volume is measured in planned minutes (templates are duration-based). The ±10% guard blocks a change only if it leaves the week outside the band and further from the template than before; a downgrade (same duration) or a change that brings the week closer is never blocked. The week means Monday to Sunday; the caller also passes the next Monday so a move to Sunday never lands right before a hard session (review fix).
   3. back-off + threshold downgrades like intervals (doc 07 v2 lists both; CLAUDE.md lists intervals only).
   4. The engine only adapts `scora_ai` plans. Coach plans change only by the coach; external and pasted plans are never rewritten.
   5. Race freeze covers T-7 through race day, measured from the workout's date, and also stops a move landing inside it.

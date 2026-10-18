@@ -96,7 +96,12 @@ test('a race too close for the template is refused', async () => {
 
 test('a generated plan is one the adaptation engine reads and adapts', async () => {
   await generatePlan('g4', req, '2026-10-19', templates, sqlGenerateStore(db));
-  const [r] = await adaptTomorrow('g4', '2026-10-28', 'back-off', sqlAdaptStore(db));
+  const [r] = await adaptTomorrow('g4', '2026-10-28', 'back-off', sqlAdaptStore(db), { allowDrafts: true });
   assert.equal(r.decision.type, 'downgraded');
   assert.ok(r.adaptation_id);
+});
+
+test('no SCORA plan is generated while a coach plan is active', async () => {
+  await db.query(`insert into training_plans (athlete_id, source, start_date, end_date) values ('k2', 'coach', '2026-10-19', '2026-12-31')`);
+  assert.equal(await code(generatePlan('k2', req, '2026-10-21', templates, sqlGenerateStore(db))), 'coach_plan_active');
 });
