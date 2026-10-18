@@ -15,6 +15,16 @@ import type {
 
 export const adaptationsEnabled = () => process.env.PLAN_ADAPTATIONS === 'on';
 
+// Reject after ms so a slow database never stalls the read. The work itself
+// may still finish; apply_plan_adaptation is one transaction either way.
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
 export interface ActiveScoraPlan {
   id: string;
   start_date: string;
@@ -47,6 +57,8 @@ export interface AdaptationWrite {
 }
 
 export interface AdaptStore {
+  // A coach's plan replaces SCORA's (CLAUDE.md §5.3).
+  hasActiveCoachPlan(athleteId: string): Promise<boolean>;
   activeScoraPlan(athleteId: string): Promise<ActiveScoraPlan | null>;
   // Workouts of that plan from `from` to `to` inclusive.
   workoutsBetween(planId: string, from: string, to: string): Promise<(PlannedWorkout & { workout_structure_json?: WorkoutStep[] | null })[]>;
@@ -100,19 +112,39 @@ export interface AdaptResult {
   adaptation_id: string | null;
 }
 
+export interface AdaptOptions {
+  // Drafts never adapt in production (doc 07 v2 §8.3); tests opt in.
+  allowDrafts?: boolean;
+}
+
 // Evaluate tomorrow's workouts on the athlete's active SCORA plan against
 // today's posture, and write whatever the engine decides.
-export async function adaptTomorrow(athleteId: string, today: string, posture: Posture, store: AdaptStore): Promise<AdaptResult[]> {
+export async function adaptTomorrow(
+  athleteId: string,
+  today: string,
+  posture: Posture,
+  store: AdaptStore,
+  opts: AdaptOptions = {},
+): Promise<AdaptResult[]> {
+  if (await store.hasActiveCoachPlan(athleteId)) return [];
   const plan = await store.activeScoraPlan(athleteId);
   if (!plan) return [];
+  if (plan.template.status !== 'reviewed' && !opts.allowDrafts) return [];
   const tomorrow = addDays(today, 1);
   const monday = mondayOf(tomorrow);
-  const week = await store.workoutsBetween(plan.id, monday, addDays(monday, 6));
+  // The plan week plus the next Monday, so a move to Sunday sees a hard
+  // session right after it (the engine counts only Mon to Sun as the week).
+  const loadWeek = () => store.workoutsBetween(plan.id, monday, addDays(monday, 7));
+  let week = await loadWeek();
   const weekIndex = Math.floor((Date.parse(`${monday}T00:00:00Z`) - Date.parse(`${mondayOf(plan.start_date)}T00:00:00Z`)) / (7 * DAY));
   const template_week_minutes = templateWeekMinutes(plan.template)[weekIndex] ?? null;
 
   const out: AdaptResult[] = [];
-  for (const workout of week.filter((w) => w.scheduled_date === tomorrow && w.planned_intensity !== 'rest')) {
+  const targets = week.filter((w) => w.scheduled_date === tomorrow && w.planned_intensity !== 'rest').map((w) => w.id);
+  for (const id of targets) {
+    // Re-read after every write: a second session that day must see the first one's move.
+    const workout = week.find((w) => w.id === id);
+    if (!workout || workout.scheduled_date !== tomorrow || workout.planned_intensity === 'rest') continue;
     const decision = evaluateAdaptation({
       posture,
       workout,
@@ -142,6 +174,7 @@ export async function adaptTomorrow(athleteId: string, today: string, posture: P
       engine_version: ADAPTATION_ENGINE_VERSION,
     });
     out.push({ decision, workout_id: workout.id, adaptation_id });
+    if (adaptation_id) week = await loadWeek();
   }
   return out;
 }
@@ -169,6 +202,13 @@ const workoutFrom = (r: any) => ({
 
 export function sqlAdaptStore(db: Db): AdaptStore {
   return {
+    async hasActiveCoachPlan(athleteId) {
+      const r = await db.query(
+        `select 1 from training_plans where athlete_id = $1 and source = 'coach' and current_status = 'active' limit 1`,
+        [athleteId],
+      );
+      return r.rows.length > 0;
+    },
     async activeScoraPlan(athleteId) {
       const r = await db.query(
         `select p.id, to_char(p.start_date, 'YYYY-MM-DD') as start_date, to_char(p.goal_race_date, 'YYYY-MM-DD') as goal_race_date,
@@ -196,7 +236,8 @@ export function sqlAdaptStore(db: Db): AdaptStore {
     async recent(athleteId, limit) {
       const r = await db.query(
         `select id, adaptation_type, to_char(original_date, 'YYYY-MM-DD') as original_date,
-                to_char(new_date, 'YYYY-MM-DD') as new_date, reason_code, reason_text, triggered_at::text as triggered_at
+                to_char(new_date, 'YYYY-MM-DD') as new_date, reason_code, reason_text,
+                to_char(triggered_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as triggered_at
          from plan_adaptations where athlete_id = $1 order by triggered_at desc, id limit $2`,
         [athleteId, limit],
       );
@@ -211,6 +252,12 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
     if (r.error) throw new Error(`${what}: ${r.error.message}`);
   };
   return {
+    async hasActiveCoachPlan(athleteId) {
+      const r = await sb.from('training_plans').select('id')
+        .eq('athlete_id', athleteId).eq('source', 'coach').eq('current_status', 'active').limit(1);
+      check(r, 'Load coach plan');
+      return (r.data ?? []).length > 0;
+    },
     async activeScoraPlan(athleteId) {
       const r = await sb.from('training_plans')
         .select('id, start_date, goal_race_date, plan_templates!inner(slug, version, structure_json)')
@@ -237,9 +284,10 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
     async recent(athleteId, limit) {
       const r = await sb.from('plan_adaptations')
         .select('id, adaptation_type, original_date, new_date, reason_code, reason_text, triggered_at')
-        .eq('athlete_id', athleteId).order('triggered_at', { ascending: false }).limit(limit);
+        .eq('athlete_id', athleteId).order('triggered_at', { ascending: false }).order('id').limit(limit);
       check(r, 'Load adaptations');
-      return (r.data ?? []) as PlanAdaptationRow[];
+      // Same shape as the SQL store: ISO 8601 in UTC with milliseconds.
+      return (r.data ?? []).map((a: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
     },
   };
 }

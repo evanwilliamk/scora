@@ -62,6 +62,12 @@ const localDay = (a: any): string | null => {
 };
 const prevDay = (d: string): string => new Date(Date.parse(`${d}T00:00:00Z`) - DAY).toISOString().slice(0, 10);
 
+// The athlete's local date from the newest activity's utc_offset (Strava
+// sends one per activity). UTC when there are no activities.
+export function athleteLocalToday(activities: any[], now = Date.now()): string {
+  return localTodayFor(activities.filter((a) => Number.isFinite(startMs(a))), now);
+}
+
 function localTodayFor(runs: any[], now: number): string {
   const newest = runs.reduce<any>((m, a) => (!m || startMs(a) > startMs(m) ? a : m), null);
   const offset = typeof newest?.utc_offset === 'number' ? newest.utc_offset : 0;

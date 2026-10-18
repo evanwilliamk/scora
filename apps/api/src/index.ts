@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
-import { postureForRead } from './drivers';
+import { athleteLocalToday, postureForRead } from './drivers';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -25,7 +25,7 @@ import {
 import { startScheduler } from './scheduler';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
-import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore } from './plan-adapt';
+import { adaptTomorrow, adaptationsEnabled, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
@@ -569,9 +569,11 @@ fastify.post('/api/read', async (request, reply) => {
     // deterministic adaptation rules (doc 07 v2 §6.2). Off unless
     // PLAN_ADAPTATIONS=on; never blocks or fails the read.
     if (adaptationsEnabled()) {
-      const today = isoDay((request.body as any)?.today) ?? new Date().toISOString().slice(0, 10);
+      // The scheduler sends the athlete's local date; the app does not yet, so
+      // fall back to the newest activity's UTC offset, never the server's UTC day.
+      const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
       try {
-        await adaptTomorrow(String(athleteId), today, posture.result.posture, adaptStore());
+        await withTimeout(adaptTomorrow(String(athleteId), today, posture.result.posture, adaptStore()), 4000);
       } catch (e) {
         fastify.log.error(`Plan adaptation failed for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       }
@@ -716,6 +718,9 @@ fastify.get('/api/plan', async (request, reply) => {
 // Named plan adaptations, newest first (doc 07 v2 §5: GET /plan/adaptations).
 // Every change the engine made shows its reason; none are silent.
 fastify.get('/api/plan/adaptations', async (request, reply) => {
+  // Off with the feature. Like /api/plan it trusts athleteId until Sign in
+  // with Apple lands (auth is Evan's item).
+  if (!adaptationsEnabled()) return reply.code(404).send({ error: 'Not found' });
   const { athleteId } = request.query as { athleteId?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {

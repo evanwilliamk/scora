@@ -54,6 +54,7 @@ const row = async (id: string) =>
   )).rows[0];
 
 let templateId: string;
+const DRAFTS = { allowDrafts: true };
 
 before(async () => {
   db = new PGlite({ extensions: { vector } });
@@ -77,7 +78,7 @@ after(async () => {
 test('back-off today, tempo tomorrow: downgraded to endurance at the same 40 minutes, with a named reason', async () => {
   await seedPlan('a1', templateId);
   const thu = ids.get('a1')!.get('w2:thursday')!;
-  const [r] = await adaptTomorrow('a1', '2026-10-28', 'back-off', store);
+  const [r] = await adaptTomorrow('a1', '2026-10-28', 'back-off', store, DRAFTS);
   assert.equal(r.workout_id, thu);
   assert.equal(r.decision.type, 'downgraded');
   assert.ok(r.adaptation_id);
@@ -95,7 +96,7 @@ test('back-off today, tempo tomorrow: downgraded to endurance at the same 40 min
 });
 
 test('reruns are harmless: one automatic adaptation per workout', async () => {
-  const [again] = await adaptTomorrow('a1', '2026-10-28', 'back-off', store);
+  const [again] = await adaptTomorrow('a1', '2026-10-28', 'back-off', store, DRAFTS);
   assert.equal(again.adaptation_id, null);
   assert.equal((await store.recent('a1', 10)).length, 1);
 });
@@ -105,7 +106,7 @@ test('rest today, hard session tomorrow with an open day: the session moves and 
   const m = ids.get('a2')!;
   // Week 3: make Thursday a rest day so it is an open window next to Tuesday.
   await db.query(`update scheduled_workouts set planned_intensity = 'rest', planned_duration_min = null where id = $1`, [m.get('w3:thursday')]);
-  const [r] = await adaptTomorrow('a2', '2026-11-02', 'rest', store);
+  const [r] = await adaptTomorrow('a2', '2026-11-02', 'rest', store, DRAFTS);
   assert.equal(r.decision.type, 'moved');
   const tue = await row(m.get('w3:tuesday')!);
   assert.equal(tue.date, '2026-11-05');
@@ -118,7 +119,7 @@ test('rest today, hard session tomorrow with an open day: the session moves and 
 
 test('rest today in a standard week: no open day, nothing written (Q19)', async () => {
   await seedPlan('a3', templateId);
-  const [r] = await adaptTomorrow('a3', '2026-10-26', 'rest', store);
+  const [r] = await adaptTomorrow('a3', '2026-10-26', 'rest', store, DRAFTS);
   assert.deepEqual(r.decision, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
   assert.equal((await store.recent('a3', 5)).length, 0);
 });
@@ -159,12 +160,52 @@ test("the write refuses another athlete's workout", async () => {
 });
 
 test("no active SCORA plan (none, or a coach's plan): nothing to adapt", async () => {
-  assert.deepEqual(await adaptTomorrow('nobody', '2026-10-28', 'back-off', store), []);
+  assert.deepEqual(await adaptTomorrow('nobody', '2026-10-28', 'back-off', store, DRAFTS), []);
   await seedPlan('c1', templateId, 'coach');
-  assert.deepEqual(await adaptTomorrow('c1', '2026-10-28', 'back-off', store), []);
+  assert.deepEqual(await adaptTomorrow('c1', '2026-10-28', 'back-off', store, DRAFTS), []);
 });
 
 test('downgraded structure: one continuous step at the same duration', () => {
   assert.deepEqual(downgradedStructure('steady_state', 50), [{ type: 'steady', duration_min: 50, intensity: 'steady' }]);
   assert.equal(downgradedStructure('endurance', null), null);
+});
+
+test('review fixes: a draft template never adapts unless opted in', async () => {
+  await seedPlan('d1', templateId);
+  assert.deepEqual(await adaptTomorrow('d1', '2026-10-28', 'back-off', store), []);
+  assert.equal((await adaptTomorrow('d1', '2026-10-28', 'back-off', store, DRAFTS)).length, 1);
+});
+
+test("review fixes: an active coach plan stops SCORA's plan adapting", async () => {
+  await seedPlan('k1', templateId);
+  await db.query(
+    `insert into training_plans (athlete_id, source, start_date, end_date) values ('k1', 'coach', '2026-10-19', '2026-12-31')`,
+  );
+  assert.deepEqual(await adaptTomorrow('k1', '2026-10-28', 'back-off', store, DRAFTS), []);
+});
+
+test('review fixes: two hard sessions on one day never both land on the same later day', async () => {
+  const planId = await seedPlan('t1', templateId);
+  const m = ids.get('t1')!;
+  // Week 2: Wed intervals 45 + tempo 30, Thu rest, Sat easy 100.
+  await db.query(`update scheduled_workouts set planned_intensity = 'intervals', planned_duration_min = 45 where id = $1`, [m.get('w2:wednesday')]);
+  await db.query(
+    `insert into scheduled_workouts (athlete_id, training_plan_id, scheduled_date, planned_type, planned_intensity, planned_duration_min, source)
+     values ('t1', $1, '2026-10-28', 'run', 'tempo', 30, 'scora_ai')`, [planId]);
+  await db.query(`update scheduled_workouts set planned_intensity = 'rest', planned_duration_min = null where id = $1`, [m.get('w2:thursday')]);
+  await db.query(`update scheduled_workouts set planned_intensity = 'easy' where id = $1`, [m.get('w2:saturday')]);
+
+  const results = await adaptTomorrow('t1', '2026-10-27', 'rest', store, DRAFTS);
+  const moved = results.filter((r) => r.decision.type === 'moved');
+  assert.equal(moved.length, 1);
+  const dates = (await db.query<any>(
+    `select to_char(scheduled_date, 'YYYY-MM-DD') as d from scheduled_workouts
+     where training_plan_id = $1 and planned_intensity in ('intervals', 'tempo') and scheduled_date between '2026-10-28' and '2026-11-01'`, [planId],
+  )).rows.map((r) => r.d).sort();
+  assert.deepEqual(dates, ['2026-10-28', '2026-10-30']); // tempo stays, intervals to Friday
+});
+
+test('review fixes: recent() timestamps are ISO 8601 UTC, like the Supabase store', async () => {
+  const [a] = await store.recent('a1', 1);
+  assert.match(a.triggered_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 });
