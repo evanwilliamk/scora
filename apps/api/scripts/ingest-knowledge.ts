@@ -2,6 +2,7 @@
 //
 //   npx tsx scripts/ingest-knowledge.ts <export.json> --dry-run
 //   npx tsx scripts/ingest-knowledge.ts <export.json>
+//   npx tsx scripts/ingest-knowledge.ts <export.json> --sync   (export is the whole library: delete entries not in it)
 //
 // --dry-run parses and chunks only: no OpenAI call, no database write. A real
 // run embeds with OpenAI (costs money, approved scale in spec §4) and writes to
@@ -16,6 +17,7 @@ async function main() {
   const args = process.argv.slice(2);
   const file = args.find((a) => !a.startsWith('--'));
   const dryRun = args.includes('--dry-run');
+  const sync = args.includes('--sync');
   if (!file) {
     console.error('Usage: ingest-knowledge.ts <export.json> [--dry-run]');
     process.exit(2);
@@ -37,6 +39,7 @@ async function main() {
   const result = await ingest(entries, {
     embed: openAiEmbedder(OPENAI_API_KEY),
     store: supabaseStore(createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)),
+    sync,
   });
   console.log(`Ingested ${result.chunks} chunks from ${result.sources} sources in ${result.embedCalls} embedding calls`);
 }
