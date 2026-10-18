@@ -26,7 +26,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 ## Phase 0 / Phase 1 remaining
 
-All `[~]` branches from 2026-10-17 are also merged together, with doc conflicts resolved, in `claude/integration-2026-10-17` (tests and typecheck pass there). Review the branches, then merge that one PR instead of each.
+All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc conflicts resolved, in `claude/integration-2026-10-18` (tests and typecheck pass there; it supersedes `claude/integration-2026-10-17`). Review the branches, then merge that one PR instead of each.
 
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key)
 - [!] Sign in with Apple (auth: needs Evan)
@@ -50,20 +50,21 @@ All `[~]` branches from 2026-10-17 are also merged together, with doc conflicts 
 - [!] Strava scheduled activities ingestion: not possible, Strava API v3 has no planned-workout endpoint (checked 2026-10-17). Proposed replacement: iCal feed import (Q17 in Evan's questions)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys)
 
-## Later phases (not started, see the 90-day plan)
-
-- Phase 2: Stripe subscriptions, plan engine + templates, WorkoutKit, WhatsApp doorbell, inline chart-expansion
-  - [~] Plan tier DB migration: `plan_templates`, `plan_adaptations`, template/race columns on `training_plans`, WorkoutKit columns on `scheduled_workouts` (`claude/plan-schema`, stacked on `claude/manual-plan`; PGlite tests only, Evan applies it)
-
 ## Phase 2: plan engine (started 2026-10-18; pure code, no deploy or money)
 
 - [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`). Done when every rule and guard has a unit test and the package typechecks
 - [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, stacked on `claude/plan-engine-adaptation`) (doc 07 v2 §4.2.1, CLAUDE.md §4.3 plan bans). Done when a malformed or rule-breaking template fails to load with a named error, tested on test fixtures only
-- [~] (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`) Assembler: template + start date + race date + current weekly volume to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
-- [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
-- [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
+- [~] Assembler: template + start date + race date + current weekly volume to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5) (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
+- [~] DB migration: `plan_templates`, `plan_adaptations`, template/race columns on `training_plans`, WorkoutKit columns on `scheduled_workouts` (`claude/plan-schema`, stacked on `claude/manual-plan`; PGlite tests only, Evan applies it)
+- [~] Adaptations applied with the daily read + `GET /api/plan/adaptations` (doc 07 v2 §6.2), behind `PLAN_ADAPTATIONS=on` (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; see DECISIONS for why not a nightly cron)
 - [!] Rest posture with no move window: hard session currently stays (Q19 in Evan's questions)
-- [~] (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; runs with the daily read, see DECISIONS) Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
+- [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
+- [ ] `POST /plan/generate`: match template, assemble, store plan + workouts (doc 07 v2 §6.1); needs at least one reviewed template to be useful, and Plan tier gating waits for Stripe
+- [ ] Adaptation reason text from the gpt-4o-mini prompt (CLAUDE.md §6.4), validated, with today's fixed sentence as fallback
+
+## Later phases (not started, see the 90-day plan)
+
+- Phase 2 (rest): Stripe subscriptions, WorkoutKit, WhatsApp doorbell, inline chart-expansion
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`
