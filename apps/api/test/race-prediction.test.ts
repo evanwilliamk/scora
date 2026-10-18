@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PREDICTION, formatDuration, predictRace, riegel } from '../src/race-prediction';
+import { PREDICTION, fetchActivitiesSince, formatDuration, predictRace, riegel } from '../src/race-prediction';
 
 const run = (date: string, km: number, min: number, extra: Record<string, unknown> = {}) => ({
   type: 'Run', start_date_local: `${date}T07:00:00Z`, distance: km * 1000, moving_time: min * 60, elapsed_time: min * 60 + 30, ...extra,
@@ -56,4 +56,15 @@ test('durations format as h:mm over an hour and m:ss under', () => {
   assert.equal(formatDuration(3 * 3600 + 42 * 60 + 10), '3:42');
   assert.equal(formatDuration(24 * 60 + 5), '24:05');
   assert.equal(formatDuration(59.6), '1:00');
+});
+
+test('activities are paged until a short page, so the newest runs are not dropped', async () => {
+  const urls: string[] = [];
+  const pages = [Array(200).fill({ type: 'Run' }), Array(200).fill({ type: 'Run' }), [{ type: 'Run', id: 'newest' }]];
+  const fake = (async (url: string) => { urls.push(url); const b = pages[urls.length - 1]; return { ok: true, json: async () => b } as any; }) as any;
+  const all = await fetchActivitiesSince('t', 1000, fake);
+  assert.equal(all.length, 401);
+  assert.equal(all[400].id, 'newest');
+  assert.deepEqual(urls.map((u) => new URL(u).searchParams.get('page')), ['1', '2', '3']);
+  await assert.rejects(fetchActivitiesSince('t', 1000, (async () => ({ ok: false, status: 401 })) as any), /Strava 401/);
 });
