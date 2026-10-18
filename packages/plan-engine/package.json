@@ -1,0 +1,26 @@
+{
+  "name": "@scora/plan-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SCORA plan engine: deterministic plan adaptation rules (doc 07 v2 §6.2, §9). No LLM decides an adaptation.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@scora/posture": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}
