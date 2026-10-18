@@ -41,7 +41,7 @@ import {
 import { TEMPLATE_DIR, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
 import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
-import { buildDriverSeries, inlineChartsEnabled, linkDrivers } from './driver-links';
+import { buildDriverSeries, inlineChartsEnabled, linkDrivers, parseHealthNights } from './driver-links';
 import type { SeriesKey } from './driver-links';
 import { createClient } from '@supabase/supabase-js';
 
@@ -553,6 +553,7 @@ fastify.post('/api/read', async (request, reply) => {
         restingHr: health.restingHr != null ? Math.round(health.restingHr) : null,
         readinessScore: null,
         hrvWeekAvgMs: health.hrvWeekAvgMs != null ? Math.round(health.hrvWeekAvgMs) : null,
+        nights: parseHealthNights(health.nights),
       };
       recoverySource = 'Apple Health';
       healthKitUsed = true;
@@ -699,7 +700,7 @@ Write today's read using only these drivers.`;
       // Charts are extra: any failure leaves the read as plain text.
       try {
         const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
-        const series = buildDriverSeries(activities, ouraSummary, today);
+        const series = buildDriverSeries(activities, recovery, today);
         const links = linkDrivers(voice, readDrivers, new Set(Object.keys(series) as SeriesKey[]));
         const used = new Set(links.map((l) => l.key));
         charts = { links, series: Object.fromEntries(Object.entries(series).filter(([k]) => used.has(k as SeriesKey))) };

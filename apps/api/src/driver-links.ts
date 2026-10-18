@@ -142,3 +142,29 @@ export function buildDriverSeries(
   if (rhr.length >= 2) out.resting_hr = series('resting_hr', 'Resting heart rate', 'bpm', rhr);
   return out;
 }
+
+// HealthKit nights from the app (HealthSummary.nights). Untrusted input: keep
+// at most 35 well-formed days, and drop any value outside a plausible range
+// rather than charting it.
+export function parseHealthNights(raw: unknown): NonNullable<OuraSummary['nights']> {
+  if (!Array.isArray(raw)) return [];
+  const num = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null);
+  const seen = new Set<string>();
+  const out: NonNullable<OuraSummary['nights']> = [];
+  for (const n of raw.slice(-35)) {
+    if (!n || typeof n !== 'object') continue;
+    const day = (n as any).day;
+    // A real calendar day: 2026-02-31 rolls over in Date.parse, so round-trip it.
+    const t = typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? Date.parse(`${day}T00:00:00Z`) : NaN;
+    if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== day || seen.has(day)) continue;
+    seen.add(day);
+    const night = {
+      day,
+      sleepSeconds: num((n as any).sleepSeconds, 1, 86_400),
+      hrvMs: num((n as any).hrvMs, 1, 300),
+      restingHr: num((n as any).restingHr, 20, 200),
+    };
+    if (night.sleepSeconds != null || night.hrvMs != null || night.restingHr != null) out.push(night);
+  }
+  return out;
+}
