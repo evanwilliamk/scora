@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
+import { postureForRead } from './drivers';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -504,7 +505,10 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
-    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
+    // Everything since 35 days ago (the driver record needs a full 28 days;
+    // 50 most recent activities can fall short for multi-sport athletes).
+    const after = Math.floor(Date.now() / 1000) - 35 * 86400;
+    const stravaRes = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${after}`, {
       headers: { Authorization: `Bearer ${stravaToken}` },
     });
     if (!stravaRes.ok) {
@@ -550,12 +554,23 @@ fastify.post('/api/read', async (request, reply) => {
       recoverySource
     );
 
+    // Posture is decided by rules from the driver record, not by the LLM.
+    // No plan or race source is wired yet, so race_in_next_7d stays null.
+    const posture = postureForRead(activities, recovery);
+    const postureOut = {
+      posture: posture.result.posture,
+      rule: posture.result.rule,
+      engineVersion: posture.result.engine_version,
+      completeness: posture.record.completeness,
+    };
+
     // With no drivers there is nothing the voice can honestly say. Don't invent.
     if (drivers.length === 0) {
       return reply.send({
         read: {
           voice: 'Not enough recent activity to read yet. Once a few runs land in Strava, the morning read fills in.',
         },
+        posture: postureOut,
         cards,
         drivers,
         connections,
@@ -563,21 +578,26 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
+    // The numbers behind the posture are drivers too, so naming it is backed.
+    const readDrivers = [...drivers, ...posture.evidence];
+
     const systemPrompt = `You are SCORA, an interpretation layer for endurance athletes. You READ and NAME what the data shows. You are NOT a coach and you never prescribe.
 
 HARD RULES:
 - Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep, HRV, or recovery unless present).
 - Numeric-first: reference the raw value, then say what it means.
-- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". You may name a posture (primed, steady, moderate, back-off, rest, taper) as an observation, not an instruction.
+- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction.
 - Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
 
 OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;
 
-    const driverBlock = drivers
+    const driverBlock = readDrivers
       .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
       .join('\n');
     const userPrompt = `DRIVERS (the only values you may cite):
 ${driverBlock}
+
+${posture.promptLine}
 
 Write today's read using only these drivers.`;
 
@@ -586,7 +606,7 @@ Write today's read using only these drivers.`;
       const result = await generateValidatedVoice({
         systemPrompt,
         userPrompt,
-        drivers,
+        drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers",
         log: fastify.log,
@@ -602,8 +622,9 @@ Write today's read using only these drivers.`;
 
     return reply.send({
       read: { voice },
+      posture: postureOut,
       cards,
-      drivers,
+      drivers: readDrivers,
       connections,
       generatedAt: new Date().toISOString(),
     });
