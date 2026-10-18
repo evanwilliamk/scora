@@ -4,6 +4,10 @@ import SwiftUI
 
 struct DailyRead: Decodable {
   let voice: String
+  // Plan tier inline charts (DriverChart.swift). Absent when the server has
+  // them off.
+  let links: [DriverLink]?
+  let series: [String: DriverSeries]?
 }
 
 struct DashboardCard: Decodable, Identifiable {
@@ -38,6 +42,7 @@ struct DashboardView: View {
   @State private var showChat = false
   @State private var showWeekly = false
   @State private var showPlan = false
+  @State private var chartSeries: DriverSeries?
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -79,6 +84,9 @@ struct DashboardView: View {
     }
     .sheet(isPresented: $showWeekly) {
       WeeklyView(tokenManager: tokenManager)
+    }
+    .sheet(item: $chartSeries) { series in
+      DriverChartView(series: series)
     }
     .sheet(isPresented: $showPlan) {
       PlanView(tokenManager: tokenManager)
@@ -144,10 +152,16 @@ struct DashboardView: View {
         .textCase(.uppercase)
 
       if let read {
-        Text(read.voice)
+        Text(ReadText.attributed(read.voice, links: read.links ?? [], series: read.series ?? [:]))
           .font(.system(size: 20, weight: .regular, design: .serif))
           .foregroundColor(.white)
+          .tint(.orange)
           .fixedSize(horizontal: false, vertical: true)
+          .environment(\.openURL, OpenURLAction { url in
+            guard let key = ReadText.seriesKey(url) else { return .systemAction }
+            chartSeries = read.series?[key]
+            return .handled
+          })
       } else if isLoading {
         HStack(spacing: 10) {
           ProgressView().tint(.white)

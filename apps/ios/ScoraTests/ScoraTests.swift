@@ -72,6 +72,34 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "America/Los_Angeles")!), "2026-10-16")
     }
 
+    func testReadWithInlineChartsDecodesAndLinksSpans() throws {
+        let json = """
+        {"read":{"voice":"It’s settled: sleep held at 7:12 and HRV is 52ms.",
+          "links":[{"start":28,"end":32,"key":"sleep"},{"start":44,"end":48,"key":"hrv"},{"start":0,"end":4,"key":"load"},{"start":40,"end":99,"key":"hrv"}],
+          "series":{"sleep":{"key":"sleep","label":"Hours slept","unit":"h","points":[{"date":"2026-10-17","value":6.5},{"date":"2026-10-18","value":7.2}],"baseline":6.5},
+                    "hrv":{"key":"hrv","label":"HRV","unit":"ms","points":[{"date":"2026-10-17","value":44},{"date":"2026-10-18","value":52}],"baseline":44}}},
+         "cards":[],"generatedAt":null}
+        """.data(using: .utf8)!
+        let r = try JSONDecoder().decode(ReadResponse.self, from: json)
+        let text = ReadText.attributed(r.read.voice, links: r.read.links ?? [], series: r.read.series ?? [:])
+        XCTAssertEqual(String(text.characters), r.read.voice, "the text is unchanged")
+        var linked: [String: String] = [:]
+        for run in text.runs {
+            if let url = run.link, let key = ReadText.seriesKey(url) { linked[key] = String(text[run.range].characters) }
+        }
+        // load has no series and the out-of-range span is dropped.
+        XCTAssertEqual(linked, ["sleep": "7:12", "hrv": "52ms"])
+        XCTAssertEqual(DriverSeries.format(7.2, unit: "h"), "7:12")
+        XCTAssertEqual(DriverSeries.format(52, unit: "ms"), "52 ms")
+    }
+
+    func testReadWithoutChartsStillDecodes() throws {
+        let json = #"{"read":{"voice":"Plain read."},"cards":[],"generatedAt":null}"#.data(using: .utf8)!
+        let r = try JSONDecoder().decode(ReadResponse.self, from: json)
+        XCTAssertNil(r.read.links)
+        XCTAssertEqual(String(ReadText.attributed(r.read.voice, links: [], series: [:]).characters), "Plain read.")
+    }
+
     func testSkippedNote() {
         XCTAssertNil(PlanDay.skippedNote(0))
         XCTAssertEqual(PlanDay.skippedNote(1), "1 line could not be read and was left out.")

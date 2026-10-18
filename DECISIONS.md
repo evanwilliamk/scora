@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-18: Inline chart-expansion: spans found in code, recorded values only
+- Status: DECIDED (reversible, review when you can)
+- Branch: claude/inline-charts (on claude/plan-adapt-job)
+- Context: CLAUDE.md §3.4 makes every driver in the read tappable to a mini-chart (Plan tier). Nothing specified how words map to drivers or what the chart shows.
+- Choice: behind `INLINE_CHARTS=on` (default off; Plan tier gating waits for Stripe). After validation, code links each driver's quoted value in the read (or its name: sleep, load, volume, HRV, resting HR) to a 28-day daily series: Strava run minutes and miles per day (rest days are 0), and Oura nightly sleep, HRV and resting HR (nights with no value are left out, never filled in). One link per series, first mention. The chart marks the newest day and draws the average of the days before it. Oura sleep is now fetched for 29 days (was 9) so the chart can show a month. HealthKit-only athletes get load and volume charts only until the app sends dated HealthKit nights.
+- Alternative: the LLM marks driver spans in its output. Rejected: the spans would need validating anyway, and code finds them reliably on numeric-first text.
+- To reverse: leave the flag off; the app shows plain text when `links` is absent.
+
 ### 2026-10-18: Plan adaptations run with the daily read, not a separate nightly cron
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-adapt-job (on plan-schema + plan-assembler + driver-record)
