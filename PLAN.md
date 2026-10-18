@@ -26,32 +26,28 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 ## Phase 0 / Phase 1 remaining
 
+All `[~]` branches from 2026-10-17 are also merged together, with doc conflicts resolved, in `claude/integration-2026-10-17` (tests and typecheck pass there). Review the branches, then merge that one PR instead of each.
+
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key)
 - [!] Sign in with Apple (auth: needs Evan)
 - [x] Review and land `origin/feat/voice-pattern-library` (pattern engine + 7 ported v0.3 entries) (merged 2026-10-15 from `claude/voice-pattern-library`)
 - [x] Posture engine as its own module with unit tests (merged 2026-10-15 from `claude/posture-engine`; not wired into the API yet)
-- [ ] Compute the per-user driver record (doc 07 v1 §8.2) and wire posture + voice into the daily read
 - [~] Port the 5 remaining v0.3 pattern entries (12 total) (`claude/port-v03-patterns`). Stopgap only: the knowledge library replaces the "20+ entries" goal (Evan, 2026-10-13)
 - [~] Compute the per-user driver record (doc 07 v1 §8.2) and wire posture into the daily read (`claude/driver-record`; definitions in DECISIONS.md 2026-10-17)
-- [~] Wire `@scora/voice` selectPattern into the daily read (done as the retrieval fallback on `claude/knowledge-retrieval`; fires only once a scheduled-workout source exists) (needs a scheduled-workout source: every v0.3 entry but the taper ones requires one)
-- [ ] Port the 5 remaining v0.3 pattern entries (12 total). Stopgap only: the knowledge library replaces the "20+ entries" goal (Evan, 2026-10-13)
+- [~] Wire `@scora/voice` selectPattern into the daily read (done as the retrieval fallback on `claude/knowledge-retrieval`; fires with a pasted plan via `claude/plan-aware-read`)
 - [x] Knowledge library spec `11_SCORA_Knowledge_Library_Spec_v0_1.md` (merged 2026-10-15 from `claude/knowledge-library-spec`)
 - [~] Knowledge library: pgvector migration + `knowledge_sources`, `knowledge_chunks`, `read_citations` tables (spec §3; local or mocks only) (`claude/knowledge-schema`; tested on PGlite, not applied to Supabase: Evan applies it)
 - [~] Knowledge library: ingest script for FieldCopy JSON exports, embedding call mocked in tests (spec §2.3) (`claude/knowledge-ingest`, stacked on `claude/knowledge-schema`; real run is Evan's: `npx tsx scripts/ingest-knowledge.ts <file>`, try `--dry-run` first)
 - [~] Knowledge library: retrieval step in the read pipeline behind a flag, pattern library as fallback (spec §2.4 to §2.6) (`claude/knowledge-retrieval`, stacked on `claude/knowledge-ingest` + `claude/driver-record`; flag `KNOWLEDGE_RETRIEVAL=on`, default off)
 - [!] Knowledge library: starter source list (5 to 10 books or coaches) and the open questions in spec §6 (Evan)
 - [~] Card tap-to-expand with a card-expansion prompt (Free tier, card level only) (`claude/card-expand`, stacked on `claude/driver-record`; API + iOS, needs a deploy to try on device)
-- [~] CDV charts: Vega-Lite WebView in ChatView. iOS side merged 2026-10-15 (`claude/cdv-chart-webview`); API still needs to return `chart` (gpt-4o-mini CDV spec)
-- [ ] Card tap-to-expand with a card-expansion prompt (Free tier, card level only)
 - [~] CDV charts: Vega-Lite WebView in ChatView. iOS side merged 2026-10-15 (`claude/cdv-chart-webview`); API side on `claude/cdv-chart-api` (LLM picks a chart kind, server builds the spec from real data)
 - [x] Remove emoji from ChatView error bubbles (CLAUDE.md §3.7) (merged 2026-10-15 from `claude/chatview-no-emoji`)
 - [~] Oura success page + deep link landing (design-todos) (`claude/oura-success`; also fixes reflected XSS in the Oura and Strava callback pages)
-- [ ] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md)
-- [ ] Oura success page + deep link landing (design-todos)
 - [~] Onboarding flow (09_SCORA_Onboarding_Flow_v2.md): post-Strava steps + per-athlete push time (`claude/onboarding`, stacked on `claude/knowledge-schema` + `claude/manual-plan`). Sign in with Apple and the Stripe customer step still wait on Evan
 - [~] Manual plan entry + plan parsing (plan-aware reads) (`claude/manual-plan`, stacked on `claude/knowledge-schema`; API + iOS Your Plan sheet)
 - [~] Plan-aware read: pass today's scheduled workout into posture/pattern matching and the read prompt (`claude/plan-aware-read`, stacked on `claude/knowledge-retrieval` + `claude/manual-plan`; merge those first)
-- [ ] Strava scheduled activities ingestion
+- [!] Strava scheduled activities ingestion: not possible, Strava API v3 has no planned-workout endpoint (checked 2026-10-17). Proposed replacement: iCal feed import (Q17 in Evan's questions)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys)
 
 ## Later phases (not started, see the 90-day plan)
