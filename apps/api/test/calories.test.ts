@@ -32,3 +32,11 @@ test('no weight or no data, no estimate; other sports are left out in v1', () =>
   assert.equal(estimateCalories({ ...run, moving_time: 0 }, 70), null);
   assert.equal(estimateCalories({ id: 5, type: 'Swim', distance: 1500, moving_time: 1800 }, 70), null);
 });
+
+test('below running speed the ACSM walking equation is used (review fix)', () => {
+  // 20 km in 4 h with 1000 m climb: 83 m/min, a hike-paced trail run.
+  // Walking: 3.5 + 8.33 + 1.8 x 83.3 x 0.05 = 19.33 ml/kg/min -> 70 kg x 240 min -> 1624 kcal.
+  assert.equal(Math.round(runningKcal(70, 20000, 4 * 3600, 1000)), 1624);
+  // At running speed nothing changes.
+  assert.equal(Math.round(runningKcal(70, 10000, 3000)), 761);
+});

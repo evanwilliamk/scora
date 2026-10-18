@@ -961,13 +961,15 @@ fastify.get('/api/calories', async (request, reply) => {
     const token = await getValidStravaToken(athleteId);
     const headers = { Authorization: `Bearer ${token}` };
     const after = Math.floor(Date.now() / 1000) - 14 * 86400;
-    const [athleteRes, actsRes] = await Promise.all([
-      fetch('https://www.strava.com/api/v3/athlete', { headers }),
-      fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=100&after=${after}`, { headers }),
-    ]);
-    if (!athleteRes.ok || !actsRes.ok) return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', { headers });
+    if (!athleteRes.ok) return reply.code(401).send({ error: 'Strava token invalid or expired' });
     const athlete = (await athleteRes.json()) as { weight?: number | null };
-    const activities = (await actsRes.json()) as any[];
+    let activities: any[];
+    try {
+      activities = await fetchActivitiesSince(token, after);
+    } catch {
+      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    }
     const weight = typeof athlete.weight === 'number' && athlete.weight > 0 ? athlete.weight : null;
     const estimates = activities.map((a) => estimateCalories(a, weight)).filter((e) => e !== null);
     return reply.send({ version: CALORIE_ENGINE_VERSION, weight_kg: weight, estimates });
