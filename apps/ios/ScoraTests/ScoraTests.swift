@@ -317,6 +317,17 @@ final class ScoraTests: XCTestCase {
         XCTAssertTrue(CalendarFeed.needsRefresh(link: link, lastRefresh: now.addingTimeInterval(-13 * 3600), now: now))
     }
 
+    func testCalendarFeedLinkIsPerAthlete() {
+        CalendarFeed.save("webcal://plans.example.com/a.ics", for: "test-a")
+        defer { CalendarFeed.save(nil, for: "test-a") }
+        XCTAssertEqual(CalendarFeed.savedLink(for: "test-a"), "webcal://plans.example.com/a.ics")
+        XCTAssertNil(CalendarFeed.savedLink(for: "test-b"), "another athlete on this phone never sees it")
+        XCTAssertNotNil(CalendarFeed.lastRefresh(for: "test-a"))
+        CalendarFeed.save(nil, for: "test-a")
+        XCTAssertNil(CalendarFeed.savedLink(for: "test-a"))
+        XCTAssertNil(CalendarFeed.lastRefresh(for: "test-a"))
+    }
+
     func testCalendarFeedText() {
         XCTAssertNotNil(CalendarFeed.calendarText(Data("BEGIN:VCALENDAR\r\nEND:VCALENDAR".utf8)))
         XCTAssertNil(CalendarFeed.calendarText(Data("<html>sign in</html>".utf8)))

@@ -19,6 +19,9 @@ export interface PlanStore {
   // A calendar import (plan-ical.ts). Replaces the active pasted or imported
   // plan; the calendar text itself is not stored, only the kept rows.
   saveIcalPlan(athleteId: string, rows: ParsedRow[]): Promise<{ planId: string }>;
+  // Re-import from the phone: replaces the plan only if it is still the
+  // calendar import. Null when it is not (a paste replaced it).
+  refreshIcalPlan(athleteId: string, rows: ParsedRow[]): Promise<{ planId: string } | null>;
   // Active-plan workouts from `from` to `to` inclusive, oldest first.
   workoutsBetween(athleteId: string, from: string, to: string): Promise<StoredWorkout[]>;
 }
@@ -36,6 +39,11 @@ export function sqlPlanStore(db: Db): PlanStore {
       if (rows.length === 0) throw new Error('No workouts to save');
       const r = await db.query(`select replace_external_plan($1, 'ical', null, $2::jsonb) as id`, [athleteId, JSON.stringify(rows)]);
       return { planId: r.rows[0].id as string };
+    },
+    async refreshIcalPlan(athleteId, rows) {
+      if (rows.length === 0) throw new Error('No workouts to save');
+      const r = await db.query('select refresh_ical_plan($1, $2::jsonb) as id', [athleteId, JSON.stringify(rows)]);
+      return r.rows[0].id ? { planId: r.rows[0].id as string } : null;
     },
     async workoutsBetween(athleteId, from, to) {
       const r = await db.query(
@@ -73,6 +81,12 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
       const r = await sb.rpc('replace_external_plan', { p_athlete_id: athleteId, p_external_source: 'ical', p_raw_text: null, p_rows: rows });
       check(r, 'Save calendar plan');
       return { planId: r.data as string };
+    },
+    async refreshIcalPlan(athleteId, rows) {
+      if (rows.length === 0) throw new Error('No workouts to save');
+      const r = await sb.rpc('refresh_ical_plan', { p_athlete_id: athleteId, p_rows: rows });
+      check(r, 'Refresh calendar plan');
+      return r.data ? { planId: r.data as string } : null;
     },
     async workoutsBetween(athleteId, from, to) {
       const r = await sb.from('scheduled_workouts')
