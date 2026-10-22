@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-22: Sunday review names how the week tracked against the plan
+- Status: DECIDED (reversible; prompt wording is yours)
+- Branch: claude/weekly-plan-aware
+- Context: the weekly review ignored the athlete's plan, though pattern plan-adherence-strong-week exists for it.
+- Choice: when the plan has run minutes in the last 7 local days, the review gets one driver, "Plan this week: 135 of 190 planned run min" (stored durations of run sessions vs Strava run minutes). The prompt lets it state this as a fact and forbids judging it or suggesting catching up or cutting back. No plan: nothing changes.
+- Known gap: the review's other numbers use a rolling 7 days on server time; the plan line uses the athlete's local days.
+- To reverse: the `weeklyPlanDriver` block in the /api/weekly route.
+
 ### 2026-10-22: Validator telemetry as structured log lines until PostHog exists
 - Status: DECIDED (reversible)
 - Branch: claude/validator-telemetry
