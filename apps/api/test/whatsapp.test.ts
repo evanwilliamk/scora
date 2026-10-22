@@ -58,10 +58,11 @@ test("why and more prompts carry the read, the posture and only the read's drive
   assert.match(why.systemPrompt, /1 or 2 sentences/);
   assert.match(why.systemPrompt, /Never tell the athlete what to do/);
   assert.match(why.userPrompt, /- HRV: 38ms \(-9% wk\)\n- Sleep: 6:42/);
-  assert.match(why.userPrompt, /TODAY'S POSTURE: back-off/);
+  assert.match(why.userPrompt, /TODAY'S POSTURE: back-off: signs of strain/);
   const more = morePrompt('x', 'steady', []);
   assert.equal(more.maxTokens, 200);
   assert.match(more.systemPrompt, /3 or 4 sentences/);
+  assert.match(more.systemPrompt, /say nothing about what comes next/);
   assert.match(more.userPrompt, /- none/);
 });
 
