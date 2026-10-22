@@ -8,6 +8,21 @@ enum DemoMode {
   static var isOn: Bool { ProcessInfo.processInfo.arguments.contains("-demo-read") }
   static var opensChart: Bool { ProcessInfo.processInfo.arguments.contains("-demo-chart") }
   static var opensPlan: Bool { ProcessInfo.processInfo.arguments.contains("-demo-plan") }
+  // -demo-plan-sessions: Your Plan shows two sample SCORA sessions (today
+  // and tomorrow) with steps, so Send to Watch can be seen. Sample data only.
+  static var planSessions: [PlanWorkout]? {
+    guard ProcessInfo.processInfo.arguments.contains("-demo-plan-sessions") else { return nil }
+    let today = PlanDay.today()
+    let tomorrow = PlanDay.today(Date().addingTimeInterval(86_400))
+    func step(_ type: String, _ min: Double, _ intensity: String) -> PlanStep {
+      PlanStep(type: type, durationMin: min, intensity: intensity, reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)
+    }
+    var a = PlanWorkout(date: today, type: "run", intensity: "easy", durationMin: 40, distanceKm: nil, description: nil)
+    a.steps = [step("steady", 40, "easy")]
+    var b = PlanWorkout(date: tomorrow, type: "run", intensity: "tempo", durationMin: 45, distanceKm: nil, description: nil)
+    b.steps = [step("warmup", 10, "easy"), step("steady", 25, "tempo"), step("cooldown", 10, "easy")]
+    return [a, b]
+  }
 
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], [40, 0, 80, 0, nil, nil, nil] as [Int?]).enumerated().map { i, p in

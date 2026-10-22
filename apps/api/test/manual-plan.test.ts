@@ -183,6 +183,7 @@ test('saving a plan stores its rows and reads them back by date range', async ()
     ['2026-10-18', 'long'], ['2026-10-20', 'tempo'], ['2026-10-21', 'rest'], ['2026-10-22', 'recovery'],
   ]);
   assert.equal(week[0].planned_distance_km, 25.75);
+  assert.equal(week[0].workout_structure_json, null, 'a pasted plan has no steps for the Watch');
   assert.deepEqual(await store.workoutsBetween('222', '2026-10-17', '2026-10-23'), [], 'other athletes see nothing');
 });
 

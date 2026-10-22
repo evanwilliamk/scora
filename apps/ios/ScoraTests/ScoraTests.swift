@@ -269,6 +269,52 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(total, 50 * 60, "the Watch total equals the plan's 50 minutes")
     }
 
+    final class FakeWatch: WatchScheduling {
+        var isSupported = true
+        var allow = true
+        var scheduled: [DateComponents] = []
+        func authorize() async -> Bool { allow }
+        func schedule(_ workout: CustomWorkout, at date: DateComponents) async { scheduled.append(date) }
+    }
+
+    func testSendToWatchSchedulesAt6OnThePlanDay() async {
+        let steps = [PlanStep(type: "warmup", durationMin: 10, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil),
+                     PlanStep(type: "steady", durationMin: 30, intensity: "tempo", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        let watch = FakeWatch()
+        let o = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch)
+        XCTAssertEqual(o, .sent("Fri Oct 23"))
+        XCTAssertEqual(watch.scheduled, [DateComponents(year: 2026, month: 10, day: 23, hour: 6, minute: 0)])
+        XCTAssertEqual(WatchSend.message(o), "Sent to your Watch for Fri Oct 23.")
+
+        watch.allow = false
+        let denied = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: watch)
+        XCTAssertEqual(denied, .notAuthorized)
+        watch.isSupported = false
+        let unsupported = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: watch)
+        XCTAssertEqual(unsupported, .unsupported)
+        XCTAssertEqual(watch.scheduled.count, 1, "nothing scheduled without permission or support")
+        let swim = await WatchSend.send(steps: steps, type: "swim", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: FakeWatch())
+        XCTAssertEqual(swim, .cannotCopy)
+    }
+
+    func testSendToWatchOnlyOffersSessionsItCanCopyThisWeek() {
+        let steps = [PlanStep(type: "steady", durationMin: 30, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        XCTAssertTrue(WatchSend.canSend(type: "run", steps: steps, date: "2026-10-22", today: "2026-10-22"))
+        XCTAssertTrue(WatchSend.canSend(type: "ride", steps: steps, date: "2026-10-29", today: "2026-10-22"))
+        XCTAssertFalse(WatchSend.canSend(type: "run", steps: steps, date: "2026-10-30", today: "2026-10-22"), "more than a week out")
+        XCTAssertFalse(WatchSend.canSend(type: "run", steps: steps, date: "2026-10-21", today: "2026-10-22"), "in the past")
+        XCTAssertFalse(WatchSend.canSend(type: "run", steps: nil, date: "2026-10-23", today: "2026-10-22"), "a pasted plan has no steps")
+        XCTAssertFalse(WatchSend.canSend(type: "swim", steps: steps, date: "2026-10-23", today: "2026-10-22"))
+    }
+
+    func testPlanWorkoutReadsItsStructure() throws {
+        let json = #"{"scheduled_date":"2026-10-23","planned_type":"run","planned_intensity":"tempo","planned_duration_min":40,"planned_distance_km":null,"planned_description":null,"workout_structure_json":[{"type":"steady","duration_min":40,"intensity":"tempo"}]}"#
+        let w = try JSONDecoder().decode(PlanWorkout.self, from: Data(json.utf8))
+        XCTAssertEqual(w.steps?.count, 1)
+        let pasted = try JSONDecoder().decode(PlanWorkout.self, from: Data(#"{"scheduled_date":"2026-10-23","planned_type":"run"}"#.utf8))
+        XCTAssertNil(pasted.steps)
+    }
+
     func testWorkoutExportRefusesWhatItCannotCopy() {
         XCTAssertThrowsError(try WorkoutExport.customWorkout(steps: [], plannedType: "run", displayName: "x")) {
             XCTAssertEqual($0 as? WorkoutExportError, .empty)

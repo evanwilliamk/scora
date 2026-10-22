@@ -77,7 +77,8 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] The read observes plan changes touching today (CLAUDE.md §1.3) (`claude/read-sees-plan-changes`, on `claude/integration-2026-10-18`)
 - [~] WorkoutKit export: a plan session's structure becomes a CustomWorkout, Watch total equal to the plan (`claude/workoutkit-export`, on `claude/plan-adapt-job`; converter + tests only)
 - [~] CDV daily quota resets at the athlete's local midnight, not UTC (`claude/cdv-local-day`, on `claude/plan-adapt-job`)
-- [ ] WorkoutKit scheduling to the Watch (authorization + a Send to Watch action); needs a paired device to try (Evan)
+- [~] WorkoutKit scheduling, code half: Send to Watch on SCORA plan sessions, WorkoutScheduler behind a protocol, tested with a fake (`claude/workoutkit-schedule`, on `claude/integration-2026-10-22`)
+- [ ] WorkoutKit scheduling on a paired Apple Watch (Evan). Done when a sent session appears in the Watch's Workout app on its day and runs with the plan's steps
 - [!] Calorie engine needs body weight; Strava only sends it with `profile:read_all` (Q21). Done when an athlete with a known weight gets estimates with the method shown
 - [~] Rest posture with no move window: the session drops to easy at the same duration, named reason; long runs stay (Q19 option B, `claude/rest-no-window-downgrade`, on `claude/integration-2026-10-18`)
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
