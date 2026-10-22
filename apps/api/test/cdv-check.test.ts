@@ -112,3 +112,9 @@ test('only a count the athlete asked about is theirs to repeat, not a figure', (
   assert.equal(checkCdvReply('You ran 10 miles Tuesday.', [], DATA, 'Did I run 10 miles Tuesday?').fallback, true);
   assert.equal(checkCdvReply('Across your last 5 runs, 3 were this week.', [], DATA, 'What about my last 5 runs?').fallback, false);
 });
+
+test('the chat prompt holds its read under pushback (CLAUDE.md §3.6)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /if the athlete disagrees or pushes back, restate what the data shows and stop\. Never change the read to agree/);
+});
