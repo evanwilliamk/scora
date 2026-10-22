@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-22: WhatsApp doorbell core (pure pieces only)
+- Status: DECIDED (reversible; reply copy is yours)
+- Branch: claude/whatsapp-core
+- Context: Phase 2 lists the WhatsApp doorbell (PRD §5.B.2). Sending needs a Twilio account (money) and opt-in copy (privacy), which wait on you.
+- Choice: `apps/api/src/whatsapp.ts` with the morning message in the §3.3 shape, the bounded reply set (why, more, pause N, resume, stop, help; STOP synonyms such as unsubscribe and cancel; anything else gets help), fixed replies for pause/resume/stop/help, and the Twilio webhook signature check tested against Twilio's documented example. "pause" alone is 3 days, at most 30. Nothing sends, stores a phone number or adds a route.
+- Next when you want it: Twilio sandbox credentials, the opt-in screen copy, and the `why` expansion prompt (doc 08 why-expansion.md) on the read's drivers.
+- To reverse: delete `apps/api/src/whatsapp.ts` and its test.
+
 ### 2026-10-22: Validator telemetry as structured log lines until PostHog exists
 - Status: DECIDED (reversible)
 - Branch: claude/validator-telemetry

@@ -1,0 +1,89 @@
+// WhatsApp doorbell core (Plan tier, PRD §5.B.2, CLAUDE.md §3.3, §7).
+//
+// Pure pieces only: the morning message, the bounded reply commands, and
+// Twilio's webhook signature check. Nothing here sends a message, stores a
+// phone number or reads the database; the route, opt-in and Twilio account
+// wait on Evan (money, privacy text).
+
+import crypto from 'node:crypto';
+
+// The morning message, numbers first (CLAUDE.md §3.3):
+//   Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412
+//
+//   <the read>
+//
+//   Today: 45 min tempo · 3 × 8 min at threshold   (Plan and Coach tiers)
+//
+//   Full read: <link>
+export function composeDoorbell(p: { numbers: string; voice: string; today?: string | null; link: string }): string {
+  const parts = [p.numbers.trim(), p.voice.replace(/\s+/g, ' ').trim()];
+  if (p.today && p.today.trim()) parts.push(`Today: ${p.today.trim()}`);
+  parts.push(`Full read: ${p.link}`);
+  return parts.filter(Boolean).join('\n\n');
+}
+
+export type ReplyCommand =
+  | { cmd: 'why' }
+  | { cmd: 'more' }
+  | { cmd: 'pause'; days: number }
+  | { cmd: 'resume' }
+  | { cmd: 'stop' }
+  | { cmd: 'help' }
+  | { cmd: 'unknown' };
+
+export const PAUSE_DEFAULT_DAYS = 3;
+export const PAUSE_MAX_DAYS = 30;
+
+// Opt-out words carriers and WhatsApp users expect to work, beyond "stop".
+const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'opt out', 'optout']);
+
+// The reply set is bounded (PRD §5.B.2): anything else is 'unknown' and gets
+// the help text. Matching ignores case, spacing and trailing punctuation.
+export function parseReply(text: string): ReplyCommand {
+  const t = text.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[.!?,]+$/g, '').trim();
+  if (STOP_WORDS.has(t)) return { cmd: 'stop' };
+  if (t === 'why') return { cmd: 'why' };
+  if (t === 'more') return { cmd: 'more' };
+  if (t === 'resume' || t === 'start' || t === 'unpause') return { cmd: 'resume' };
+  if (t === 'help' || t === 'info') return { cmd: 'help' };
+  const pause = /^pause(?: (\d{1,3}))?(?: days?)?$/.exec(t);
+  if (pause) {
+    const n = pause[1] ? Number(pause[1]) : PAUSE_DEFAULT_DAYS;
+    return { cmd: 'pause', days: Math.min(Math.max(n, 1), PAUSE_MAX_DAYS) };
+  }
+  return { cmd: 'unknown' };
+}
+
+// Fixed replies for the commands that need no data. 'why' and 'more' come
+// from the read (why: an LLM expansion through the validators; more: the
+// full voice), so they are not here. Plain text, no emoji (CLAUDE.md §3.7).
+export function fixedReply(c: ReplyCommand): string | null {
+  switch (c.cmd) {
+    case 'pause':
+      return `Paused for ${c.days} day${c.days === 1 ? '' : 's'}. Reply resume to start again sooner.`;
+    case 'resume':
+      return 'Resumed. Your read arrives tomorrow morning.';
+    case 'stop':
+      return 'Stopped. You will get no more WhatsApp messages from SCORA. Your read stays in the app.';
+    case 'help':
+    case 'unknown':
+      return 'Reply why for the reasoning behind today\'s read, more for the full read, pause 3 to pause for 3 days, resume, or stop.';
+    default:
+      return null;
+  }
+}
+
+// Twilio webhook signature (X-Twilio-Signature): base64 HMAC-SHA1 of the full
+// URL followed by each POST parameter's name and value, sorted by name, keyed
+// with the account auth token. Compared in constant time.
+export function twilioSignature(authToken: string, url: string, params: Record<string, string>): string {
+  const data = Object.keys(params).sort().reduce((s, k) => s + k + params[k], url);
+  return crypto.createHmac('sha1', authToken).update(data, 'utf8').digest('base64');
+}
+
+export function verifyTwilioSignature(authToken: string, url: string, params: Record<string, string>, signature: string | undefined): boolean {
+  if (!authToken || !signature) return false;
+  const expected = Buffer.from(twilioSignature(authToken, url, params));
+  const given = Buffer.from(signature);
+  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
+}
