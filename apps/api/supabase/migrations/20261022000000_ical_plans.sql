@@ -28,6 +28,9 @@ declare
   v_plan_id uuid;
   v_row_source text;
 begin
+  -- One plan change per athlete at a time: a paste and a calendar refresh
+  -- arriving together run one after the other, never into the unique index.
+  perform pg_advisory_xact_lock(hashtext('scora.plan:' || p_athlete_id));
   v_row_source := case p_external_source when 'manual' then 'manual' when 'ical' then 'external_ical' end;
   if v_row_source is null then
     raise exception 'Unknown plan source %', p_external_source;
@@ -73,9 +76,9 @@ returns uuid
 language plpgsql
 as $$
 begin
+  perform pg_advisory_xact_lock(hashtext('scora.plan:' || p_athlete_id));
   perform 1 from training_plans
-  where athlete_id = p_athlete_id and external_source = 'ical' and current_status = 'active'
-  for update;
+  where athlete_id = p_athlete_id and external_source = 'ical' and current_status = 'active';
   if not found then
     return null;
   end if;

@@ -544,6 +544,8 @@ struct PlanView: View {
       let (data, resp) = try await URLSession.shared.data(for: req)
       let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
       if status == 200, let saved = try? JSONDecoder().decode(PlanSaveResponse.self, from: data) {
+        // A paste that finished meanwhile wins on screen too.
+        guard await stillWanted() else { return await fail("") }
         await MainActor.run {
           workouts = PlanDay.upcoming(saved.workouts, today: PlanDay.today())
           note = PlanDay.skippedNote(saved.rejected.count, unit: "event")
