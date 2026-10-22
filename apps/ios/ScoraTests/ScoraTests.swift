@@ -406,6 +406,13 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(CalendarFeed.lastRefresh(for: "test-a"))
     }
 
+    func testPlanListCarriesUnmarkedPastSessions() throws {
+        let json = #"{"workouts":[],"recent":[{"id":"3f1c2a4e-0000-4000-8000-000000000001","scheduled_date":"2026-10-20","planned_type":"run","planned_intensity":"tempo","planned_duration_min":40}]}"#
+        let r = try JSONDecoder().decode(PlanListResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(r.recent?.first?.rowId, "3f1c2a4e-0000-4000-8000-000000000001")
+        XCTAssertNil(try JSONDecoder().decode(PlanListResponse.self, from: Data(#"{"workouts":[]}"#.utf8)).recent)
+    }
+
     func testCalendarFeedText() {
         XCTAssertNotNil(CalendarFeed.calendarText(Data("BEGIN:VCALENDAR\r\nEND:VCALENDAR".utf8)))
         XCTAssertNil(CalendarFeed.calendarText(Data("<html>sign in</html>".utf8)))

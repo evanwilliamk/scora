@@ -935,11 +935,37 @@ fastify.get('/api/plan', async (request, reply) => {
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
-    const workouts = (await planStore().workoutsBetween(athleteId, today, addDays(today, 182))).slice(0, 14);
-    return reply.send({ today, workouts });
+    const store = planStore();
+    const workouts = (await store.workoutsBetween(athleteId, today, addDays(today, 182))).slice(0, 14);
+    // The last 7 days' sessions the athlete has not marked yet (CLAUDE.md
+    // §6.2: a miss is theirs to acknowledge; nothing reschedules it).
+    const recent = (await store.workoutsBetween(athleteId, addDays(today, -7), addDays(today, -1)))
+      .filter((w) => w.athlete_completed == null && w.planned_intensity !== 'rest');
+    return reply.send({ today, workouts, recent });
   } catch (e) {
     fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Loading the plan failed.' });
+  }
+});
+
+// The athlete marks a past or today's session done or missed. A miss is only
+// recorded: the plan engine never moves a missed session (CLAUDE.md §6.2).
+fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const { athleteId, status, today: clientToday } = (request.body as any) || {};
+  if (!athleteId || (status !== 'done' && status !== 'missed')) {
+    return reply.code(400).send({ error: 'Missing: athleteId, status (done or missed)' });
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return reply.code(404).send({ error: 'No such session.' });
+  }
+  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  try {
+    const ok = await planStore().markCompleted(String(athleteId), id, status === 'done', today);
+    return ok ? reply.send({ id, status }) : reply.code(404).send({ error: 'No such session on your plan, or it is still ahead.' });
+  } catch (e) {
+    fastify.log.error(`Marking session failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Marking the session failed.' });
   }
 });
 
