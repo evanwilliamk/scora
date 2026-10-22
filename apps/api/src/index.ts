@@ -18,6 +18,7 @@ import {
 import { consumeCdvQuota, pingDatabase, quotaDay } from './usage';
 import { generateValidatedVoice } from './voice';
 import { checkCdvWithRetry } from './cdv-check';
+import { trackVoice } from './telemetry';
 
 class LlmHttpError extends Error {}
 import {
@@ -470,6 +471,10 @@ Answer THIS question specifically using the data above. If the data can't answer
     // they never vouch for the voice. One retry, then the plain fallback.
     const final = await checkCdvWithRetry(rawText, dataBlock, String(message ?? ''), (note) => askModel(`${userPrompt}\n\n${note}`));
     const checked = final.checked;
+    trackVoice(fastify.log, {
+      surface: 'cdv', attempts: final.attempts, fallback: checked.fallback,
+      bannedHits: checked.bannedHits, unbackedCount: checked.unbackedNumbers.length,
+    });
     if (checked.fallback) {
       fastify.log.warn(`CDV validator catch after ${final.attempts} attempts (banned: ${checked.bannedHits.join(', ') || 'none'}; unbacked: ${checked.unbackedNumbers.join(', ') || 'none'}), using fallback`);
     }
@@ -591,6 +596,7 @@ fastify.post('/api/read', async (request, reply) => {
               writeReason: async (d: Parameters<typeof writeReason>[0], fallback: string) => {
                 const r = await writeReason(d, posture.evidence, llm, fallback);
                 if (r.source === 'fallback') fastify.log.info(`adaptation reason fell back: ${r.issues.join('; ')}`);
+                trackVoice(fastify.log, { surface: 'adaptation_reason', attempts: 1, fallback: r.source === 'fallback', bannedHits: [], unbackedCount: 0 });
                 return r.text;
               },
             }
@@ -683,7 +689,7 @@ Write today's read using only these drivers.`;
         userPrompt,
         drivers: readDrivers,
         maxTokens: 200,
-        leadIn: "Today's numbers",
+        leadIn: "Today's numbers", surface: 'daily',
         log: fastify.log,
       });
       voice = result.voice;
@@ -765,7 +771,7 @@ fastify.post('/api/card-expand', async (request, reply) => {
       userPrompt: plan.userPrompt,
       drivers: plan.drivers,
       maxTokens: 150,
-      leadIn: card.title,
+      leadIn: card.title, surface: 'card',
       log: fastify.log,
     });
     return reply.send({ cardId, reply: result.voice, drivers: plan.drivers, generated: true });
@@ -1111,7 +1117,7 @@ Write this week's review using only these drivers.`;
         userPrompt,
         drivers,
         maxTokens: 320,
-        leadIn: 'This week',
+        leadIn: 'This week', surface: 'weekly',
         log: fastify.log,
       });
       voice = result.voice;
