@@ -65,6 +65,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: PRD §5.A.3 asks for a mini visual plus a "one-line voice" for the week so far.
 - Choice: the line is a fixed sentence from the same numbers as the bars ("3 runs, 120 min since Monday; 95 min by this point last week."), so it costs no LLM call and cannot cite an unbacked number. Run minutes only (rides and swims not counted yet); planned minutes are not overlaid yet.
 - Alternative: a short gpt-4o line through the voice validators, at one more call per read.
+- Update 2026-10-22 (claude/week-planned): with a plan (pasted, imported or SCORA), each day carries its planned run minutes, drawn as a dashed outline behind the bar, and the line adds "Plan: 135 min through Thursday." Stored durations only; rest days and other sports count 0. No comparison or advice is added.
 - To reverse: `apps/api/src/week-so-far.ts`.
 
 ### 2026-10-18: The read observes plan changes touching today
