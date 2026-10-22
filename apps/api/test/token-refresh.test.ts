@@ -29,7 +29,7 @@ test('Strava: a token valid past the 5-minute window is used as is', async () =>
 test('Strava: inside the window it refreshes and stores the rotated refresh token', async () => {
   const sb = fakeSupabase([
     { data: { strava_access_token: 'old', strava_refresh_token: 'ref1', strava_expires_at: now() + 120 } },
-    {},
+    { data: [{ strava_id: 's1' }] },
   ]);
   const ep = tokenEndpoint({ access_token: 'new', refresh_token: 'ref2', expires_at: now() + 21600 });
   assert.equal(await getValidStravaToken('s1', sb as any, ep.f), 'new');
@@ -54,7 +54,7 @@ test('Strava: no stored refresh token, or a refused refresh, asks the athlete to
 test('Oura: refresh turns expires_in into an absolute expiry and stores both tokens', async () => {
   const sb = fakeSupabase([
     { data: { oura_access_token: 'old', oura_refresh_token: 'r1', oura_expires_at: now() - 10 } },
-    {},
+    { data: [{ strava_id: 's1' }] },
   ]);
   const ep = tokenEndpoint({ access_token: 'new', refresh_token: 'r2', expires_in: 86400 });
   const before = now();
@@ -84,4 +84,20 @@ test('a refreshed token that cannot be saved is reported, and still serves this 
     console.error = realError;
   }
   assert.deepEqual(errors, ['Oura token refresh not saved: connection reset']);
+});
+
+test('a save that matches no athlete row is reported too (review 4)', async () => {
+  const sb = fakeSupabase([
+    { data: { strava_access_token: 'old', strava_refresh_token: 'r1', strava_expires_at: 0 } },
+    { data: [] },
+  ]);
+  const errors: string[] = [];
+  const realError = console.error;
+  console.error = (m: string) => errors.push(m);
+  try {
+    assert.equal(await getValidStravaToken('s1', sb as any, tokenEndpoint({ access_token: 'new', refresh_token: 'r2', expires_at: now() + 60 }).f), 'new');
+  } finally {
+    console.error = realError;
+  }
+  assert.deepEqual(errors, ['Strava token refresh not saved: no athlete row matched']);
 });

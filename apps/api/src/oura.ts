@@ -146,18 +146,20 @@ export async function getValidOuraToken(
 
   const refreshed = await refreshOuraToken(athlete.oura_refresh_token, fetchImpl);
   const expiresAt = refreshed.expires_in ? nowSec + Number(refreshed.expires_in) : null;
-  const { error: saveError } = await supabase
+  const { data: saved, error: saveError } = await supabase
     .from('athletes')
     .update({
       oura_access_token: refreshed.access_token,
       oura_refresh_token: refreshed.refresh_token,
       oura_expires_at: expiresAt,
     })
-    .eq('strava_id', String(athleteId));
+    .eq('strava_id', String(athleteId))
+    .select('strava_id');
   // The provider may have retired the old refresh token, so a lost save means
   // the next refresh fails and the athlete must reconnect. Say so loudly; the
   // fresh access token still serves this request.
   if (saveError) console.error(`Oura token refresh not saved: ${saveError.message}`);
+  else if (!saved || saved.length === 0) console.error(`Oura token refresh not saved: no athlete row matched`);
 
   return refreshed.access_token;
 }
