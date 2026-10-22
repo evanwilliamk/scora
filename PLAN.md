@@ -85,6 +85,7 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] WorkoutKit scheduling, code half: Send to Watch on SCORA plan sessions, WorkoutScheduler behind a protocol, tested with a fake (`claude/workoutkit-schedule`, on `claude/integration-2026-10-22`)
 - [~] Dismiss a plan change (doc 07 §5): route + x on Your Plan (`claude/dismiss-adaptation`, on `claude/integration-2026-10-22`)
 - [ ] Missed workouts: the athlete marks a past session done or missed (CLAUDE.md §6.2, PRD 5.B: acknowledgment, no auto-reschedule). Done when a past session with no Strava match can be marked, and a missed one never moves
+- [~] Missed workouts: Past sessions on Your Plan with Done / Missed; a miss is recorded, never moved (`claude/missed-workouts`, on `claude/integration-2026-10-22`; seen on the simulator)
 - [ ] WorkoutKit scheduling on a paired Apple Watch (Evan). Done when a sent session appears in the Watch's Workout app on its day and runs with the plan's steps
 - [!] Calorie engine needs body weight; Strava only sends it with `profile:read_all` (Q21). Done when an athlete with a known weight gets estimates with the method shown
 - [~] Rest posture with no move window: the session drops to easy at the same duration, named reason; long runs stay (Q19 option B, `claude/rest-no-window-downgrade`, on `claude/integration-2026-10-18`)

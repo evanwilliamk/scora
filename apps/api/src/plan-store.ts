@@ -15,6 +15,8 @@ export interface StoredWorkout {
   // The session's steps on a SCORA plan (doc 07 v2 §4.4), for the Watch
   // export. Null for pasted and imported plans.
   workout_structure_json?: unknown[] | null;
+  // The athlete's own mark: true done, false missed, null not marked yet.
+  athlete_completed?: boolean | null;
 }
 
 export interface PlanStore {
@@ -27,6 +29,10 @@ export interface PlanStore {
   refreshIcalPlan(athleteId: string, rows: ParsedRow[]): Promise<{ planId: string } | null>;
   // Active-plan workouts from `from` to `to` inclusive, oldest first.
   workoutsBetween(athleteId: string, from: string, to: string): Promise<StoredWorkout[]>;
+  // The athlete marks a session on or before `today` done or missed
+  // (CLAUDE.md §6.2: a miss is acknowledged, never rescheduled). False when
+  // it is not theirs, not on an active plan, or still ahead.
+  markCompleted(athleteId: string, workoutId: string, completed: boolean, today: string): Promise<boolean>;
 }
 
 type Db = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
@@ -52,7 +58,7 @@ export function sqlPlanStore(db: Db): PlanStore {
       const r = await db.query(
         `select w.id, to_char(w.scheduled_date, 'YYYY-MM-DD') as scheduled_date, w.planned_type,
                 w.planned_intensity, w.planned_duration_min, w.planned_distance_km::float8 as planned_distance_km,
-                w.planned_description, w.workout_structure_json
+                w.planned_description, w.workout_structure_json, w.athlete_completed
          from scheduled_workouts w
          join training_plans p on p.id = w.training_plan_id
          where w.athlete_id = $1 and p.current_status = 'active'
@@ -61,6 +67,16 @@ export function sqlPlanStore(db: Db): PlanStore {
         [athleteId, from, to]
       );
       return r.rows as StoredWorkout[];
+    },
+    async markCompleted(athleteId, workoutId, completed, today) {
+      const r = await db.query(
+        `update scheduled_workouts w set athlete_completed = $3, updated_at = now()
+         where w.id = $1 and w.athlete_id = $2 and w.scheduled_date <= $4::date
+           and exists (select 1 from training_plans p where p.id = w.training_plan_id and p.current_status = 'active')
+         returning w.id`,
+        [workoutId, athleteId, completed, today],
+      );
+      return r.rows.length === 1;
     },
   };
 }
@@ -93,7 +109,7 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
     },
     async workoutsBetween(athleteId, from, to) {
       const r = await sb.from('scheduled_workouts')
-        .select('id, scheduled_date, planned_type, planned_intensity, planned_duration_min, planned_distance_km, planned_description, workout_structure_json, training_plans!inner(current_status)')
+        .select('id, scheduled_date, planned_type, planned_intensity, planned_duration_min, planned_distance_km, planned_description, workout_structure_json, athlete_completed, training_plans!inner(current_status)')
         .eq('athlete_id', athleteId).eq('training_plans.current_status', 'active')
         .gte('scheduled_date', from).lte('scheduled_date', to)
         .order('scheduled_date', { ascending: true });
@@ -102,6 +118,20 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
         ...w,
         planned_distance_km: planned_distance_km == null ? null : Number(planned_distance_km),
       }));
+    },
+    async markCompleted(athleteId, workoutId, completed, today) {
+      // Only the active plan's sessions: the row's plan is checked first.
+      const w = await sb.from('scheduled_workouts')
+        .select('id, training_plans!inner(current_status)')
+        .eq('id', workoutId).eq('athlete_id', athleteId).lte('scheduled_date', today)
+        .eq('training_plans.current_status', 'active').maybeSingle();
+      check(w, 'Load workout');
+      if (!w.data) return false;
+      const r = await sb.from('scheduled_workouts')
+        .update({ athlete_completed: completed, updated_at: new Date().toISOString() })
+        .eq('id', workoutId).eq('athlete_id', athleteId).select('id');
+      check(r, 'Mark workout');
+      return (r.data ?? []).length === 1;
     },
   };
 }

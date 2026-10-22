@@ -74,6 +74,8 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
 
 struct PlanListResponse: Decodable {
   let workouts: [PlanWorkout]
+  // The last 7 days' sessions not yet marked done or missed.
+  var recent: [PlanWorkout]? = nil
 }
 
 struct PlanSaveResponse: Decodable {
@@ -244,6 +246,7 @@ struct PlanView: View {
 
   @State private var text = ""
   @State private var workouts: [PlanWorkout] = []
+  @State private var unmarked: [PlanWorkout] = []
   @State private var changes: [PlanAdaptation] = []
   @State private var prediction: RacePrediction?
   @State private var note: String?
@@ -393,6 +396,26 @@ struct PlanView: View {
         }
         .padding(.bottom, 4)
       }
+      if !unmarked.isEmpty {
+        Text("Past sessions").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+        ForEach(unmarked) { w in
+          HStack {
+            VStack(alignment: .leading, spacing: 2) {
+              Text(w.dayLabel).font(.subheadline.bold()).foregroundColor(.white)
+              Text(w.detail).font(.caption).foregroundColor(.gray)
+            }
+            Spacer()
+            // A miss is recorded, never rescheduled (CLAUDE.md §6.2).
+            Button("Done") { Task { await mark(w, done: true) } }
+              .font(.caption.bold()).foregroundColor(.orange)
+            Button("Missed") { Task { await mark(w, done: false) } }
+              .font(.caption.bold()).foregroundColor(.gray).padding(.leading, 10)
+          }
+          .padding(12)
+          .background(Color(white: 0.08))
+          .cornerRadius(10)
+        }
+      }
       Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
       if let note { Text(note).font(.footnote).foregroundColor(.gray) }
       if let watchNote { Text(watchNote).font(.footnote).foregroundColor(.gray) }
@@ -450,10 +473,28 @@ struct PlanView: View {
 
   // MARK: Networking
 
+  private func mark(_ w: PlanWorkout, done: Bool) async {
+    guard let rowId = w.rowId, let url = URL(string: "\(apiBase)/api/plan/workouts/\(rowId)/status") else { return }
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: [
+      "athleteId": tokenManager.athleteId, "status": done ? "done" : "missed", "today": PlanDay.today(),
+    ])
+    guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return }
+    let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+    // 404: marked elsewhere or no longer on the plan; either way it leaves the list.
+    if status == 200 || status == 404 {
+      await MainActor.run { unmarked.removeAll { $0.id == w.id } }
+    }
+  }
+
   private func loadPlan() async {
     #if DEBUG
     if let demo = DemoMode.planSessions {
-      await MainActor.run { workouts = demo }
+      var past = PlanWorkout(date: PlanDay.today(Date().addingTimeInterval(-2 * 86_400)), type: "run", intensity: "tempo", durationMin: 45, distanceKm: nil, description: nil)
+      past.rowId = "demo-past"
+      await MainActor.run { workouts = demo; unmarked = [past] }
       return
     }
     #endif
@@ -465,7 +506,7 @@ struct PlanView: View {
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanListResponse.self, from: data)
     else { return }
-    await MainActor.run { workouts = decoded.workouts }
+    await MainActor.run { workouts = decoded.workouts; unmarked = decoded.recent ?? [] }
     await loadChanges()
   }
 

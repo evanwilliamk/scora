@@ -239,3 +239,24 @@ test('only one active manual plan per athlete', async () => {
     /duplicate key|unique/i
   );
 });
+
+test('marking a session done or missed: only past or today, only the active plan, never moved (CLAUDE.md §6.2)', async () => {
+  const store = sqlPlanStore(db);
+  const { rows } = validateParsedRows([
+    { date: '2026-10-20', type: 'run', intensity: 'tempo', description: 'tempo 40' },
+    { date: '2026-10-24', type: 'run', intensity: 'long', description: 'long 90' },
+  ], 'Tue tempo 40\nSat long 90', '2026-10-19');
+  await store.saveManualPlan('mk1', 'x', rows);
+  const week = await store.workoutsBetween('mk1', '2026-10-19', '2026-10-25');
+  const [tue, sat] = week;
+  assert.equal(tue.athlete_completed, null);
+  assert.equal(await store.markCompleted('mk1', tue.id, false, '2026-10-22'), true);
+  assert.equal(await store.markCompleted('mk1', sat.id, true, '2026-10-22'), false, 'still ahead');
+  assert.equal(await store.markCompleted('other', tue.id, true, '2026-10-22'), false, "not another athlete's");
+  const after = await store.workoutsBetween('mk1', '2026-10-19', '2026-10-25');
+  assert.equal(after[0].athlete_completed, false);
+  assert.equal(after[0].scheduled_date, '2026-10-20', 'a missed session stays where it was');
+  // A replaced plan's sessions can no longer be marked.
+  await store.saveManualPlan('mk1', 'y', rows.slice(0, 1));
+  assert.equal(await store.markCompleted('mk1', tue.id, true, '2026-10-22'), false);
+});

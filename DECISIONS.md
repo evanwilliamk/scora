@@ -8,6 +8,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: doc 07 specifies POST /plan/adaptations/{id}/dismiss and the column existed, but nothing set it.
 - Choice: `POST /api/plan/adaptations/:id/dismiss` (off with `PLAN_ADAPTATIONS`), only the athlete's own change and only once; an x on each change in Your Plan. A dismissed change leaves the list and the morning read's plan-change context; the change itself stays in the plan and in the table. Like the other plan routes it trusts `athleteId` until Sign in with Apple.
 - To reverse: the route in `index.ts`, `dismiss` in both adapt stores, the button in `PlanView.swift`.
+### 2026-10-22: Marking past sessions done or missed (CLAUDE.md §6.2)
+- Status: DECIDED (reversible; copy is yours)
+- Branch: claude/missed-workouts
+- Context: §6.2 and PRD 5.B say missed workouts are acknowledged by the athlete and never auto-rescheduled; nothing let the athlete acknowledge one.
+- Choice: `GET /api/plan` also returns `recent`, the last 7 days' sessions with no mark yet (rest days left out). `POST /api/plan/workouts/:id/status` with done or missed sets `athlete_completed`, only for the athlete's own active-plan sessions on or before today. Your Plan shows them under "Past sessions" with Done and Missed. A miss is recorded only: nothing moves (the engine adapts only future sessions). Not flagged: it applies to pasted and imported plans too. Copy question: the row's "Done" sits under the sheet's "Done" button; "Ran it" may read better.
+- Not done: matching Strava runs to sessions automatically (athlete_completed_activity_id).
+- To reverse: the route and the `recent` list in `index.ts`, `markCompleted` in `plan-store.ts`, the section in `PlanView.swift`.
 
 ### 2026-10-22: Sunday review names how the week tracked against the plan
 - Status: DECIDED (reversible; prompt wording is yours)
