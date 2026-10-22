@@ -1241,6 +1241,8 @@ const start = async () => {
   }
 };
 
-start();
+// Tests import this module and drive the routes with fastify.inject, so they
+// set SCORA_NO_LISTEN=1: no port, no push scheduler.
+if (process.env.SCORA_NO_LISTEN !== '1') start();
 
 export default fastify;
