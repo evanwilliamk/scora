@@ -32,7 +32,8 @@ const b64url = (buf: Buffer | string) =>
 // throttles minting new ones. Cache and refresh ~every 50 minutes.
 let cachedJwt: { token: string; iat: number } | null = null;
 
-function providerJwt(): string {
+// Exported for tests: the token's shape and signature are what APNs checks.
+export function providerJwt(): string {
   const now = Math.floor(Date.now() / 1000);
   if (cachedJwt && now - cachedJwt.iat < 3000) return cachedJwt.token;
 

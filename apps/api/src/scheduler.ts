@@ -32,15 +32,25 @@ function trimBody(text: string, max = 178): string {
 // Generate the read through the app's own endpoint and push it. Returns true
 // once a read was generated and handed to APNs, so the day is marked done even
 // if a device rejects it (a retry would only spend another LLM call).
-async function pushToAthlete(
+export interface PushIo {
+  fetch: typeof fetch;
+  getDeviceTokens: typeof getDeviceTokens;
+  sendPush: typeof sendPush;
+  removeDeviceToken: typeof removeDeviceToken;
+}
+const realIo: PushIo = { fetch: (...a) => fetch(...a), getDeviceTokens, sendPush, removeDeviceToken };
+
+export async function pushToAthlete(
   baseUrl: string,
   athleteId: string,
   path: '/api/read' | '/api/weekly',
   title: string,
   localDate: string,
-  log: Logger
+  log: Logger,
+  io: PushIo = realIo,
 ): Promise<boolean> {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const { getDeviceTokens, sendPush, removeDeviceToken } = io;
+  const res = await io.fetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ athleteId, today: localDate }),
