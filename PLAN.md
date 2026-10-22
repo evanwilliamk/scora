@@ -14,6 +14,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [x] CDV chat, gated at 3 queries/day (fail-open on quota errors)
 - [x] Sunday weekly read (generation + view)
 - [x] Driver-existence + banned-phrase validators, unit tests
+- [~] Banned-phrase parity with CLAUDE.md §4.1: 8 missing bans added, "long run a week ago" no longer flagged (`claude/banned-phrase-parity`, on `claude/integration-2026-10-22`)
 - [x] APNs scaffolding + scheduled daily/weekly delivery (idle until env is set)
 - [x] Daily keepalive ping (Railway + Supabase)
 

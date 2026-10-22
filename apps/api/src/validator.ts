@@ -25,14 +25,22 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\byou should\b/i, label: 'you should' },
   { re: /\byou need to\b/i, label: 'you need to' },
   { re: /\byou must\b/i, label: 'you must' },
-  { re: /\b(go for a|go do a?|run a|do an easy|do a hard)\b/i, label: 'workout imperative' },
+  { re: /\b(go for an?|go do an?|do an easy|do a hard)\b/i, label: 'workout imperative' },
+  // "Run a tempo today" is an order; "your last long run a week ago" is history.
+  {
+    re: /(?<!\b(?:long|easy|tempo|recovery|hard|last|first|next|the|your|this|that|one|steady|threshold|interval|group|morning|evening|trail|track|race)\s)\brun an?\b(?!\s+(?:week|day|month|year|while|few|couple|bit|lot)\b)/i,
+    label: 'workout imperative',
+  },
   { re: /\btime to (run|go|get|train)\b/i, label: 'workout imperative' },
   { re: /\bdoes that sound right\b/i, label: 'authority surrender' },
   { re: /\b(let me know if that )?resonate/i, label: 'authority surrender' },
   { re: /\bgood catch\b/i, label: 'sycophantic flip' },
   { re: /\byou'?re right,? i\b/i, label: 'sycophantic flip' },
   { re: /\b(medical|diagnos|prescrib)/i, label: 'clinical claim' },
-  { re: /\btake a rest day\b/i, label: 'rest-day imperative' },
+  // "Most coaches would call this a rest day" (descriptive) stays allowed.
+  { re: /\b(take|have|make (?:it|today|tomorrow|this)|treat (?:it|today|tomorrow|this) as) an? (?:\w+ )?rest day\b/i, label: 'rest-day imperative' },
+  { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
+  { re: /\breplac(?:e|es|ed|ing) (?:your|a|the) coach\b/i, label: 'anti-coach' },
   {
     re: /\b(crush it|smash|beast mode|let'?s go|keep it up|great job|amazing|you'?ve got this|nailed it|let'?s crush)\b/i,
     label: 'hype',

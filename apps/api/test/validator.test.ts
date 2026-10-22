@@ -86,3 +86,23 @@ test('fallback handles no drivers gracefully', () => {
   assert.ok(fb.length > 0);
   assert.equal(validateVoice(fb, []).ok, true);
 });
+
+// Parity with CLAUDE.md §4.1: one phrasing per ban, plus the descriptive
+// sentences the bans must not catch (history, third-person "coach").
+test('every §4.1 ban is caught, and history is not mistaken for an order', () => {
+  const banned = [
+    'Go for an easy run today.', 'Run an easy 30 this morning.', 'Run a tempo today.', 'Today, run an easy 30.',
+    'Do an easy spin.', 'Take a rest day.', 'Make today a rest day.', 'Have a rest day tomorrow.',
+    'SCORA is smarter than your coach.', 'This is better than a coach.', 'SCORA can replace your coach.',
+    "I'm your coach.", 'As your AI coach, I see it.', 'You should sleep more.', 'You need to slow down.', 'You must rest.',
+    "Let's go.", 'Crush it today.', 'Smash today.', 'Beast mode.', 'Does that sound right?', 'Let me know if that resonates.',
+    'Good catch.', "You're right, I undersold it.", 'As an AI, I cannot know.', "I'm just an AI.", 'This is not medical advice.',
+  ];
+  for (const v of banned) assert.ok(validateVoice(v, []).bannedHits.length > 0, `missed: ${v}`);
+  const allowed = [
+    'Your last long run a week ago was 18 km.', 'The long run a week ago set the tone.',
+    'Easy run a day after the race is in the plan.', 'Most coaches would call this a rest day.',
+    'Your coach, Sarah, wrote a note this week.',
+  ];
+  for (const v of allowed) assert.deepEqual(validateVoice(v, [{ metric: 'Long run', value: '18 km' }]).bannedHits, [], v);
+});
