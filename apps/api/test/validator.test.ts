@@ -103,6 +103,8 @@ test('every §4.1 ban is caught, and history is not mistaken for an order', () =
     // Review 3.
     'Body is settled \u2014 go easy today.', '(go easy today)', 'Stay easy today.', 'Skip the tempo.', 'Rest today.',
     'Ride easy today.', 'Start with an easy run.', 'Just go easy today.', 'Today, have a rest day.',
+    // Review 5: catch-up and cut-back advice.
+    'So next week you could make up the gap.', 'You fell behind the plan.', 'Make up the missing minutes next week.', 'Cut back on Thursday.',
   ];
   for (const v of banned) assert.ok(validateVoice(v, []).bannedHits.length > 0, `missed: ${v}`);
   const allowed = [
