@@ -394,6 +394,7 @@ struct DashboardView: View {
         posture = "steady"
         week = DemoMode.week
         if DemoMode.opensChart { chartSeries = DemoMode.read.series?["hrv"] }
+        if DemoMode.opensPlan { showPlan = true }
       }
       return
     }

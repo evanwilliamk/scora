@@ -50,7 +50,7 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 - [~] Manual plan entry + plan parsing (plan-aware reads) (`claude/manual-plan`, stacked on `claude/knowledge-schema`; API + iOS Your Plan sheet)
 - [~] Plan-aware read: pass today's scheduled workout into posture/pattern matching and the read prompt (`claude/plan-aware-read`, stacked on `claude/knowledge-retrieval` + `claude/manual-plan`; merge those first)
 - [!] Strava scheduled activities ingestion: not possible, Strava API v3 has no planned-workout endpoint (checked 2026-10-17). Replaced by iCal import below (Q17)
-- [~] Calendar (iCal) import as a plan source, `POST /api/plan/ical`, `ICAL_IMPORT=on` (Q17 option B) (`claude/ical-plan-import`, on `claude/integration-2026-10-18`; migration tested on PGlite, Evan applies it)
+- [~] Calendar (iCal) import as a plan source, `POST /api/plan/ical`, `ICAL_IMPORT=on` (Q17 option B), plus a calendar link field on Your Plan that fetches the feed on the phone (`claude/ical-plan-import`, on `claude/integration-2026-10-18`; migration tested on PGlite, Evan applies it; sheet seen on the simulator with `-demo-read -demo-plan`)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys)
 
 ## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags that default off, no deploy or money)
