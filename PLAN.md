@@ -13,6 +13,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [x] Dashboard + Today's Read from Strava data
 - [x] CDV chat, gated at 3 queries/day (fail-open on quota errors)
 - [x] Sunday weekly read (generation + view)
+- [~] Sunday review names how the week tracked against the plan (`claude/weekly-plan-aware`, on `claude/integration-2026-10-22`)
 - [x] Driver-existence + banned-phrase validators, unit tests
 - [~] Tests: Strava and Oura token refresh (5-minute window, rotation, errors); a refreshed token that fails to save is now logged (`claude/tests-token-refresh`, on `claude/integration-2026-10-22`)
 - [~] Tests: the Supabase stores production runs (preferences claim/release, plan adaptations) pinned with a recording fake (`claude/tests-supabase-stores`, on `claude/integration-2026-10-22`)

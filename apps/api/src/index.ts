@@ -37,7 +37,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
-import { planForRead } from './plan-read';
+import { planForRead, weeklyPlanDriver } from './plan-read';
 import { numericLine } from './numeric-line';
 import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
@@ -1084,6 +1084,19 @@ fastify.post('/api/weekly', async (request, reply) => {
 
     const { stats, drivers, hasData } = buildWeeklySummary(activities, ouraSummary);
 
+    // The athlete's plan over the same 7 days, if they have one: the review
+    // may name how the week tracked against it, never what to do about it.
+    if (hasData) {
+      try {
+        const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+        const from = addDays(today, -6);
+        const planDriverWeek = weeklyPlanDriver(await planStore().workoutsBetween(String(athleteId), from, today), activities, from, today);
+        if (planDriverWeek) drivers.push(planDriverWeek);
+      } catch (e) {
+        fastify.log.warn(`Plan not loaded for weekly: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+
     if (!hasData) {
       return reply.send({
         read: {
@@ -1103,6 +1116,7 @@ HARD RULES:
 - Non-prescriptive: never tell the athlete what to do next week, never use "you should / you need to / do a / go for". You may name a posture (primed, steady, moderate, back-off, rest, taper) as an observation.
 - Reflect across the week — connect the numbers into the week's story (e.g. volume + long run + how it sat relative to last week). This is where patterns get named.
 - Tone: calm, considered, plain English. No exclamation points, no emoji, no hype. No "coach".
+- If a "Plan this week" driver is listed, you may say how the week tracked against the athlete's plan, as a fact. Never judge it, never suggest catching up or cutting back.
 
 OUTPUT: 4-6 sentences of plain prose. No headers, no bullets, no metric lines — just the review.`;
 

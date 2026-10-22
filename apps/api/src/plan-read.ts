@@ -57,3 +57,24 @@ export function planForRead(rows: StoredWorkout[], today: string): PlanForRead {
     promptLine: `PLAN TODAY (the athlete's own plan; you may name it, never change, move or add to it): ${driver.value}`,
   };
 }
+
+// For the weekly review: how the last 7 days tracked against the athlete's
+// plan, as one driver ("180 of 210 planned run min"). Planned minutes are
+// stored durations of run sessions only; run minutes come from Strava. Null
+// when the plan has no run minutes in the window (nothing to compare).
+export function weeklyPlanDriver(
+  rows: Pick<StoredWorkout, 'scheduled_date' | 'planned_type' | 'planned_intensity' | 'planned_duration_min'>[],
+  activities: any[],
+  from: string,
+  to: string,
+): Driver | null {
+  const planned = rows
+    .filter((r) => r.scheduled_date >= from && r.scheduled_date <= to && r.planned_type === 'run' && r.planned_intensity !== 'rest')
+    .reduce((s, r) => s + (r.planned_duration_min ?? 0), 0);
+  if (planned <= 0) return null;
+  const done = Math.round(activities
+    .filter((a) => a.type === 'Run' && typeof a.start_date_local === 'string')
+    .filter((a) => a.start_date_local.slice(0, 10) >= from && a.start_date_local.slice(0, 10) <= to)
+    .reduce((s, a) => s + (a.moving_time || 0) / 60, 0));
+  return { metric: 'Plan this week', value: `${done} of ${planned} planned run min` };
+}

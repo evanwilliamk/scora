@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { todaysWorkout, planDriver, planForRead } from '../src/plan-read';
+import { todaysWorkout, planDriver, planForRead, weeklyPlanDriver } from '../src/plan-read';
 import { knowledgeForRead } from '../src/knowledge-retrieval';
 import { validateVoice } from '../src/validator';
 import type { StoredWorkout } from '../src/plan-store';
@@ -124,4 +124,26 @@ test('plan override: a true description of an engine change passes; advice still
   assert.ok(validateVoice('The plan moved the tempo to Wednesday.', drivers.slice(0, 1)).bannedHits.includes('plan override'));
   // A change to a different session does not vouch for this one.
   assert.ok(validateVoice('The plan moved the intervals to Sunday.', drivers).bannedHits.includes('plan override'));
+});
+
+test('weekly plan driver: run minutes against planned run minutes over the same 7 days', () => {
+  const rows = [
+    { scheduled_date: '2026-10-15', planned_type: 'run', planned_intensity: 'easy', planned_duration_min: 60 }, // before the window
+    { scheduled_date: '2026-10-16', planned_type: 'run', planned_intensity: 'easy', planned_duration_min: 40 },
+    { scheduled_date: '2026-10-18', planned_type: 'run', planned_intensity: 'long', planned_duration_min: 100 },
+    { scheduled_date: '2026-10-19', planned_type: 'run', planned_intensity: 'rest', planned_duration_min: null },
+    { scheduled_date: '2026-10-20', planned_type: 'strength', planned_intensity: null, planned_duration_min: 30 },
+    { scheduled_date: '2026-10-21', planned_type: 'run', planned_intensity: 'tempo', planned_duration_min: 50 },
+  ];
+  const runs = [
+    { type: 'Run', start_date_local: '2026-10-16T07:00:00Z', moving_time: 2400 },
+    { type: 'Run', start_date_local: '2026-10-18T08:00:00Z', moving_time: 5700 },
+    { type: 'Ride', start_date_local: '2026-10-20T08:00:00Z', moving_time: 3600 },
+    { type: 'Run', start_date_local: '2026-10-14T08:00:00Z', moving_time: 3000 }, // before the window
+  ];
+  const d = weeklyPlanDriver(rows, runs, '2026-10-16', '2026-10-22');
+  assert.deepEqual(d, { metric: 'Plan this week', value: '135 of 190 planned run min' });
+  const v = validateVoice('You ran 135 of the 190 planned run minutes this week, with the long run in place.', [d!]);
+  assert.deepEqual([v.bannedHits, v.unbackedNumbers], [[], []]);
+  assert.equal(weeklyPlanDriver(rows.slice(3, 5), runs, '2026-10-16', '2026-10-22'), null, 'no planned run minutes: no driver');
 });
