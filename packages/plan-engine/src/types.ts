@@ -65,6 +65,9 @@ export interface AdaptationInput {
 // plan_adaptations.reason_code values the engine emits.
 export type ReasonCode =
   | 'posture_rest_hard_scheduled'
+  // Rest posture, hard session, and no day in the week could take it: the
+  // session becomes easy at the same duration (Q19 option B).
+  | 'posture_rest_hard_no_window'
   | 'posture_backoff_intervals_scheduled'
   | 'posture_backoff_threshold_scheduled'
   | 'posture_backoff_tempo_scheduled';

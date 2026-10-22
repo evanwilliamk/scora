@@ -109,9 +109,9 @@ test('assembled weeks feed the adaptation engine directly', () => {
   if (r.type === 'downgraded') assert.deepEqual([r.from_intensity, r.to_intensity, r.duration_min], ['tempo', 'endurance', 40]);
 });
 
-test('known gap (asked as a question): a rest posture in a three-quality-day week finds no move window', () => {
+test('rest posture in a three-quality-day week: no move window, so the session drops to easy (Q19)', () => {
   // Tue/Thu/Sat hard with easy days between: every candidate day sits next to
-  // a hard day, so the hard session stays. Pinned until Evan picks a rule.
+  // a hard day, so nothing moves and the session becomes easy at the same duration.
   const p = assemblePlan({ template: T, start_date: MON });
   const week2 = p.workouts.filter((w) => w.week === 2);
   const tue = week2.find((w) => w.weekday === 'tuesday')!;
@@ -121,5 +121,9 @@ test('known gap (asked as a question): a rest posture in a three-quality-day wee
     plan: { source: 'scora_ai', goal_race_date: null, week: week2, template_week_minutes: p.week_minutes[1] },
     today: '2026-10-26',
   });
-  assert.deepEqual(r, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
+  assert.equal(r.type, 'downgraded');
+  if (r.type !== 'downgraded') return;
+  assert.equal(r.reason_code, 'posture_rest_hard_no_window');
+  assert.equal(r.to_intensity, 'easy');
+  assert.equal(r.duration_min, tue.planned_duration_min);
 });

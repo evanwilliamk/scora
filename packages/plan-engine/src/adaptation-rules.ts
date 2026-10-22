@@ -7,7 +7,9 @@
 //   1. Guards on the workout itself: only SCORA's own plans adapt (a coach's
 //      or an external plan is never changed by the engine), only future,
 //      uncompleted workouts.
-//   2. Rules: rest + hard session -> move; back-off + intervals/threshold ->
+//   2. Rules: rest + hard session -> move (or, when no day in the week can
+//      take it, easy at the same duration; Q19, Evan silent 3 days, 2026-10-22);
+//      back-off + intervals/threshold ->
 //      steady state; back-off + tempo -> endurance. primed never pushes past
 //      the plan; moderate, steady and taper change nothing.
 //   3. Guards on the result: race week freezes everything, weekly volume
@@ -149,6 +151,20 @@ export function evaluateAdaptation(input: AdaptationInput): AdaptationDecision {
       displaced_workout_id: displaced?.id ?? null,
       reason_code: rule.reason,
       facts: facts(after),
+    };
+  }
+  // No day can take it. A long run stays as planned (block cornerstone, never
+  // reshaped); any other hard session becomes easy at the same duration, so
+  // the week's minutes hold and the rest posture is still honored.
+  if (workout.planned_intensity !== 'long') {
+    return {
+      type: 'downgraded',
+      workout_id: workout.id,
+      from_intensity: workout.planned_intensity,
+      to_intensity: 'easy',
+      duration_min: workout.planned_duration_min,
+      reason_code: 'posture_rest_hard_no_window',
+      facts: facts(before),
     };
   }
   return none(volumeBlocked ? 'skip_volume_guard' : 'skip_no_window', rule.reason);

@@ -4,7 +4,7 @@
 
 import type { Intensity } from './types';
 
-export const ADAPTATION_ENGINE_VERSION = 'adaptation-v1.1.0';
+export const ADAPTATION_ENGINE_VERSION = 'adaptation-v1.2.0';
 
 // race_in_next_7d: freeze every automatic adaptation (T-7).
 export const RACE_FREEZE_DAYS = 7;

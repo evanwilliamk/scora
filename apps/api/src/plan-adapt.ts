@@ -97,6 +97,9 @@ export function reasonText(d: Exclude<AdaptationDecision, { type: 'none' }>): st
   const mins = d.duration_min ? ` at the same ${d.duration_min} minutes` : ' at the same duration';
   const to = INTENSITY_WORDS[d.to_intensity];
   const article = /^[aeiou]/.test(to) ? 'an' : 'a';
+  if (d.reason_code === 'posture_rest_hard_no_window') {
+    return `${day}'s ${what} is now ${article} ${to}${mins}. Today's posture reads ${posture}, and no other day this week keeps the hard days apart.`;
+  }
   return `${day}'s ${what} is now ${article} ${to}${mins}. Today's posture reads ${posture}.`;
 }
 

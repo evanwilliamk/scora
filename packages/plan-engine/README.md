@@ -10,7 +10,7 @@ r.type; // 'moved' | 'downgraded' | 'none'
 ```
 
 Rules:
-- `rest` + hard session (hard, intervals, threshold, tempo, long): move it to the next clear day in the same Monday-to-Sunday week; the original day becomes rest. A clear day is a rest day or a single easy/recovery session, not next to another hard day.
+- `rest` + hard session (hard, intervals, threshold, tempo, long): move it to the next clear day in the same Monday-to-Sunday week; the original day becomes rest. A clear day is a rest day or a single easy/recovery session, not next to another hard day. When no day qualifies, the session becomes easy at the same duration (`posture_rest_hard_no_window`); a long run stays as planned.
 - `back-off` + intervals or threshold: steady state, same duration. `back-off` + tempo: endurance, same duration.
 - `primed`, `steady`, `moderate`, `taper`: no change. The engine never pushes past the plan.
 

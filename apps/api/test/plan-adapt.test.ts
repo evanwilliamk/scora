@@ -117,11 +117,18 @@ test('rest today, hard session tomorrow with an open day: the session moves and 
   assert.deepEqual(validateVoice(a.reason_text, []).bannedHits, []);
 });
 
-test('rest today in a standard week: no open day, nothing written (Q19)', async () => {
+test('rest today in a standard week: no open day, so the session drops to easy at the same duration (Q19)', async () => {
   await seedPlan('a3', templateId);
   const [r] = await adaptTomorrow('a3', '2026-10-26', 'rest', store, DRAFTS);
-  assert.deepEqual(r.decision, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
-  assert.equal((await store.recent('a3', 5)).length, 0);
+  assert.equal(r.decision.type, 'downgraded');
+  if (r.decision.type !== 'downgraded') return;
+  assert.equal(r.decision.reason_code, 'posture_rest_hard_no_window');
+  assert.equal(r.decision.to_intensity, 'easy');
+  const [a] = await store.recent('a3', 5);
+  assert.equal(a.adaptation_type, 'downgraded');
+  assert.equal(a.reason_code, 'posture_rest_hard_no_window');
+  assert.match(a.reason_text, /is now an easy run at the same \d+ minutes\. Today's posture reads rest, and no other day this week keeps the hard days apart\.$/);
+  assert.deepEqual(validateVoice(a.reason_text, []).bannedHits, []);
 });
 
 test('a displaced easy session becomes a rest day and is logged as skipped, in the same transaction', async () => {
@@ -202,7 +209,11 @@ test('review fixes: two hard sessions on one day never both land on the same lat
     `select to_char(scheduled_date, 'YYYY-MM-DD') as d from scheduled_workouts
      where training_plan_id = $1 and planned_intensity in ('intervals', 'tempo') and scheduled_date between '2026-10-28' and '2026-11-01'`, [planId],
   )).rows.map((r) => r.d).sort();
-  assert.deepEqual(dates, ['2026-10-28', '2026-10-30']); // tempo stays, intervals to Friday
+  // Intervals to Friday; the tempo has no window left, so it is now easy on Wednesday (Q19).
+  assert.deepEqual(dates, ['2026-10-30']);
+  const downgraded = results.filter((r) => r.decision.type === 'downgraded');
+  assert.equal(downgraded.length, 1);
+  assert.equal(downgraded[0].decision.type === 'downgraded' && downgraded[0].decision.reason_code, 'posture_rest_hard_no_window');
 });
 
 test('review fixes: recent() timestamps are ISO 8601 UTC, like the Supabase store', async () => {

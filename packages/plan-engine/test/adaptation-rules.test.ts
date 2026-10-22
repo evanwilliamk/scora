@@ -29,6 +29,18 @@ const input = (over: Partial<AdaptationInput> = {}): AdaptationInput => ({
   posture: 'rest', workout: TUE, plan: plan(), today: '2026-10-19', ...over,
 });
 
+// Rest posture, no day can take the session: it becomes easy at the same
+// duration and the week's minutes hold (Q19 option B).
+function assertNoWindowDowngrade(r: ReturnType<typeof evaluateAdaptation>, id: string, from: Intensity): void {
+  assert.equal(r.type, 'downgraded');
+  if (r.type !== 'downgraded') return;
+  assert.equal(r.workout_id, id);
+  assert.equal(r.from_intensity, from);
+  assert.equal(r.to_intensity, 'easy');
+  assert.equal(r.reason_code, 'posture_rest_hard_no_window');
+  assert.equal(r.facts.week_minutes_after, r.facts.week_minutes_before);
+}
+
 test('rest + intervals tomorrow: moves to the next clear day and leaves the week intact', () => {
   // Wed would drop 40 of 230 minutes (17%), so the rest day Thursday wins.
   const r = evaluateAdaptation(input());
@@ -65,7 +77,12 @@ test('volume guard: a move that would drop the week more than 10% is skipped, an
     w('sun', '2026-10-25', 'hard', 40),
   ];
   const r = evaluateAdaptation(input({ plan: plan({ week, template_week_minutes: weekMinutes(week) }) }));
-  assert.deepEqual(r, { type: 'none', code: 'skip_volume_guard', blocked_rule: 'posture_rest_hard_scheduled' });
+  // The guard blocks the move; with no other window the session drops to easy.
+  assertNoWindowDowngrade(r, 'tue', 'intervals');
+  // A long run is never reshaped, so there the guard's code still shows.
+  const long = w('tue', '2026-10-20', 'long', 60);
+  const kept = evaluateAdaptation(input({ workout: long, plan: plan({ week: [long, ...week.slice(1)], template_week_minutes: weekMinutes(week) }) }));
+  assert.deepEqual(kept, { type: 'none', code: 'skip_volume_guard', blocked_rule: 'posture_rest_hard_scheduled' });
 });
 
 test('no window: never clusters the moved session next to another hard day', () => {
@@ -78,14 +95,14 @@ test('no window: never clusters the moved session next to another hard day', () 
     w('sun', '2026-10-25', 'easy', 45),
   ];
   const r = evaluateAdaptation(input({ plan: plan({ week, template_week_minutes: weekMinutes(week) }) }));
-  assert.deepEqual(r, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
+  assertNoWindowDowngrade(r, 'tue', 'intervals');
 });
 
 test('a move never leaves the plan week', () => {
   const sat = w('sat', '2026-10-24', 'tempo', 50);
   const week = [sat, w('sun', '2026-10-25', 'long', 100)];
   const r = evaluateAdaptation(input({ workout: sat, plan: plan({ week, template_week_minutes: 150 }) }));
-  assert.deepEqual(r, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
+  assertNoWindowDowngrade(r, 'sat', 'tempo');
 });
 
 test('a move skips days with two sessions or a completed one', () => {
@@ -181,7 +198,7 @@ test('T-8 still adapts, but a move cannot land inside race week', () => {
 
   const blocked = evaluateAdaptation(input({ plan: plan({ goal_race_date: '2026-10-29' }) }));
   // T-7 is Thu 10-22, so only Wed is left and it breaks the volume band.
-  assert.deepEqual(blocked, { type: 'none', code: 'skip_volume_guard', blocked_rule: 'posture_rest_hard_scheduled' });
+  assertNoWindowDowngrade(blocked, 'tue', 'intervals');
 });
 
 test('a race already past does not freeze', () => {
@@ -242,7 +259,7 @@ test("a move to Sunday sees the next Monday's hard session (review fix)", () => 
   const sat = w('sat', '2026-10-24', 'tempo', 50);
   const week = [sat, w('sun', '2026-10-25', 'rest', null), w('nextmon', '2026-10-26', 'intervals', 60)];
   const r = evaluateAdaptation(input({ workout: sat, plan: plan({ week, template_week_minutes: 50 }), today: '2026-10-23' }));
-  assert.deepEqual(r, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
+  assertNoWindowDowngrade(r, 'sat', 'tempo');
   // Without the Monday session, Sunday is open.
   const open = evaluateAdaptation(input({ workout: sat, plan: plan({ week: week.slice(0, 2), template_week_minutes: 50 }), today: '2026-10-23' }));
   assert.equal(open.type, 'moved');
@@ -269,4 +286,21 @@ test('impossible calendar dates are refused, not rolled over (review fix)', () =
   assert.throws(() => addDays('2026-02-30', 0), /invalid date/);
   assert.throws(() => daysBetween('2026-02-29', '2026-03-01'), /invalid date/); // 2026 is not a leap year
   assert.equal(addDays('2028-02-29', 1), '2028-03-01');
+});
+
+test('no window, long run: stays as planned (cornerstone), the skip is logged', () => {
+  const sat = w('sat', '2026-10-24', 'long', 100, { planned_distance_km: 18 });
+  const week = [sat, w('sun', '2026-10-25', 'tempo', 40)];
+  const r = evaluateAdaptation(input({ workout: sat, plan: plan({ week, template_week_minutes: 140 }), today: '2026-10-23' }));
+  assert.deepEqual(r, { type: 'none', code: 'skip_no_window', blocked_rule: 'posture_rest_hard_scheduled' });
+});
+
+test('no window downgrade keeps the duration and is frozen in race week like any rule', () => {
+  const sat = w('sat', '2026-10-24', 'threshold', 50);
+  const week = [sat, w('sun', '2026-10-25', 'long', 100)];
+  const r = evaluateAdaptation(input({ workout: sat, plan: plan({ week, template_week_minutes: 150 }), today: '2026-10-23' }));
+  assertNoWindowDowngrade(r, 'sat', 'threshold');
+  if (r.type === 'downgraded') assert.equal(r.duration_min, 50);
+  const frozen = evaluateAdaptation(input({ workout: sat, plan: plan({ week, goal_race_date: '2026-10-31', template_week_minutes: 150 }), today: '2026-10-23' }));
+  assert.deepEqual(frozen, { type: 'none', code: 'race_week_freeze', blocked_rule: 'posture_rest_hard_scheduled' });
 });
