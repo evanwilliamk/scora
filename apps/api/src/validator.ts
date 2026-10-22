@@ -103,7 +103,9 @@ const EMOJI = /\p{Extended_Pictographic}/u;
 // split the same way on both the driver side and the voice side, so formats
 // line up (15:09 -> "15","09"; 24.9 -> "24.9").
 function numberTokens(text: string): string[] {
-  return (text.match(/\d+(?:\.\d+)?/g) || []).map((n) => String(parseFloat(n)));
+  // "1,540" is one number, not 1 and 540.
+  const joined = text.replace(/\b(\d{1,3})((?:,\d{3})+)\b/g, (_m, a: string, b: string) => a + b.replace(/,/g, ''));
+  return (joined.match(/\d+(?:\.\d+)?/g) || []).map((n) => String(parseFloat(n)));
 }
 
 // Check a generated voice string against the drivers it was allowed to cite.

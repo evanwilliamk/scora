@@ -73,3 +73,29 @@ test('a clean first answer makes no second call; a bad or failed retry falls bac
   const failed = await checkCdvWithRetry('25 miles.\nMETRIC: Runs | VALUE: 3', DATA, 'Week?', async () => { throw new Error('OpenAI 500'); });
   assert.deepEqual([failed.checked.fallback, failed.attempts], [true, 2]);
 });
+
+// ---- review 2 ----
+
+test('a METRIC name cannot vouch for a number in the voice', () => {
+  const r = checkCdvReply('HRV sits at 62 ms.', [{ metric: 'HRV 62 ms', value: '18.4 mi' }], DATA, 'HRV?');
+  assert.equal(r.fallback, true);
+  assert.deepEqual(r.drivers, [], 'the METRIC line itself cites 62 and is dropped');
+});
+
+test('dates and run names in the data do not back numbers', () => {
+  const data = { ...DATA, recentRuns: [{ name: 'Lunch Run 21', date: '2026-10-21', miles: 6.2 }] };
+  assert.equal(checkCdvReply('HRV is 21 ms.', [], data, 'HRV?').fallback, true);
+  assert.equal(checkCdvReply('6.2 miles on your last run.', [], data, 'Last run?').fallback, false);
+});
+
+test("a figure asserted in the question is not evidence; a small count is", () => {
+  assert.equal(checkCdvReply('You ran 50 miles.', [], DATA, 'Did I run 50 miles?').fallback, true);
+  assert.equal(checkCdvReply('Over your last 5 runs, 3 were this week.', [], DATA, 'My last 5 runs?').fallback, false);
+});
+
+test('thousands separators read as one number; an empty fallback says the answer was not shown', () => {
+  const data = { ...DATA, thisWeek: { ...DATA.thisWeek, elevFt: 1540 } };
+  assert.equal(checkCdvReply('1,540 ft of climbing this week.', [], data, 'Hills?').fallback, false);
+  const r = checkCdvReply('You ran 99 miles.', [], DATA, 'Week?');
+  assert.equal(r.voice, 'That answer could not be checked against your data, so it is not shown.');
+});
