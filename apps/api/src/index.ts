@@ -882,7 +882,8 @@ fastify.post('/api/plan/manual', async (request, reply) => {
 
 // Calendar import (Q17 option B): the app fetches the athlete's plan feed and
 // sends the .ics text; the server never fetches a URL. Off unless ICAL_IMPORT=on.
-fastify.post('/api/plan/ical', { bodyLimit: 1_100_000 }, async (request, reply) => {
+// JSON escaping can grow a 1 MB feed to about 2.5 MB (\r\n, quotes, slashes).
+fastify.post('/api/plan/ical', { bodyLimit: 3_000_000 }, async (request, reply) => {
   if (process.env.ICAL_IMPORT !== 'on') return reply.code(404).send({ error: 'Not found' });
   const { athleteId, ics, today: clientToday, timeZone } = (request.body as any) || {};
   if (!athleteId || typeof ics !== 'string') {
