@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkCdvReply } from '../src/cdv-check';
+import { checkCdvReply, checkCdvWithRetry, parseCdvLines } from '../src/cdv-check';
 
 // Shaped like the CDV data block in index.ts. Test input only.
 const DATA = {
@@ -43,4 +43,33 @@ test('banned phrasing still falls back, and posture-only trends need no numbers'
   assert.equal(r.fallback, true);
   assert.ok(r.bannedHits.includes('you should'));
   assert.equal(r.drivers.length, 1);
+});
+
+test('parseCdvLines reads the voice and METRIC lines and ignores the CHART line', () => {
+  const p = parseCdvLines('18.4 miles this week.\nMETRIC: This week | VALUE: 18.4 mi | TREND: -17%\nMETRIC: Runs | VALUE: 3\nCHART: weekly_miles');
+  assert.equal(p.voice, '18.4 miles this week.');
+  assert.deepEqual(p.metricLines, [{ metric: 'This week', value: '18.4 mi', trend: '-17%' }, { metric: 'Runs', value: '3' }]);
+});
+
+test('one retry with the violations named; a clean second answer is used', async () => {
+  const notes: string[] = [];
+  const r = await checkCdvWithRetry('About 25 miles this week.\nMETRIC: Runs | VALUE: 3', DATA, 'Week?', async (note) => {
+    notes.push(note);
+    return '18.4 miles over 3 runs this week.\nMETRIC: Runs | VALUE: 3\nCHART: weekly_miles';
+  });
+  assert.equal(r.attempts, 2);
+  assert.equal(r.checked.fallback, false);
+  assert.equal(r.checked.voice, '18.4 miles over 3 runs this week.');
+  assert.match(notes[0], /numbers not in the data: 25/);
+  assert.match(r.raw, /CHART: weekly_miles/, 'the chart comes from the answer that was used');
+});
+
+test('a clean first answer makes no second call; a bad or failed retry falls back', async () => {
+  let calls = 0;
+  const ok = await checkCdvWithRetry('3 runs this week.', DATA, 'Week?', async () => { calls++; return ''; });
+  assert.deepEqual([ok.attempts, calls, ok.checked.fallback], [1, 0, false]);
+  const bad = await checkCdvWithRetry('25 miles.\nMETRIC: Runs | VALUE: 3', DATA, 'Week?', async () => '30 miles.\nMETRIC: Runs | VALUE: 3');
+  assert.deepEqual([bad.checked.fallback, bad.checked.voice], [true, 'Here: Runs 3.']);
+  const failed = await checkCdvWithRetry('25 miles.\nMETRIC: Runs | VALUE: 3', DATA, 'Week?', async () => { throw new Error('OpenAI 500'); });
+  assert.deepEqual([failed.checked.fallback, failed.attempts], [true, 2]);
 });

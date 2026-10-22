@@ -4,6 +4,7 @@
 // block the server sent it, and the athlete's own question ("my last 3 runs").
 
 import { buildFallbackVoice, validateVoice } from './validator';
+import { stripChartLine } from './cdv-chart';
 import type { Driver } from './validator';
 
 export interface CdvChecked {
@@ -31,4 +32,45 @@ export function checkCdvReply(voice: string, metricLines: Driver[], data: unknow
     bannedHits: v.bannedHits,
     unbackedNumbers: v.unbackedNumbers,
   };
+}
+
+// The model's reply as the route reads it: line 1 is the voice, then METRIC
+// lines; the CHART line is read separately (cdv-chart.ts).
+export function parseCdvLines(text: string): { voice: string; metricLines: Driver[] } {
+  const lines = stripChartLine(text).split('\n');
+  const metricLines: Driver[] = [];
+  for (const line of lines.slice(1)) {
+    if (!line.includes('METRIC:')) continue;
+    const metric = line.match(/METRIC:\s*([^|]+)/)?.[1]?.trim();
+    const value = line.match(/VALUE:\s*([^|]+)/)?.[1]?.trim();
+    const trend = line.match(/TREND:\s*(.+)$/)?.[1]?.trim();
+    if (metric && value) metricLines.push({ metric, value, ...(trend ? { trend } : {}) });
+  }
+  return { voice: lines[0] || '', metricLines };
+}
+
+// Check the reply; on a catch, ask once more with the violations named (as
+// the daily read does), then fall back. A failed retry call falls back too.
+export async function checkCdvWithRetry(
+  raw: string,
+  data: unknown,
+  question: string,
+  retry: (note: string) => Promise<string>,
+): Promise<{ raw: string; checked: CdvChecked; attempts: 1 | 2 }> {
+  const check = (r: string) => {
+    const p = parseCdvLines(r);
+    return checkCdvReply(p.voice, p.metricLines, data, question);
+  };
+  const first = check(raw);
+  if (!first.fallback) return { raw, checked: first, attempts: 1 };
+  const issues = [
+    ...first.bannedHits.map((b) => `banned phrasing (${b})`),
+    ...(first.unbackedNumbers.length ? [`numbers not in the data: ${first.unbackedNumbers.join(', ')}`] : []),
+  ].join('; ');
+  try {
+    const raw2 = await retry(`Your previous answer was rejected for: ${issues}. Rewrite it in the same format. Use only numbers written exactly as they appear in the data.`);
+    return { raw: raw2, checked: check(raw2), attempts: 2 };
+  } catch {
+    return { raw, checked: first, attempts: 2 };
+  }
 }

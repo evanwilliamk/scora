@@ -7,7 +7,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Branch: claude/cdv-driver-check
 - Context: CDV replies only had the banned-phrase check. Their numbers were never checked, because the model's own METRIC lines served as the drivers, so an invented number with an invented METRIC line passed. CLAUDE.md §3.2 applies the rule to CDV, and doc 10 §6.1 says nothing is sent without passing validators or falling back.
 - Choice: every number in the voice line and in each METRIC line must appear in the data block sent to the model, or in the athlete's question. METRIC lines with unbacked numbers are dropped; an unbacked voice line becomes the plain fallback ("Here: ..."). The prompt now asks for numbers exactly as written in the data.
-- Watch after deploy: "CDV validator catch" warnings in the logs. If the model rounds often, the fallback rate will show it; a one-retry like the daily read is the next step.
+- On a catch, the model gets one retry with the violations named (as the daily read does): one more gpt-4o-mini call only when a reply fails, never counted against the athlete's 3 a day. Watch "CDV validator catch" warnings in the logs after deploy.
 - To reverse: `checkCdvReply` call in the /api/cdv route (`apps/api/src/index.ts`).
 
 ### 2026-10-22: Rest posture with no move window drops the session to easy (Q19)
