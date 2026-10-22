@@ -64,3 +64,21 @@ language sql
 as $$
   select replace_external_plan(p_athlete_id, 'manual', p_raw_text, p_rows);
 $$;
+
+-- A refresh from the phone replaces only a plan that came from the calendar:
+-- if the athlete has since pasted a plan (here or on another device), the
+-- refresh does nothing and returns null.
+create or replace function refresh_ical_plan(p_athlete_id text, p_rows jsonb)
+returns uuid
+language plpgsql
+as $$
+begin
+  perform 1 from training_plans
+  where athlete_id = p_athlete_id and external_source = 'ical' and current_status = 'active'
+  for update;
+  if not found then
+    return null;
+  end if;
+  return replace_external_plan(p_athlete_id, 'ical', null, p_rows);
+end;
+$$;

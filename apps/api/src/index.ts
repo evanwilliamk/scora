@@ -885,7 +885,7 @@ fastify.post('/api/plan/manual', async (request, reply) => {
 // JSON escaping can grow a 1 MB feed to about 2.5 MB (\r\n, quotes, slashes).
 fastify.post('/api/plan/ical', { bodyLimit: 3_000_000 }, async (request, reply) => {
   if (process.env.ICAL_IMPORT !== 'on') return reply.code(404).send({ error: 'Not found' });
-  const { athleteId, ics, today: clientToday, timeZone } = (request.body as any) || {};
+  const { athleteId, ics, today: clientToday, timeZone, refresh } = (request.body as any) || {};
   if (!athleteId || typeof ics !== 'string') {
     return reply.code(400).send({ error: 'Missing: athleteId, ics' });
   }
@@ -898,7 +898,12 @@ fastify.post('/api/plan/ical', { bodyLimit: 3_000_000 }, async (request, reply) 
         rejected: parsed.rejected.map((r) => r.reason),
       });
     }
-    const { planId } = await planStore().saveIcalPlan(String(athleteId), parsed.rows);
+    // A refresh never replaces a plan the athlete pasted since the import.
+    const saved = refresh === true
+      ? await planStore().refreshIcalPlan(String(athleteId), parsed.rows)
+      : await planStore().saveIcalPlan(String(athleteId), parsed.rows);
+    if (!saved) return reply.code(409).send({ error: 'Your plan no longer comes from this calendar.' });
+    const { planId } = saved;
     return reply.send({
       planId,
       workouts: parsed.rows,

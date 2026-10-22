@@ -209,3 +209,16 @@ test('importing a calendar also replaces an active SCORA plan, never a coach pla
   const rows = (await db.query<any>(`select source, current_status from training_plans where athlete_id = 'ai1' order by source`)).rows;
   assert.deepEqual(rows.map((r) => [r.source, r.current_status]), [['coach', 'active'], ['external', 'active'], ['scora_ai', 'replaced']]);
 });
+
+test('a refresh replaces only a calendar plan, never a plan pasted since (review)', async () => {
+  const store = sqlPlanStore(db);
+  const { rows } = importIcs(FEED, TODAY, 'UTC');
+  assert.equal(await store.refreshIcalPlan('rf1', rows), null, 'no calendar plan yet: nothing happens');
+  await store.saveIcalPlan('rf1', rows);
+  assert.ok(await store.refreshIcalPlan('rf1', rows), 'still the calendar plan: refreshed');
+  const pasted = validateParsedRows([{ date: '2026-10-23', type: 'run', intensity: 'easy', description: 'easy 30' }], 'Fri easy 30', TODAY);
+  await store.saveManualPlan('rf1', 'Fri easy 30', pasted.rows);
+  assert.equal(await store.refreshIcalPlan('rf1', rows), null, 'a paste since the import wins');
+  const week = await store.workoutsBetween('rf1', '2026-10-23', '2026-10-23');
+  assert.deepEqual(week.map((w) => w.planned_description), ['easy 30']);
+});
