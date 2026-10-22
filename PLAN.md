@@ -14,6 +14,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [x] CDV chat, gated at 3 queries/day (fail-open on quota errors)
 - [x] Sunday weekly read (generation + view)
 - [x] Driver-existence + banned-phrase validators, unit tests
+- [~] Tests: Strava and Oura token refresh (5-minute window, rotation, errors); a refreshed token that fails to save is now logged (`claude/tests-token-refresh`, on `claude/integration-2026-10-22`)
 - [~] Tests: the Supabase stores production runs (preferences claim/release, plan adaptations) pinned with a recording fake (`claude/tests-supabase-stores`, on `claude/integration-2026-10-22`)
 - [~] Banned-phrase parity with CLAUDE.md §4.1: 8 missing bans added, "long run a week ago" no longer flagged (`claude/banned-phrase-parity`, on `claude/integration-2026-10-22`)
 - [~] Driver-existence check on CDV chat replies (doc 10 §6.1), numbers must be in the data sent to the model (`claude/cdv-driver-check`, on `claude/integration-2026-10-22`)

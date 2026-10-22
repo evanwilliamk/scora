@@ -70,7 +70,7 @@ export async function exchangeOuraCode(code: string): Promise<any> {
   return response.json();
 }
 
-async function refreshOuraToken(refreshToken: string): Promise<any> {
+async function refreshOuraToken(refreshToken: string, fetchImpl: typeof fetch = fetch): Promise<any> {
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
@@ -78,7 +78,7 @@ async function refreshOuraToken(refreshToken: string): Promise<any> {
     client_secret: OURA_CLIENT_SECRET,
   });
 
-  const response = await fetch(OURA_TOKEN_URL, {
+  const response = await fetchImpl(OURA_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
@@ -118,8 +118,12 @@ export async function storeOuraTokens(athleteId: string, tokenData: any): Promis
 
 // Returns a valid Oura access token, refreshing if expired. Throws if the
 // athlete has not connected Oura (the dashboard treats this as "not connected").
-export async function getValidOuraToken(athleteId: string): Promise<string> {
-  const supabase = getSupabase();
+export async function getValidOuraToken(
+  athleteId: string,
+  // Injectable for tests; production uses the shared client and fetch.
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
   const { data: athlete, error } = await supabase
     .from('athletes')
     .select('oura_access_token, oura_refresh_token, oura_expires_at')
@@ -140,9 +144,9 @@ export async function getValidOuraToken(athleteId: string): Promise<string> {
     return athlete.oura_access_token;
   }
 
-  const refreshed = await refreshOuraToken(athlete.oura_refresh_token);
+  const refreshed = await refreshOuraToken(athlete.oura_refresh_token, fetchImpl);
   const expiresAt = refreshed.expires_in ? nowSec + Number(refreshed.expires_in) : null;
-  await supabase
+  const { error: saveError } = await supabase
     .from('athletes')
     .update({
       oura_access_token: refreshed.access_token,
@@ -150,6 +154,10 @@ export async function getValidOuraToken(athleteId: string): Promise<string> {
       oura_expires_at: expiresAt,
     })
     .eq('strava_id', String(athleteId));
+  // The provider may have retired the old refresh token, so a lost save means
+  // the next refresh fails and the athlete must reconnect. Say so loudly; the
+  // fresh access token still serves this request.
+  if (saveError) console.error(`Oura token refresh not saved: ${saveError.message}`);
 
   return refreshed.access_token;
 }

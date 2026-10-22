@@ -91,8 +91,8 @@ interface StravaTokenResponse {
   expires_at: number;
 }
 
-async function refreshStravaToken(refreshToken: string): Promise<StravaTokenResponse> {
-  const response = await fetch('https://www.strava.com/oauth/token', {
+async function refreshStravaToken(refreshToken: string, fetchImpl: typeof fetch = fetch): Promise<StravaTokenResponse> {
+  const response = await fetchImpl('https://www.strava.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -115,8 +115,12 @@ async function refreshStravaToken(refreshToken: string): Promise<StravaTokenResp
  * if it is expired or within a 5-minute safety window. Rotates the stored
  * refresh token (Strava may issue a new one on refresh).
  */
-export async function getValidStravaToken(stravaId: string): Promise<string> {
-  const supabase = getSupabase();
+export async function getValidStravaToken(
+  stravaId: string,
+  // Injectable for tests; production uses the shared client and fetch.
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
   const { data: athlete, error } = await supabase
     .from('athletes')
     .select('strava_access_token, strava_refresh_token, strava_expires_at')
@@ -139,8 +143,8 @@ export async function getValidStravaToken(stravaId: string): Promise<string> {
   }
 
   // Expired (or about to) — refresh and persist the new set.
-  const refreshed = await refreshStravaToken(athlete.strava_refresh_token);
-  await supabase
+  const refreshed = await refreshStravaToken(athlete.strava_refresh_token, fetchImpl);
+  const { error: saveError } = await supabase
     .from('athletes')
     .update({
       strava_access_token: refreshed.access_token,
@@ -148,6 +152,10 @@ export async function getValidStravaToken(stravaId: string): Promise<string> {
       strava_expires_at: refreshed.expires_at,
     })
     .eq('strava_id', String(stravaId));
+  // The provider may have retired the old refresh token, so a lost save means
+  // the next refresh fails and the athlete must reconnect. Say so loudly; the
+  // fresh access token still serves this request.
+  if (saveError) console.error(`Strava token refresh not saved: ${saveError.message}`);
 
   return refreshed.access_token;
 }
