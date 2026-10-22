@@ -9,6 +9,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: added the missing bans; "run a/an" now counts as an order only when it is not part of a session name ("long run a week ago") or a span of time. A parity test lists one phrasing per ban plus the descriptive sentences that must pass.
 - Why: false positives cost a retry or the plain fallback read; misses let prescriptive or anti-coach text through.
 - To reverse: BANNED_PATTERNS in `apps/api/src/validator.ts`.
+### 2026-10-22: Chat (CDV) replies get the driver-existence check
+- Status: DECIDED (reversible)
+- Branch: claude/cdv-driver-check
+- Context: CDV replies only had the banned-phrase check. Their numbers were never checked, because the model's own METRIC lines served as the drivers, so an invented number with an invented METRIC line passed. CLAUDE.md §3.2 applies the rule to CDV, and doc 10 §6.1 says nothing is sent without passing validators or falling back.
+- Choice: every number in the voice line and in each METRIC line must appear in the data block sent to the model, or in the athlete's question. METRIC lines with unbacked numbers are dropped; an unbacked voice line becomes the plain fallback ("Here: ..."). The prompt now asks for numbers exactly as written in the data.
+- On a catch, the model gets one retry with the violations named (as the daily read does): one more gpt-4o-mini call only when a reply fails, never counted against the athlete's 3 a day. Watch "CDV validator catch" warnings in the logs after deploy.
+- To reverse: `checkCdvReply` call in the /api/cdv route (`apps/api/src/index.ts`).
 
 ### 2026-10-22: Rest posture with no move window drops the session to easy (Q19)
 - Status: DECIDED (Evan silent 3 days on a bucket 2 question, reversible). Review flagged that CLAUDE.md §6.2 says rest + hard means move and insert rest; it is silent on no window, so this fills the gap, but you may prefer rest (option C) there
