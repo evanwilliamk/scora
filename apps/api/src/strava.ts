@@ -144,18 +144,20 @@ export async function getValidStravaToken(
 
   // Expired (or about to) — refresh and persist the new set.
   const refreshed = await refreshStravaToken(athlete.strava_refresh_token, fetchImpl);
-  const { error: saveError } = await supabase
+  const { data: saved, error: saveError } = await supabase
     .from('athletes')
     .update({
       strava_access_token: refreshed.access_token,
       strava_refresh_token: refreshed.refresh_token,
       strava_expires_at: refreshed.expires_at,
     })
-    .eq('strava_id', String(stravaId));
+    .eq('strava_id', String(stravaId))
+    .select('strava_id');
   // The provider may have retired the old refresh token, so a lost save means
   // the next refresh fails and the athlete must reconnect. Say so loudly; the
   // fresh access token still serves this request.
   if (saveError) console.error(`Strava token refresh not saved: ${saveError.message}`);
+  else if (!saved || saved.length === 0) console.error(`Strava token refresh not saved: no athlete row matched`);
 
   return refreshed.access_token;
 }
