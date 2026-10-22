@@ -9,6 +9,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: when the plan has run minutes in the last 7 local days, the review gets one driver, "Plan this week: 135 of 190 planned run min" (stored durations of run sessions vs Strava run minutes). The prompt lets it state this as a fact and forbids judging it or suggesting catching up or cutting back. No plan: nothing changes.
 - Known gap: the review's other numbers use a rolling 7 days on server time; the plan line uses the athlete's local days.
 - To reverse: the `weeklyPlanDriver` block in the /api/weekly route.
+
 ### 2026-10-22: WhatsApp doorbell core (pure pieces only)
 - Status: DECIDED (reversible; reply copy is yours)
 - Branch: claude/whatsapp-core
