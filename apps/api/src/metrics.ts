@@ -56,8 +56,8 @@ const paceMinPerMi = (a: any): string | null => {
 
 const pct = (curr: number, prev: number): string => {
   if (prev <= 0) return 'n/a';
-  const d = ((curr - prev) / prev) * 100;
-  return `${d >= 0 ? '+' : ''}${d.toFixed(0)}%`;
+  const d = Math.round(((curr - prev) / prev) * 100); // never "-0%"
+  return `${d >= 0 ? '+' : ''}${d}%`;
 };
 
 const hoursMin = (seconds: number): string => {

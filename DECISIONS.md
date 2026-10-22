@@ -6,7 +6,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Status: DECIDED (reversible; the Week So Far line is copy, yours to change)
 - Branch: claude/review4-leftovers
 - Context: three findings left open on 2026-10-18.
-- Choice: (1) The plan-override check lets a sentence through when its only hits are "moved ... to" or "instead", it says the change happened ("is now", "was", "moved", "the plan"), it shares a weekday or session word with a recorded plan change, and it has no advice cue. Everything else still fails. (2) HRV shows no trend when there is no week average, instead of "n/a wk". (3) Week So Far names the weekday it compares through ("95 min through Thursday last week") instead of "by this point", since today may not be over.
+- Choice: (1) The plan-override check lets a clause through when its only hits are "moved ... to" or "instead", it says the change happened ("is now", "was", "moved", "the plan"), every day and session word in it appears in one recorded plan change, and it has no advice cue (a clause opening on "moved" or "instead" counts as advice). Tightened after review: sharing one word was enough to let "The tempo is now yours to run Saturday instead." through. Everything else still fails. (2) HRV shows no trend when there is no week average, instead of "n/a wk". (3) Week So Far names the weekday it compares through ("95 min through Thursday last week") instead of "by this point", since today may not be over.
 - Alternatives: (1) drop the override check when any plan change exists (too loose); (3) compare through yesterday.
 - To reverse: `overrideIsObservation` in `apps/api/src/validator.ts`; the `through` line in `apps/api/src/week-so-far.ts`.
 
