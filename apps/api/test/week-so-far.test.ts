@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { weekSoFar } from '../src/week-so-far';
+import { weekSoFar, plannedRunMinutes, mondayOf } from '../src/week-so-far';
 import { validateVoice } from '../src/validator';
 
 const run = (d: string, min: number) => ({ type: 'Run', start_date_local: `${d}T07:00:00Z`, moving_time: min * 60 });
@@ -30,4 +30,29 @@ test('no runs yet, with and without last week', () => {
   assert.equal(weekSoFar([], '2026-10-20').line, 'No runs yet this week.');
   assert.equal(weekSoFar([run('2026-10-12', 30)], '2026-10-20').line, 'No runs yet this week. Last week had 30 min through Tuesday.');
   assert.equal(weekSoFar([], '2026-10-25').days.every((d) => d.run_min === 0), true); // Sunday: whole week shown
+});
+
+test('with a plan: each day carries its planned run minutes, and the line states the plan through today', () => {
+  const planned = plannedRunMinutes([
+    { scheduled_date: '2026-10-19', planned_type: 'run', planned_intensity: 'easy', planned_duration_min: 40 },
+    { scheduled_date: '2026-10-20', planned_type: 'run', planned_intensity: 'rest', planned_duration_min: null },
+    { scheduled_date: '2026-10-21', planned_type: 'run', planned_intensity: 'tempo', planned_duration_min: 50 },
+    { scheduled_date: '2026-10-21', planned_type: 'strength', planned_intensity: null, planned_duration_min: 30 },
+    { scheduled_date: '2026-10-24', planned_type: 'run', planned_intensity: 'long', planned_duration_min: 100 },
+  ]);
+  const w = weekSoFar([run('2026-10-19', 40), run('2026-10-21', 45)], '2026-10-22', planned);
+  assert.deepEqual(w.days.map((d) => d.planned_min), [40, 0, 50, 0, 0, 100, 0]);
+  assert.equal(w.planned_to_date_min, 90);
+  assert.equal(w.line, '2 runs, 85 min since Monday. Plan: 90 min through Thursday.');
+  const drivers = [{ metric: 'Runs', value: '2' }, { metric: 'Week', value: '85 min' }, { metric: 'Plan', value: '90 min' }];
+  assert.deepEqual(validateVoice(w.line, drivers), { ok: true, bannedHits: [], unbackedNumbers: [] });
+});
+
+test('without a plan nothing about plans appears; mondayOf finds the week', () => {
+  const w = weekSoFar([run('2026-10-19', 40)], '2026-10-22');
+  assert.equal('planned_to_date_min' in w, false);
+  assert.equal(w.days.every((d) => !('planned_min' in d)), true);
+  assert.equal(mondayOf('2026-10-22'), '2026-10-19');
+  assert.equal(mondayOf('2026-10-25'), '2026-10-19');
+  assert.equal(mondayOf('2026-10-26'), '2026-10-26');
 });

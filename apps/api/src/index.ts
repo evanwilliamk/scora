@@ -34,11 +34,11 @@ import type { PrefsStore } from './preferences';
 import { isValidTimezone, isValidDeliveryMinute } from './delivery';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
-import { supabasePlanStore } from './plan-store';
+import { supabasePlanStore, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
 import { planForRead } from './plan-read';
 import { numericLine } from './numeric-line';
-import { weekSoFar } from './week-so-far';
+import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, supabaseGenerateStore,
@@ -616,9 +616,13 @@ fastify.post('/api/read', async (request, reply) => {
     // it; it never changes it (CLAUDE.md §1.3). Never blocks the read.
     const today = isoDay(clientToday) ?? athleteLocalToday(activities);
     let plan = planForRead([], today);
+    let weekPlanRows: StoredWorkout[] | null = null;
     try {
-      // A week ahead, so "nothing scheduled today" is known when a plan exists.
-      plan = planForRead(await planStore().workoutsBetween(String(athleteId), today, addDays(today, 6)), today);
+      // From this Monday (for Week So Far) to a week ahead, so "nothing
+      // scheduled today" is known when a plan exists.
+      const rows = await planStore().workoutsBetween(String(athleteId), mondayOf(today), addDays(today, 6));
+      weekPlanRows = rows;
+      plan = planForRead(rows.filter((r) => r.scheduled_date >= today), today);
     } catch (e) {
       fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
     }
@@ -717,7 +721,7 @@ Write today's read using only these drivers.`;
 
     return reply.send({
       read: { voice, numbers: numericLine(readDrivers), ...(charts ?? {}) },
-      weekSoFar: weekSoFar(activities, today),
+      weekSoFar: weekSoFar(activities, today, weekPlanRows && weekPlanRows.length ? plannedRunMinutes(weekPlanRows) : undefined),
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
       plan: { today: plan.driver?.value ?? null },

@@ -7,6 +7,7 @@ export interface WeekDay {
   date: string; // local YYYY-MM-DD
   weekday: string; // 'Mon' ... 'Sun'
   run_min: number | null; // null for days still ahead
+  planned_min?: number; // run minutes the athlete's plan has that day (only with a plan)
 }
 
 export interface WeekSoFar {
@@ -14,14 +15,31 @@ export interface WeekSoFar {
   runs: number;
   total_min: number;
   last_week_to_date_min: number;
+  planned_to_date_min?: number; // Monday through today, only with a plan
   line: string;
+}
+
+export const mondayOf = (day: string): string => {
+  const t = Date.parse(`${day}T00:00:00Z`);
+  return iso(t - ((new Date(t).getUTCDay() + 6) % 7) * DAY);
+};
+
+// Planned run minutes per day from the plan's rows (rest days and other
+// sports count 0). Only stored durations: nothing is estimated.
+export function plannedRunMinutes(rows: { scheduled_date: string; planned_type: string; planned_intensity: string | null; planned_duration_min: number | null }[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const min = r.planned_type === 'run' && r.planned_intensity !== 'rest' ? r.planned_duration_min ?? 0 : 0;
+    out.set(r.scheduled_date, (out.get(r.scheduled_date) ?? 0) + min);
+  }
+  return out;
 }
 
 const DAY = 86_400_000;
 const NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
 
-export function weekSoFar(activities: any[], today: string): WeekSoFar {
+export function weekSoFar(activities: any[], today: string, planned?: Map<string, number>): WeekSoFar {
   const t = Date.parse(`${today}T00:00:00Z`);
   const dow = (new Date(t).getUTCDay() + 6) % 7; // 0 = Monday
   const monday = t - dow * DAY;
@@ -31,7 +49,7 @@ export function weekSoFar(activities: any[], today: string): WeekSoFar {
 
   const days: WeekDay[] = NAMES.map((weekday, i) => {
     const date = iso(monday + i * DAY);
-    return { date, weekday, run_min: i <= dow ? Math.round(minutesOn(date)) : null };
+    return { date, weekday, run_min: i <= dow ? Math.round(minutesOn(date)) : null, ...(planned ? { planned_min: planned.get(date) ?? 0 } : {}) };
   });
   const thisWeek = runs.filter((a) => {
     const d = a.start_date_local.slice(0, 10);
@@ -51,5 +69,8 @@ export function weekSoFar(activities: any[], today: string): WeekSoFar {
   const through = new Date(t).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
   if (last > 0) line += n === 0 ? ` Last week had ${last} min through ${through}.` : `; ${last} min through ${through} last week.`;
   else if (n > 0) line += '.';
-  return { days, runs: n, total_min: total, last_week_to_date_min: last, line };
+  // The plan's minutes through today, stated, never compared as advice.
+  const plannedToDate = planned ? days.slice(0, dow + 1).reduce((s, d) => s + (d.planned_min ?? 0), 0) : undefined;
+  if (plannedToDate) line += ` Plan: ${plannedToDate} min through ${through}.`;
+  return { days, runs: n, total_min: total, last_week_to_date_min: last, ...(planned ? { planned_to_date_min: plannedToDate } : {}), line };
 }

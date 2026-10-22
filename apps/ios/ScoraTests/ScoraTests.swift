@@ -183,6 +183,15 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(r.weekSoFar?.line, "2 runs, 120 min since Monday; 95 min by this point last week.")
     }
 
+    func testWeekSoFarPlannedOutlineSharesTheScale() throws {
+        let json = #"{"days":[{"date":"2026-10-19","weekday":"Mon","run_min":40,"planned_min":40},{"date":"2026-10-20","weekday":"Tue","run_min":0,"planned_min":80},{"date":"2026-10-21","weekday":"Wed","run_min":null,"planned_min":0}],"line":"x"}"#
+        let w = try JSONDecoder().decode(WeekSoFar.self, from: Data(json.utf8))
+        XCTAssertEqual(w.heights, [0.5, 0, nil])
+        XCTAssertEqual(w.plannedHeights, [0.5, 1, 0])
+        let noPlan = try JSONDecoder().decode(WeekSoFar.self, from: Data(#"{"days":[{"date":"2026-10-19","weekday":"Mon","run_min":40}],"line":"x"}"#.utf8))
+        XCTAssertEqual(noPlan.plannedHeights, [nil])
+    }
+
     func testReadWithoutChartsStillDecodes() throws {
         let json = #"{"read":{"voice":"Plain read."},"cards":[],"generatedAt":null}"#.data(using: .utf8)!
         let r = try JSONDecoder().decode(ReadResponse.self, from: json)
