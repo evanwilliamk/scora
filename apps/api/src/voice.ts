@@ -1,4 +1,5 @@
 import { validateVoice, buildFallbackVoice, Driver, ValidationResult } from './validator';
+import { trackVoice, type VoiceSurface } from './telemetry';
 
 // Generate a voice read and guarantee it passes the validators before it's
 // emitted (§3.2). Flow: LLM draft -> validate -> if it fails, one retry with
@@ -12,7 +13,8 @@ interface GenerateParams {
   model?: string;
   maxTokens?: number;
   leadIn?: string; // prefix for the deterministic fallback
-  log?: { warn: (msg: string) => void; error: (msg: string) => void };
+  surface?: VoiceSurface; // for the telemetry line
+  log?: { warn: (msg: string) => void; error: (msg: string) => void; info?: (msg: string) => void };
 }
 
 export interface GenerateResult {
@@ -67,16 +69,26 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     model = 'gpt-4o',
     maxTokens = 320,
     leadIn = 'Where things sit',
+    surface,
     log,
   } = params;
+  // Every catch across both drafts, for the hit-rate telemetry.
+  const seen: string[] = [];
+  let unbacked = 0;
+  const done = (r: GenerateResult): GenerateResult => {
+    if (surface) trackVoice(log, { surface, attempts: r.attempts, fallback: r.usedFallback, bannedHits: seen, unbackedCount: unbacked });
+    return r;
+  };
+  const note = (v: ValidationResult) => { seen.push(...v.bannedHits); unbacked += v.unbackedNumbers.length; };
 
   // Attempt 1. A hard failure here propagates so the endpoint can 500 (matches
   // the prior inline behaviour).
   const first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens);
   let validation = validateVoice(first, drivers);
   if (validation.ok) {
-    return { voice: first, validation, usedFallback: false, attempts: 1 };
+    return done({ voice: first, validation, usedFallback: false, attempts: 1 });
   }
+  note(validation);
 
   log?.warn(`voice validator caught draft 1: ${violationNote(validation)}`);
 
@@ -90,8 +102,9 @@ Rewrite it. Use ONLY the driver values above, reference no number that isn't a d
     const second = await callOpenAI(model, systemPrompt, retryUser, maxTokens);
     const secondValidation = validateVoice(second, drivers);
     if (secondValidation.ok) {
-      return { voice: second, validation: secondValidation, usedFallback: false, attempts: 2 };
+      return done({ voice: second, validation: secondValidation, usedFallback: false, attempts: 2 });
     }
+    note(secondValidation);
     log?.warn(`voice validator caught draft 2: ${violationNote(secondValidation)}`);
     validation = secondValidation;
   } catch (e) {
@@ -100,10 +113,10 @@ Rewrite it. Use ONLY the driver values above, reference no number that isn't a d
 
   // Last resort: guaranteed-clean deterministic read.
   log?.warn('voice fell back to deterministic driver read');
-  return {
+  return done({
     voice: buildFallbackVoice(drivers, leadIn),
     validation,
     usedFallback: true,
     attempts: 2,
-  };
+  });
 }
