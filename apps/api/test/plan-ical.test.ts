@@ -101,7 +101,7 @@ test('not a calendar, empty, too many events', () => {
   assert.throws(() => importIcs('', TODAY), IcalImportError);
   assert.throws(() => importIcs('Tue: 45 min tempo', TODAY), /does not look like a calendar/);
   const many = cal(...Array.from({ length: MAX_ICS_EVENTS + 1 }, (_, i) => ev(`UID:${i}`, 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:x')));
-  assert.throws(() => importIcs(many, TODAY), /more than 1000 events/);
+  assert.throws(() => importIcs(many, TODAY), /more than 1000 upcoming events/);
 });
 
 // ---- storage on PGlite ----
@@ -156,4 +156,56 @@ test('the Supabase store imports through replace_external_plan without the calen
   assert.equal(calls[0][0], 'replace_external_plan');
   assert.deepEqual({ ...calls[0][1], p_rows: undefined }, { p_athlete_id: 'ath', p_external_source: 'ical', p_raw_text: null, p_rows: undefined });
   await assert.rejects(store.saveIcalPlan('ath', []), /No workouts/);
+});
+
+// ---- review fixes ----
+
+test('a crafted parameter list parses in linear time (no regex backtracking)', () => {
+  const evil = 'X;A=' + ',;B='.repeat(5000) + '"';
+  const t = Date.now();
+  parseIcsEvents(cal(ev('UID:a', evil, 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:Easy run 30 min')));
+  assert.ok(Date.now() - t < 500, `took ${Date.now() - t} ms`);
+  const [e] = parseIcsEvents(cal(ev('UID:q', 'DTSTART;TZID="America/New_York: Eastern":20261023T060000', 'SUMMARY:x')));
+  assert.equal(e.dtstart, '20261023T060000', 'a colon inside quotes is not the value separator');
+});
+
+test('"rest" in a description is not a rest day; a rest title still is', () => {
+  const r = importIcs(cal(
+    ev('UID:1', 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:Track Tuesday', 'DESCRIPTION:6x800m with 90 sec rest'),
+    ev('UID:2', 'DTSTART;VALUE=DATE:20261024', 'SUMMARY:Rest day'),
+    ev('UID:3', 'DTSTART;VALUE=DATE:20261025', 'SUMMARY:Recovery or rest'),
+  ), TODAY, 'UTC');
+  assert.deepEqual(r.rows.map((w) => [w.intensity, w.type]), [['intervals', 'run'], ['rest', 'other'], ['recovery', 'other']]);
+});
+
+test('an event with notes but no title keeps its first character', () => {
+  const r = importIcs(cal(ev('UID:1', 'DTSTART;VALUE=DATE:20261023', 'DESCRIPTION:10 km easy')), TODAY, 'UTC');
+  assert.equal(r.rows[0].description, '10 km easy');
+  assert.equal(r.rows[0].distance_km, 10);
+});
+
+test('a start time is not a duration', () => {
+  const r = importIcs(cal(
+    ev('UID:1', 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:Group run 6:30'),
+    ev('UID:2', 'DTSTART;VALUE=DATE:20261024', 'SUMMARY:Easy run at 6:30am', 'DESCRIPTION:40 min'),
+  ), TODAY, 'UTC');
+  assert.deepEqual(r.rows.map((w) => w.duration_min), [null, 40]);
+});
+
+test('the event cap counts upcoming events only, so a long history still imports', () => {
+  const history = Array.from({ length: MAX_ICS_EVENTS + 50 }, (_, i) => ev(`UID:h${i}`, 'DTSTART;VALUE=DATE:20250101', 'SUMMARY:Easy run 30 min'));
+  const r = importIcs(cal(...history, ev('UID:n', 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:Easy run 30 min')), TODAY, 'UTC');
+  assert.equal(r.rows.length, 1);
+  assert.equal(r.skipped_past, MAX_ICS_EVENTS + 50);
+});
+
+test('importing a calendar also replaces an active SCORA plan, never a coach plan', async () => {
+  const t = await db.query<{ id: string }>(
+    `insert into plan_templates (slug, version, sport, goal_type, duration_weeks, experience_level, weekly_volume_range_km, author, structure_json)
+     values ('test-ical', '1.0.0', 'run', 'half', 12, 'regular', '[20,40)', 'test', '{}') returning id`);
+  await db.query(`insert into training_plans (athlete_id, source, template_id, start_date, end_date) values ('ai1', 'scora_ai', $1, '2026-10-19', '2026-12-31')`, [t.rows[0].id]);
+  await db.query(`insert into training_plans (athlete_id, source, start_date, end_date) values ('ai1', 'coach', '2026-10-19', '2026-12-31')`);
+  await sqlPlanStore(db).saveIcalPlan('ai1', importIcs(FEED, TODAY, 'UTC').rows);
+  const rows = (await db.query<any>(`select source, current_status from training_plans where athlete_id = 'ai1' order by source`)).rows;
+  assert.deepEqual(rows.map((r) => [r.source, r.current_status]), [['coach', 'active'], ['external', 'active'], ['scora_ai', 'replaced']]);
 });

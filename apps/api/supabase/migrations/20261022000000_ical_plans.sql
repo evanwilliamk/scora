@@ -2,9 +2,9 @@
 -- Strava has no planned-workout API, so athletes whose plan app publishes a
 -- calendar feed can import it. Rows land in the same tables as a pasted plan.
 --
--- One external plan per athlete: a calendar import replaces a pasted plan and
--- a paste replaces a calendar import, so the read never sees two plans for
--- the same day. Old plans are marked 'replaced', never deleted.
+-- One plan per athlete: a calendar import replaces a pasted plan or a SCORA
+-- plan, and a paste replaces a calendar import, so the read never sees two
+-- plans for the same day. Old plans are marked 'replaced', never deleted.
 
 alter table training_plans drop constraint if exists training_plans_external_source_check;
 alter table training_plans add constraint training_plans_external_source_check
@@ -36,8 +36,11 @@ begin
     raise exception 'No workouts to save';
   end if;
 
+  -- A SCORA plan goes too, as create_scora_plan replaces an external one: the
+  -- athlete follows one plan at a time. A coach's plan is never touched here.
   update training_plans set current_status = 'replaced', updated_at = now()
-  where athlete_id = p_athlete_id and external_source in ('manual', 'ical') and current_status = 'active';
+  where athlete_id = p_athlete_id and current_status = 'active'
+    and (external_source in ('manual', 'ical') or source = 'scora_ai');
 
   insert into training_plans (athlete_id, source, external_source, start_date, end_date, raw_text)
   select p_athlete_id, 'external', p_external_source, min((r->>'date')::date), max((r->>'date')::date), p_raw_text

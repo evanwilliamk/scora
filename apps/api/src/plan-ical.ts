@@ -31,7 +31,24 @@ export interface IcsEvent {
 const unescapeText = (v: string) =>
   v.replace(/\\([nN,;\\])/g, (_m, c: string) => (c === 'n' || c === 'N' ? '\n' : c));
 
-const LINE = /^([A-Za-z0-9-]+)((?:;[A-Za-z0-9-]+=(?:"[^"]*"|[^:;"]*)(?:,(?:"[^"]*"|[^:;",]*))*)*):(.*)$/;
+// "NAME;PARAM=a;PARAM2=\"b:c\":value" -> name, params, value. Split by hand
+// at the first colon outside quotes: linear time on any input (a regex for
+// this backtracks exponentially on crafted parameter lists).
+function splitLine(line: string): { name: string; params: string; value: string } | null {
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') quoted = !quoted;
+    else if (c === ':' && !quoted) {
+      const head = line.slice(0, i);
+      const semi = head.indexOf(';');
+      const name = semi < 0 ? head : head.slice(0, semi);
+      if (!/^[A-Za-z0-9-]+$/.test(name)) return null;
+      return { name, params: semi < 0 ? '' : head.slice(semi), value: line.slice(i + 1) };
+    }
+  }
+  return null;
+}
 
 // Every VEVENT in the text. Lines inside a nested component (a VALARM has its
 // own DESCRIPTION) never leak into the event.
@@ -41,10 +58,10 @@ export function parseIcsEvents(text: string): IcsEvent[] {
   let ev: IcsEvent | null = null;
   let nested = 0;
   for (const line of lines) {
-    const m = LINE.exec(line);
+    const m = splitLine(line);
     if (!m) continue;
-    const name = m[1].toUpperCase();
-    const value = m[3];
+    const name = m.name.toUpperCase();
+    const value = m.value;
     if (name === 'BEGIN') {
       if (value.toUpperCase() === 'VEVENT' && !ev) {
         ev = { uid: null, summary: '', description: '', dtstart: null, dtstartParams: {}, recurring: false, cancelled: false };
@@ -59,7 +76,6 @@ export function parseIcsEvents(text: string): IcsEvent[] {
       if (value.toUpperCase() === 'VEVENT') {
         events.push(ev);
         ev = null;
-        if (events.length > MAX_ICS_EVENTS) throw new IcalImportError(`The calendar has more than ${MAX_ICS_EVENTS} events.`);
       }
       continue;
     }
@@ -71,7 +87,7 @@ export function parseIcsEvents(text: string): IcsEvent[] {
       case 'DTSTART': {
         ev.dtstart = value.trim();
         const params: Record<string, string> = {};
-        for (const p of m[2].split(';').filter(Boolean)) {
+        for (const p of m.params.split(';').filter(Boolean)) {
           const i = p.indexOf('=');
           params[p.slice(0, i).toUpperCase()] = p.slice(i + 1).replace(/^"|"$/g, '');
         }
@@ -121,8 +137,9 @@ const TYPE_WORDS: [WorkoutType, RegExp][] = [
   ['run', /\b(run|runs|running|jog|tempo|fartlek|strides|track|parkrun|race)\b/],
 ];
 
+// "rest" is read from the title only, and after every session word: a
+// description's "90 sec rest" between reps is not a rest day.
 const INTENSITY_WORDS: [Intensity, RegExp][] = [
-  ['rest', /\b(rest|day off|off day)\b/],
   ['recovery', /\b(recovery|shakeout|shake-out)\b/],
   ['intervals', /\b(intervals?|repeats|vo2|fartlek)\b|\d+\s*[x×]\s*\d+/],
   ['threshold', /\b(threshold|lt|cruise)\b/],
@@ -132,6 +149,7 @@ const INTENSITY_WORDS: [Intensity, RegExp][] = [
   ['hard', /\bhard\b/],
   ['moderate', /\b(moderate|steady)\b/],
 ];
+const TITLE_INTENSITY_WORDS: [Intensity, RegExp][] = [...INTENSITY_WORDS, ['rest', /\b(rest|day off|off day)\b/]];
 
 const first = <T>(table: [T, RegExp][], text: string): T | null => {
   const t = text.toLowerCase();
@@ -140,9 +158,11 @@ const first = <T>(table: [T, RegExp][], text: string): T | null => {
 };
 
 // Durations written in a text, one per mention: "1h30" is 90, not also 60.
+// A bare h:mm is a start time in a calendar ("Group run 6:30"), not a length.
 function durations(text: string): number[] {
   const hm: number[] = [];
-  const rest = text.replace(/(\d{1,2})\s*(?:h|hr|hrs|hours?)\s*(\d{1,2})(?:\s*(?:min|mins|minutes|m))?(?![a-z\d])/gi, (_m, h: string, mm: string) => {
+  const noClock = text.replace(/(?<![\d:])\d{1,2}:[0-5]\d(?::[0-5]\d)?(?![\d:])(?:\s*[ap]\.?m\.?)?/gi, ' ');
+  const rest = noClock.replace(/(\d{1,2})\s*(?:h|hr|hrs|hours?)\s*(\d{1,2})(?:\s*(?:min|mins|minutes|m))?(?![a-z\d])/gi, (_m, h: string, mm: string) => {
     hm.push(Number(h) * 60 + Number(mm));
     return ' ';
   });
@@ -188,6 +208,7 @@ export function importIcs(ics: string, today: string, timeZone?: string): IcalIm
   const pre: { row: unknown; reason: string }[] = [];
   let skipped_past = 0;
 
+  let considered = 0;
   for (const e of parseIcsEvents(ics)) {
     const label = e.summary || e.uid || '(untitled event)';
     if (e.cancelled) { pre.push({ row: label, reason: 'cancelled event' }); continue; }
@@ -199,16 +220,17 @@ export function importIcs(ics: string, today: string, timeZone?: string): IcalIm
       skipped_past++;
       continue;
     }
+    if (++considered > MAX_ICS_EVENTS) throw new IcalImportError(`The calendar has more than ${MAX_ICS_EVENTS} upcoming events.`);
 
     const summary = oneLine(e.summary);
     const details = oneLine(e.description);
-    const text = (details ? `${summary} | ${details}` : summary).slice(0, MAX_DESCRIPTION).trim();
+    const text = [summary, details].filter(Boolean).join(' | ').slice(0, MAX_DESCRIPTION);
     if (!text) { pre.push({ row: label, reason: 'event has no title or notes' }); continue; }
     // Numbers are read from the same capped text the validator checks.
-    const capSummary = text.slice(0, summary.length);
-    const capDetails = details ? text.slice(summary.length + 3) : '';
+    const capSummary = summary ? text.slice(0, summary.length) : '';
+    const capDetails = details ? text.slice(summary ? summary.length + 3 : 0) : '';
 
-    const intensity = first(INTENSITY_WORDS, summary) ?? first(INTENSITY_WORDS, details);
+    const intensity = first(TITLE_INTENSITY_WORDS, summary) ?? first(INTENSITY_WORDS, details);
     const type: WorkoutType = intensity === 'rest' ? 'other' : first(TYPE_WORDS, summary) ?? first(TYPE_WORDS, details) ?? 'other';
     const duration = intensity === 'rest' ? null : onlyOne(capSummary, capDetails, durations);
     const distance = intensity === 'rest' ? null : onlyDistance(capSummary, capDetails);
