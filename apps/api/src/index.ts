@@ -596,7 +596,8 @@ fastify.post('/api/read', async (request, reply) => {
                 if (r.source === 'fallback') fastify.log.info(`adaptation reason fell back: ${r.issues.map((x) => x.replace(/\d+(?:\.\d+)?/g, '#')).join('; ')}`);
                 trackVoice(fastify.log, {
                   surface: 'adaptation_reason', attempts: 1, fallback: r.source === 'fallback',
-                  bannedHits: r.issues.filter((x) => x.startsWith('banned: ')).map((x) => x.slice('banned: '.length)),
+                  // The reason check's own advice and coach catches count as banned too.
+                  bannedHits: r.issues.flatMap((x) => x.startsWith('banned: ') ? [x.slice('banned: '.length)] : x === 'advice' || x === 'coach' ? [x] : []),
                   unbackedCount: r.issues.filter((x) => x.startsWith('unbacked number')).length,
                 });
                 return r.text;
