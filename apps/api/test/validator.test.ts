@@ -100,6 +100,9 @@ test('every §4.1 ban is caught, and history is not mistaken for an order', () =
     // Review: clause-opening commands.
     'Run tempo today.', 'Run 30 easy minutes.', 'Go run easy today.', 'Go out for a run.', 'Go easy today.', 'Do a tempo.',
     'Take the day off.', 'Try a 30 minute run.', 'Hit the track today.', 'Sleep was short, so keep it easy.',
+    // Review 3.
+    'Body is settled \u2014 go easy today.', '(go easy today)', 'Stay easy today.', 'Skip the tempo.', 'Rest today.',
+    'Ride easy today.', 'Start with an easy run.', 'Just go easy today.', 'Today, have a rest day.',
   ];
   for (const v of banned) assert.ok(validateVoice(v, []).bannedHits.length > 0, `missed: ${v}`);
   const allowed = [
@@ -109,6 +112,9 @@ test('every §4.1 ban is caught, and history is not mistaken for an order', () =
     // Review: plan-referencing and questions are descriptive.
     'The plan has you run a tempo Thursday.', 'You have a rest day scheduled Sunday.',
     'Run totals are up for the week.', "Today's plan: easy run at 45 min.", 'Going into the weekend, load is steady.',
+    // Review 3: nouns and idioms at the start of a clause.
+    'Take last week: 3 runs.', 'Keep in mind the long run is Saturday.', 'Go back to Tuesday and sleep was 7:12.',
+    'Hit rate on your intervals held.', 'Plan today: run tempo.', 'Rest days sit on Monday and Friday.',
   ];
   for (const v of allowed) assert.deepEqual(validateVoice(v, [{ metric: 'Long run', value: '18 km' }]).bannedHits, [], v);
 });

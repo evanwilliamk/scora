@@ -41,13 +41,20 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   // "Have a rest day" only as an order at the start of a clause; "you have a
   // rest day scheduled Sunday" describes the plan.
   {
-    re: /\b(take|make (?:it|today|tomorrow|this)|treat (?:it|today|tomorrow|this) as) an? (?:\w+ )?rest day\b|(?:^|[.;:!?]\s+)have an? (?:\w+ )?rest day\b/i,
+    re: /\b(take|make (?:it|today|tomorrow|this)|treat (?:it|today|tomorrow|this) as) an? (?:\w+ )?rest day\b|(?:^|[.;:!?]\s+|,\s+|[—–]\s*)have an? (?:\w+ )?rest day\b/i,
     label: 'rest-day imperative',
   },
   // A clause that opens on a command verb: "Go easy today.", "Take the day
-  // off.", "Run 30 easy minutes." ("Run totals are up" is a noun and passes.)
+  // off.", "Run 30 easy minutes.", "— go easy today". Verbs that are also
+  // nouns or idioms ("Keep in mind", "Hit rate", "Take last week") count only
+  // with a workout object. A colon is not a clause start ("Plan today: run
+  // tempo" describes the plan).
   {
-    re: /(?:^|[.;:!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?)(?:go|take|head|hit|try|jog|ease|keep|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b/i,
+    re: new RegExp(
+      String.raw`(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|[—–]\s*|\s-\s+|\(\s*)(?:just\s+)?` +
+      String.raw`(?:go (?:easy|hard|out|run|for|long|slow|do|ride|on)|take (?:it|the day|a|an|today|tomorrow)|keep (?:it|things|today|the pace|easy)|hit (?:the|your|it)|try (?:a|an|the|to|some|\d)|head (?:out|to)|jog|ease (?:into|up|off|back|in)|stay (?:easy|off|home|in|light|low|aerobic)|ride (?:easy|hard|today|tomorrow|an?|\d)|skip (?:the|it|today|tomorrow|your|this)|rest (?:today|tomorrow|up|now|this)|start (?:with|easy|slow)|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b`,
+      'i',
+    ),
     label: 'workout imperative',
   },
   { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
