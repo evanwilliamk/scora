@@ -127,7 +127,7 @@ test('rest today in a standard week: no open day, so the session drops to easy a
   const [a] = await store.recent('a3', 5);
   assert.equal(a.adaptation_type, 'downgraded');
   assert.equal(a.reason_code, 'posture_rest_hard_no_window');
-  assert.match(a.reason_text, /is now an easy run at the same \d+ minutes\. Today's posture reads rest, and no other day this week keeps the hard days apart\.$/);
+  assert.match(a.reason_text, /is now an easy run at the same \d+ minutes\. Today's posture reads rest, and no other day this week could take it\.$/);
   assert.deepEqual(validateVoice(a.reason_text, []).bannedHits, []);
 });
 
