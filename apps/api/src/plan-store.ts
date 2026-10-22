@@ -1,5 +1,5 @@
-// Storage for manual plans. Saving a new paste marks the previous active
-// manual plan 'replaced'; its rows stay in the table but stop being read, so
+// Storage for pasted and calendar-imported plans. Saving a new one marks the
+// previous active one 'replaced'; its rows stay in the table but stop being read, so
 // nothing the athlete entered is deleted.
 
 import type { ParsedRow } from './plan-parse';
@@ -16,6 +16,9 @@ export interface StoredWorkout {
 
 export interface PlanStore {
   saveManualPlan(athleteId: string, rawText: string, rows: ParsedRow[]): Promise<{ planId: string }>;
+  // A calendar import (plan-ical.ts). Replaces the active pasted or imported
+  // plan; the calendar text itself is not stored, only the kept rows.
+  saveIcalPlan(athleteId: string, rows: ParsedRow[]): Promise<{ planId: string }>;
   // Active-plan workouts from `from` to `to` inclusive, oldest first.
   workoutsBetween(athleteId: string, from: string, to: string): Promise<StoredWorkout[]>;
 }
@@ -27,6 +30,11 @@ export function sqlPlanStore(db: Db): PlanStore {
     async saveManualPlan(athleteId, rawText, rows) {
       if (rows.length === 0) throw new Error('No workouts to save');
       const r = await db.query('select replace_manual_plan($1, $2, $3::jsonb) as id', [athleteId, rawText, JSON.stringify(rows)]);
+      return { planId: r.rows[0].id as string };
+    },
+    async saveIcalPlan(athleteId, rows) {
+      if (rows.length === 0) throw new Error('No workouts to save');
+      const r = await db.query(`select replace_external_plan($1, 'ical', null, $2::jsonb) as id`, [athleteId, JSON.stringify(rows)]);
       return { planId: r.rows[0].id as string };
     },
     async workoutsBetween(athleteId, from, to) {
@@ -57,6 +65,13 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
       // One transaction in Postgres (replace_manual_plan, migration 20261017010000).
       const r = await sb.rpc('replace_manual_plan', { p_athlete_id: athleteId, p_raw_text: rawText, p_rows: rows });
       check(r, 'Save plan');
+      return { planId: r.data as string };
+    },
+    async saveIcalPlan(athleteId, rows) {
+      if (rows.length === 0) throw new Error('No workouts to save');
+      // One transaction in Postgres (replace_external_plan, migration 20261022000000).
+      const r = await sb.rpc('replace_external_plan', { p_athlete_id: athleteId, p_external_source: 'ical', p_raw_text: null, p_rows: rows });
+      check(r, 'Save calendar plan');
       return { planId: r.data as string };
     },
     async workoutsBetween(athleteId, from, to) {
