@@ -385,9 +385,9 @@ struct PlanView: View {
         }
         .padding(.bottom, 4)
       }
-      if !unmarked.isEmpty {
+      if unmarked.contains(where: { $0.rowId != nil }) {
         Text("Past sessions").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
-        ForEach(unmarked) { w in
+        ForEach(unmarked.filter { $0.rowId != nil }) { w in
           HStack {
             VStack(alignment: .leading, spacing: 2) {
               Text(w.dayLabel).font(.subheadline.bold()).foregroundColor(.white)
@@ -395,7 +395,7 @@ struct PlanView: View {
             }
             Spacer()
             // A miss is recorded, never rescheduled (CLAUDE.md §6.2).
-            Button("Done") { Task { await mark(w, done: true) } }
+            Button("Completed") { Task { await mark(w, done: true) } }
               .font(.caption.bold()).foregroundColor(.orange)
             Button("Missed") { Task { await mark(w, done: false) } }
               .font(.caption.bold()).foregroundColor(.gray).padding(.leading, 10)
@@ -464,6 +464,9 @@ struct PlanView: View {
 
   private func mark(_ w: PlanWorkout, done: Bool) async {
     guard let rowId = w.rowId, let url = URL(string: "\(apiBase)/api/plan/workouts/\(rowId)/status") else { return }
+    #if DEBUG
+    if DemoMode.planSessions != nil { await MainActor.run { unmarked.removeAll { $0.id == w.id } }; return }
+    #endif
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -222,3 +222,15 @@ test('a refresh replaces only a calendar plan, never a plan pasted since (review
   const week = await store.workoutsBetween('rf1', '2026-10-23', '2026-10-23');
   assert.deepEqual(week.map((w) => w.planned_description), ['easy 30']);
 });
+
+test('a calendar refresh keeps done/missed marks on sessions it brings back (review 6)', async () => {
+  const store = sqlPlanStore(db);
+  const { rows } = importIcs(FEED, TODAY, 'UTC');
+  await store.saveIcalPlan('rf2', rows);
+  const [first] = await store.workoutsBetween('rf2', '2026-10-23', '2026-10-23');
+  assert.equal(await store.markCompleted('rf2', first.id, true, '2026-10-23'), true);
+  await store.refreshIcalPlan('rf2', rows);
+  const [again] = await store.workoutsBetween('rf2', '2026-10-23', '2026-10-23');
+  assert.notEqual(again.id, first.id, 'a new row');
+  assert.equal(again.athlete_completed, true, 'the mark came along');
+});

@@ -122,14 +122,16 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
     async markCompleted(athleteId, workoutId, completed, today) {
       // Only the active plan's sessions: the row's plan is checked first.
       const w = await sb.from('scheduled_workouts')
-        .select('id, training_plans!inner(current_status)')
+        .select('id, training_plan_id, training_plans!inner(current_status)')
         .eq('id', workoutId).eq('athlete_id', athleteId).lte('scheduled_date', today)
         .eq('training_plans.current_status', 'active').maybeSingle();
       check(w, 'Load workout');
       if (!w.data) return false;
       const r = await sb.from('scheduled_workouts')
         .update({ athlete_completed: completed, updated_at: new Date().toISOString() })
-        .eq('id', workoutId).eq('athlete_id', athleteId).select('id');
+        // Same plan and date as checked: a plan replaced in between is not marked.
+        .eq('id', workoutId).eq('athlete_id', athleteId).eq('training_plan_id', (w.data as any).training_plan_id)
+        .lte('scheduled_date', today).select('id');
       check(r, 'Mark workout');
       return (r.data ?? []).length === 1;
     },
