@@ -28,7 +28,7 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\b(go for an?|go do an?|do an easy|do a hard)\b/i, label: 'workout imperative' },
   // "Run a tempo today" is an order; "your last long run a week ago" is history.
   {
-    re: /(?<!\b(?:long|easy|tempo|recovery|hard|last|first|next|the|your|this|that|one|steady|threshold|interval|group|morning|evening|trail|track|race)\s)\brun an?\b(?!\s+(?:week|day|month|year|while|few|couple|bit|lot)\b)/i,
+    re: /(?<!\b(?:long|easy|tempo|recovery|hard|last|first|next|the|your|this|that|one|steady|threshold|interval|group|morning|evening|trail|track|race|you|did|didn't)\s)\brun an?\b(?!\s+(?:week|day|month|year|while|few|couple|bit|lot)\b)/i,
     label: 'workout imperative',
   },
   { re: /\btime to (run|go|get|train)\b/i, label: 'workout imperative' },
@@ -38,7 +38,18 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\byou'?re right,? i\b/i, label: 'sycophantic flip' },
   { re: /\b(medical|diagnos|prescrib)/i, label: 'clinical claim' },
   // "Most coaches would call this a rest day" (descriptive) stays allowed.
-  { re: /\b(take|have|make (?:it|today|tomorrow|this)|treat (?:it|today|tomorrow|this) as) an? (?:\w+ )?rest day\b/i, label: 'rest-day imperative' },
+  // "Have a rest day" only as an order at the start of a clause; "you have a
+  // rest day scheduled Sunday" describes the plan.
+  {
+    re: /\b(take|make (?:it|today|tomorrow|this)|treat (?:it|today|tomorrow|this) as) an? (?:\w+ )?rest day\b|(?:^|[.;:!?]\s+)have an? (?:\w+ )?rest day\b/i,
+    label: 'rest-day imperative',
+  },
+  // A clause that opens on a command verb: "Go easy today.", "Take the day
+  // off.", "Run 30 easy minutes." ("Run totals are up" is a noun and passes.)
+  {
+    re: /(?:^|[.;:!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?)(?:go|take|head|hit|try|jog|ease|keep|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b/i,
+    label: 'workout imperative',
+  },
   { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
   { re: /\breplac(?:e|es|ed|ing) (?:your|a|the) coach\b/i, label: 'anti-coach' },
   {

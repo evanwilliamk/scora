@@ -97,12 +97,18 @@ test('every §4.1 ban is caught, and history is not mistaken for an order', () =
     "I'm your coach.", 'As your AI coach, I see it.', 'You should sleep more.', 'You need to slow down.', 'You must rest.',
     "Let's go.", 'Crush it today.', 'Smash today.', 'Beast mode.', 'Does that sound right?', 'Let me know if that resonates.',
     'Good catch.', "You're right, I undersold it.", 'As an AI, I cannot know.', "I'm just an AI.", 'This is not medical advice.',
+    // Review: clause-opening commands.
+    'Run tempo today.', 'Run 30 easy minutes.', 'Go run easy today.', 'Go out for a run.', 'Go easy today.', 'Do a tempo.',
+    'Take the day off.', 'Try a 30 minute run.', 'Hit the track today.', 'Sleep was short, so keep it easy.',
   ];
   for (const v of banned) assert.ok(validateVoice(v, []).bannedHits.length > 0, `missed: ${v}`);
   const allowed = [
     'Your last long run a week ago was 18 km.', 'The long run a week ago set the tone.',
     'Easy run a day after the race is in the plan.', 'Most coaches would call this a rest day.',
     'Your coach, Sarah, wrote a note this week.',
+    // Review: plan-referencing and questions are descriptive.
+    'The plan has you run a tempo Thursday.', 'You have a rest day scheduled Sunday.',
+    'Run totals are up for the week.', "Today's plan: easy run at 45 min.", 'Going into the weekend, load is steady.',
   ];
   for (const v of allowed) assert.deepEqual(validateVoice(v, [{ metric: 'Long run', value: '18 km' }]).bannedHits, [], v);
 });
