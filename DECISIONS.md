@@ -3,10 +3,10 @@
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
 ### 2026-10-22: Rest posture with no move window drops the session to easy (Q19)
-- Status: DECIDED (Evan silent 3 days on a bucket 2 question, reversible)
+- Status: DECIDED (Evan silent 3 days on a bucket 2 question, reversible). Review flagged that CLAUDE.md §6.2 says rest + hard means move and insert rest; it is silent on no window, so this fills the gap, but you may prefer rest (option C) there
 - Branch: claude/rest-no-window-downgrade
 - Context: in a normal Tue/Thu/Sat-quality week every open day sits next to another hard day, so a rest-posture move found no window and the hard session stayed on the plan.
-- Choice: option B. When no day can take it (no window, or every window breaks the volume band), the session becomes easy at the same duration, reason code `posture_rest_hard_no_window`, named reason ("...is now an easy run at the same 45 minutes. Today's posture reads rest, and no other day this week keeps the hard days apart."). Long runs are excluded: they stay as planned and the skip is logged, since a long run is the block cornerstone. Engine version bumped to adaptation-v1.2.0.
+- Choice: option B. When no day can take it (no window, or every window breaks the volume band), the session becomes easy at the same duration, reason code `posture_rest_hard_no_window`, named reason ("...is now an easy run at the same 45 minutes. Today's posture reads rest, and no other day this week could take it."; worded so it is true whether adjacency, the volume band or race week blocked the move). Long runs are excluded: they stay as planned and the skip is logged, since a long run is the block cornerstone. Engine version bumped to adaptation-v1.2.0.
 - Alternatives: A, leave it (hard session stays); C, skip it (drops about 15% of the week, breaks the 10% rule).
 - To reverse: delete the fallback block at the end of `evaluateAdaptation` in `packages/plan-engine/src/adaptation-rules.ts` and the matching tests.
 
