@@ -6,7 +6,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.SCORA_NO_LISTEN = '1';
-for (const k of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'STRAVA_CLIENT_SECRET']) delete process.env[k];
+process.env.NODE_ENV = 'test';
+// Blank, not deleted: dotenv in index.ts fills only variables that are unset,
+// so a local .env can never put real keys back.
+for (const k of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'STRAVA_CLIENT_SECRET']) process.env[k] = '';
 
 let app: any;
 before(async () => {
