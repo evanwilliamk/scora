@@ -258,3 +258,17 @@ test('the read sees changes touching today, as quotable drivers (CLAUDE.md §1.3
   assert.deepEqual(validateVoice(ctx.drivers[0].value, ctx.drivers as any), { ok: true, bannedHits: [], unbackedNumbers: [] });
   assert.deepEqual(planChangeContext([]), { drivers: [], promptLine: '' });
 });
+
+test('dismissing a plan change: only the athlete, only once; it leaves the list and the read (doc 07 §5)', async () => {
+  await seedPlan('dm1', templateId);
+  await adaptTomorrow('dm1', '2026-10-28', 'back-off', store, DRAFTS);
+  const [a] = await store.recent('dm1', 5);
+  assert.ok(a, 'a change to dismiss');
+  assert.equal(await store.dismiss('someone-else', a.id), false, "not another athlete's");
+  assert.equal(await store.dismiss('dm1', a.id), true);
+  assert.equal(await store.dismiss('dm1', a.id), false, 'already dismissed');
+  assert.deepEqual(await store.recent('dm1', 5), []);
+  assert.deepEqual(await store.forDay('dm1', '2026-10-29'), []);
+  const kept = await db.query<{ n: number }>(`select count(*)::int as n from plan_adaptations where athlete_id = 'dm1'`);
+  assert.equal(kept.rows[0].n, 1, 'the change itself is kept');
+});

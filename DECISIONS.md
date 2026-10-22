@@ -2,6 +2,13 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-22: Dismissing a plan change (doc 07 v2 §5)
+- Status: DECIDED (reversible)
+- Branch: claude/dismiss-adaptation
+- Context: doc 07 specifies POST /plan/adaptations/{id}/dismiss and the column existed, but nothing set it.
+- Choice: `POST /api/plan/adaptations/:id/dismiss` (off with `PLAN_ADAPTATIONS`), only the athlete's own change and only once; an x on each change in Your Plan. A dismissed change leaves the list and the morning read's plan-change context; the change itself stays in the plan and in the table. Like the other plan routes it trusts `athleteId` until Sign in with Apple.
+- To reverse: the route in `index.ts`, `dismiss` in both adapt stores, the button in `PlanView.swift`.
+
 ### 2026-10-22: Sunday review names how the week tracked against the plan
 - Status: DECIDED (reversible; prompt wording is yours)
 - Branch: claude/weekly-plan-aware

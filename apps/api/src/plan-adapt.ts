@@ -69,6 +69,9 @@ export interface AdaptStore {
   // Changes that touch `day` on the active plan: a session moved to or from
   // it, or downgraded or displaced on it.
   forDay(athleteId: string, day: string): Promise<PlanAdaptationRow[]>;
+  // The athlete acknowledges a change (doc 07 v2 §5, POST /plan/adaptations/{id}/dismiss).
+  // The change itself stays; it leaves the list. False if it is not theirs or already dismissed.
+  dismiss(athleteId: string, adaptationId: string): Promise<boolean>;
 }
 
 const DAY = 86_400_000;
@@ -271,6 +274,14 @@ export function sqlAdaptStore(db: Db): AdaptStore {
       );
       return r.rows as PlanAdaptationRow[];
     },
+    async dismiss(athleteId, adaptationId) {
+      const r = await db.query(
+        `update plan_adaptations set dismissed_at = now()
+         where id = $1 and athlete_id = $2 and dismissed_at is null returning id`,
+        [adaptationId, athleteId],
+      );
+      return r.rows.length === 1;
+    },
   };
 }
 
@@ -326,6 +337,14 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
         .order('triggered_at', { ascending: true }).order('id');
       check(r, 'Load plan changes');
       return (r.data ?? []).map(({ training_plans: _p, ...a }: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
+    },
+    async dismiss(athleteId, adaptationId) {
+      const r = await sb.from('plan_adaptations')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('id', adaptationId).eq('athlete_id', athleteId).is('dismissed_at', null)
+        .select('id');
+      check(r, 'Dismiss adaptation');
+      return (r.data ?? []).length === 1;
     },
   };
 }
