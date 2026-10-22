@@ -56,3 +56,14 @@ test('without a plan nothing about plans appears; mondayOf finds the week', () =
   assert.equal(mondayOf('2026-10-25'), '2026-10-19');
   assert.equal(mondayOf('2026-10-26'), '2026-10-26');
 });
+
+test('a planned run with no duration leaves its day unknown and the plan clause out (review 4)', () => {
+  const planned = plannedRunMinutes([
+    { scheduled_date: '2026-10-19', planned_type: 'run', planned_intensity: 'easy', planned_duration_min: 40 },
+    { scheduled_date: '2026-10-21', planned_type: 'run', planned_intensity: 'long', planned_duration_min: null },
+  ]);
+  const w = weekSoFar([run('2026-10-19', 40), run('2026-10-21', 120)], '2026-10-22', planned);
+  assert.deepEqual(w.days.map((d) => d.planned_min), [40, 0, null, 0, 0, 0, 0]);
+  assert.equal(w.planned_to_date_min, undefined);
+  assert.doesNotMatch(w.line, /Plan:/);
+});
