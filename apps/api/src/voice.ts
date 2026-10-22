@@ -53,6 +53,12 @@ async function callOpenAI(
   return (json.choices?.[0]?.message?.content || '').trim();
 }
 
+// For logs: labels and a count only. The unbacked numbers themselves can be
+// health values the model invented or misquoted (doc 10 §6.5, no PHI in logs).
+function logNote(v: ValidationResult): string {
+  return `banned: ${v.bannedHits.join(', ') || 'none'}; unbacked numbers: ${v.unbackedNumbers.length}`;
+}
+
 function violationNote(v: ValidationResult): string {
   const bits: string[] = [];
   if (v.bannedHits.length) bits.push(`banned phrasing (${v.bannedHits.join(', ')})`);
@@ -90,7 +96,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
   }
   note(validation);
 
-  log?.warn(`voice validator caught draft 1: ${violationNote(validation)}`);
+  log?.warn(`voice validator caught draft 1: ${logNote(validation)}`);
 
   // Attempt 2 — feed the violations back. A hard failure here falls through to
   // the deterministic fallback rather than 500ing on an already-bad draft.
@@ -105,7 +111,7 @@ Rewrite it. Use ONLY the driver values above, reference no number that isn't a d
       return done({ voice: second, validation: secondValidation, usedFallback: false, attempts: 2 });
     }
     note(secondValidation);
-    log?.warn(`voice validator caught draft 2: ${violationNote(secondValidation)}`);
+    log?.warn(`voice validator caught draft 2: ${logNote(secondValidation)}`);
     validation = secondValidation;
   } catch (e) {
     log?.error(`voice retry LLM call failed: ${e instanceof Error ? e.message : String(e)}`);

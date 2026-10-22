@@ -10,4 +10,5 @@ if (!file) {
 }
 const report = voiceGateReport(readFileSync(file, 'utf8'));
 console.log(report.lines.join('\n'));
-process.exit(report.total.emissions > 0 && report.bannedRate >= 0.005 ? 1 : 0);
+// 0 pass, 1 over the bar, 3 no telemetry lines found (not a pass).
+process.exit(report.total.emissions === 0 ? 3 : report.bannedRate >= 0.005 ? 1 : 0);

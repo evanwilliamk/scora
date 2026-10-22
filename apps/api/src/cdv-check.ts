@@ -84,21 +84,27 @@ export async function checkCdvWithRetry(
   data: unknown,
   question: string,
   retry: (note: string) => Promise<string>,
-): Promise<{ raw: string; checked: CdvChecked; attempts: 1 | 2 }> {
+): Promise<{ raw: string; checked: CdvChecked; attempts: 1 | 2; seenBanned: string[]; seenUnbacked: number }> {
   const check = (r: string) => {
     const p = parseCdvLines(r);
     return checkCdvReply(p.voice, p.metricLines, data, question);
   };
   const first = check(raw);
-  if (!first.fallback) return { raw, checked: first, attempts: 1 };
+  // Every catch across both drafts, for the telemetry line.
+  const seen = (...cs: CdvChecked[]) => ({
+    seenBanned: cs.flatMap((c) => c.bannedHits),
+    seenUnbacked: cs.reduce((n, c) => n + c.unbackedNumbers.length, 0),
+  });
+  if (!first.fallback) return { raw, checked: first, attempts: 1, ...seen(first) };
   const issues = [
     ...first.bannedHits.map((b) => `banned phrasing (${b})`),
     ...(first.unbackedNumbers.length ? [`numbers not in the data: ${first.unbackedNumbers.join(', ')}`] : []),
   ].join('; ');
   try {
     const raw2 = await retry(`Your previous answer was rejected for: ${issues}. Rewrite it in the same format. Use only numbers written exactly as they appear in the data.`);
-    return { raw: raw2, checked: check(raw2), attempts: 2 };
+    const second = check(raw2);
+    return { raw: raw2, checked: second, attempts: 2, ...seen(first, second) };
   } catch {
-    return { raw, checked: first, attempts: 2 };
+    return { raw, checked: first, attempts: 2, ...seen(first) };
   }
 }

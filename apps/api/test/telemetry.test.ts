@@ -32,3 +32,18 @@ test('generateValidatedVoice reports a retry and a fallback with what was caught
   assert.equal(e.unbacked, 2);
   assert.ok(!lines[0].includes('61') && !lines[0].includes('HRV'), 'no draft text or values in the line');
 });
+
+test('validator warnings name what was caught without the numbers (no health values in logs)', async () => {
+  const drafts = ['HRV is 61ms.', 'HRV is 63ms.'];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ message: { content: drafts.shift() } }] }))) as typeof fetch;
+  const warns: string[] = [];
+  try {
+    await generateValidatedVoice({ systemPrompt: 's', userPrompt: 'u', drivers: [{ metric: 'HRV', value: '52ms' }], log: { warn: (m) => warns.push(m), error: () => {} } });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.ok(warns.length >= 2);
+  for (const w of warns) assert.doesNotMatch(w, /61|63/);
+  assert.match(warns[0], /unbacked numbers: 1/);
+});
