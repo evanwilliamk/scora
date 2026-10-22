@@ -35,13 +35,24 @@ export const PAUSE_DEFAULT_DAYS = 3;
 export const PAUSE_MAX_DAYS = 30;
 
 // Opt-out words carriers and WhatsApp users expect to work, beyond "stop".
-const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'opt out', 'optout']);
+const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'optout', 'revoke']);
 
 // The reply set is bounded (PRD §5.B.2): anything else is 'unknown' and gets
-// the help text. Matching ignores case, spacing and trailing punctuation.
+// the help text. Matching folds width and case, drops emoji, zero-width and
+// punctuation characters. Opting out must never fail: a message that starts
+// with a stop word ("STOP please", "stop sending at 6", "opt-out") stops.
 export function parseReply(text: string): ReplyCommand {
-  const t = text.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[.!?,]+$/g, '').trim();
-  if (STOP_WORDS.has(t)) return { cmd: 'stop' };
+  const t = text.normalize('NFKC').toLowerCase()
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ').trim();
+  const first = t.split(' ')[0] ?? '';
+  // "cancel", "end" and "quit" stop only on their own ("end of week was good"
+  // is not an opt-out); the unambiguous words stop wherever a message starts.
+  const leading = ['stop', 'stopall', 'unsubscribe', 'optout', 'revoke'];
+  if (STOP_WORDS.has(t.replace(/ /g, '')) || leading.includes(first) || /^opt out\b/.test(t) || /^please (stop|unsubscribe)\b/.test(t)) {
+    return { cmd: 'stop' };
+  }
   if (t === 'why') return { cmd: 'why' };
   if (t === 'more') return { cmd: 'more' };
   if (t === 'resume' || t === 'start' || t === 'unpause') return { cmd: 'resume' };
@@ -76,12 +87,18 @@ export function fixedReply(c: ReplyCommand): string | null {
 // Twilio webhook signature (X-Twilio-Signature): base64 HMAC-SHA1 of the full
 // URL followed by each POST parameter's name and value, sorted by name, keyed
 // with the account auth token. Compared in constant time.
-export function twilioSignature(authToken: string, url: string, params: Record<string, string>): string {
-  const data = Object.keys(params).sort().reduce((s, k) => s + k + params[k], url);
+// `url` must be the exact public URL Twilio called (scheme, host, path, query),
+// taken from config, not rebuilt from the request behind Railway's proxy. A
+// repeated parameter contributes each of its values, sorted.
+export function twilioSignature(authToken: string, url: string, params: Record<string, string | string[]>): string {
+  const data = Object.keys(params).sort().reduce((s, k) => {
+    const v = params[k];
+    return s + (Array.isArray(v) ? [...v].sort().map((x) => k + x).join('') : k + v);
+  }, url);
   return crypto.createHmac('sha1', authToken).update(data, 'utf8').digest('base64');
 }
 
-export function verifyTwilioSignature(authToken: string, url: string, params: Record<string, string>, signature: string | undefined): boolean {
+export function verifyTwilioSignature(authToken: string, url: string, params: Record<string, string | string[]>, signature: string | undefined): boolean {
   if (!authToken || !signature) return false;
   const expected = Buffer.from(twilioSignature(authToken, url, params));
   const given = Buffer.from(signature);
