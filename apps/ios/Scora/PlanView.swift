@@ -11,6 +11,9 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
   let durationMin: Int?
   let distanceKm: Double?
   let description: String?
+  // The session's steps on a SCORA plan, for Send to Watch. Nil for pasted
+  // and imported plans.
+  var steps: [PlanStep]? = nil
 
   var id: String { "\(date)|\(type)|\(description ?? "")" }
 
@@ -20,6 +23,7 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
     case scheduledDate = "scheduled_date", plannedType = "planned_type"
     case plannedIntensity = "planned_intensity", plannedDuration = "planned_duration_min"
     case plannedDistance = "planned_distance_km", plannedDescription = "planned_description"
+    case structure = "workout_structure_json"
   }
 
   init(date: String, type: String, intensity: String?, durationMin: Int?, distanceKm: Double?, description: String?) {
@@ -35,6 +39,8 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
     durationMin = try c.decodeIfPresent(Int.self, forKey: .durationMin) ?? c.decodeIfPresent(Int.self, forKey: .plannedDuration)
     distanceKm = try c.decodeIfPresent(Double.self, forKey: .distanceKm) ?? c.decodeIfPresent(Double.self, forKey: .plannedDistance)
     description = try c.decodeIfPresent(String.self, forKey: .description) ?? c.decodeIfPresent(String.self, forKey: .plannedDescription)
+    // A structure the app cannot read only hides Send to Watch.
+    steps = try? c.decodeIfPresent([PlanStep].self, forKey: .structure)
   }
 
   // "Tue Oct 20", from the plan date as written (no time zone shift).
@@ -228,6 +234,8 @@ struct PlanView: View {
   @State private var errorText: String?
   @State private var isSaving = false
   @State private var isEditing = false
+  @State private var watchNote: String?
+  @State private var sendingId: String?
   @State private var feedLink = ""
   @State private var isImporting = false
 
@@ -357,6 +365,7 @@ struct PlanView: View {
       }
       Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
       if let note { Text(note).font(.footnote).foregroundColor(.gray) }
+      if let watchNote { Text(watchNote).font(.footnote).foregroundColor(.gray) }
       ForEach(workouts) { w in
         VStack(alignment: .leading, spacing: 3) {
           HStack {
@@ -366,6 +375,16 @@ struct PlanView: View {
           }
           if let d = w.description, !d.isEmpty {
             Text(d).font(.footnote).foregroundColor(Color(white: 0.7))
+          }
+          if WatchSend.canSend(type: w.type, steps: w.steps, date: w.date, today: PlanDay.today()) {
+            Button(action: { Task { await sendToWatch(w) } }) {
+              HStack(spacing: 6) {
+                if sendingId == w.id { ProgressView().tint(.orange) }
+                Text("Send to Watch")
+              }
+            }
+            .font(.caption.bold()).foregroundColor(.orange).padding(.top, 2)
+            .disabled(sendingId != nil)
           }
         }
         .padding(12)
@@ -387,9 +406,27 @@ struct PlanView: View {
     }
   }
 
+  // MARK: Watch
+
+  private func sendToWatch(_ w: PlanWorkout) async {
+    guard let steps = w.steps else { return }
+    await MainActor.run { sendingId = w.id; watchNote = nil }
+    let outcome = await WatchSend.send(
+      steps: steps, type: w.type, date: w.date, displayName: w.detail, dayLabel: w.dayLabel,
+      scheduler: AppleWatchScheduler()
+    )
+    await MainActor.run { watchNote = WatchSend.message(outcome); sendingId = nil }
+  }
+
   // MARK: Networking
 
   private func loadPlan() async {
+    #if DEBUG
+    if let demo = DemoMode.planSessions {
+      await MainActor.run { workouts = demo }
+      return
+    }
+    #endif
     let today = PlanDay.today()
     var comps = URLComponents(string: "\(apiBase)/api/plan")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId), URLQueryItem(name: "today", value: today)]
