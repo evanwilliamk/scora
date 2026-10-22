@@ -58,7 +58,7 @@ export function planForRead(rows: StoredWorkout[], today: string): PlanForRead {
   };
 }
 
-// For the weekly review: how the last 7 days tracked against the athlete's
+// For the weekly review: how the last 7 complete days tracked against the athlete's
 // plan, as one driver ("180 of 210 planned run min"). Planned minutes are
 // stored durations of run sessions only; run minutes come from Strava. Null
 // when the plan has no run minutes in the window (nothing to compare).
@@ -68,9 +68,11 @@ export function weeklyPlanDriver(
   from: string,
   to: string,
 ): Driver | null {
-  const planned = rows
-    .filter((r) => r.scheduled_date >= from && r.scheduled_date <= to && r.planned_type === 'run' && r.planned_intensity !== 'rest')
-    .reduce((s, r) => s + (r.planned_duration_min ?? 0), 0);
+  const runRows = rows.filter((r) => r.scheduled_date >= from && r.scheduled_date <= to && r.planned_type === 'run' && r.planned_intensity !== 'rest');
+  // A run with no stored duration (a distance-only long run) makes the plan's
+  // minutes unknown: no driver rather than one that understates the plan.
+  if (runRows.some((r) => r.planned_duration_min == null)) return null;
+  const planned = runRows.reduce((s, r) => s + (r.planned_duration_min ?? 0), 0);
   if (planned <= 0) return null;
   const done = Math.round(activities
     .filter((a) => a.type === 'Run' && typeof a.start_date_local === 'string')
