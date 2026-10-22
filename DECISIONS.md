@@ -6,7 +6,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Status: DECIDED
 - Branch: claude/banned-phrase-parity
 - Context: a probe of every §4.1 ban found 8 misses ("go for an", "run an", "make today a rest day", "smarter/better than your coach", "replace your coach") and 3 false positives on history ("your last long run a week ago" read as "run a").
-- Choice: added the missing bans; "run a/an" now counts as an order only when it is not part of a session name ("long run a week ago") or a span of time. After review: a clause that opens on a command verb (go, take, head, hit, try, jog, ease, keep, "do a", "run 30/easy/tempo...") is banned too; "the plan has you run a tempo" and "you have a rest day scheduled" pass. A parity test lists one phrasing per ban plus the descriptive sentences that must pass.
+- Choice: added the missing bans; "run a/an" now counts as an order only when it is not part of a session name ("long run a week ago") or a span of time. After review: a clause that opens on a command verb (go, take, head, hit, try, jog, ease, keep, "do a", "run 30/easy/tempo...") is banned too; "the plan has you run a tempo" and "you have a rest day scheduled" pass. Review 3: dashes and parentheses start a clause too, stay/ride/skip/rest/start/just were added, and verbs that double as nouns or idioms (take, keep, hit, try, go) need a workout object, so "Keep in mind", "Hit rate" and "Plan today: run tempo" pass. A parity test lists one phrasing per ban plus the descriptive sentences that must pass.
 - Why: false positives cost a retry or the plain fallback read; misses let prescriptive or anti-coach text through.
 - To reverse: BANNED_PATTERNS in `apps/api/src/validator.ts`.
 
