@@ -30,6 +30,28 @@ final class ScoraUITests: XCTestCase {
         // Use XCTAssert and related functions to verify your tests produce the correct results.
     }
 
+    // Smoke tests on the DEBUG demo data (DemoMode.swift): no sign-in, no
+    // network, and nothing tapped that would call the API.
+
+    func testDashboardShowsTheNumbersFirstAndWeekSoFar() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["TODAY'S READ"].waitForExistence(timeout: 10) || app.staticTexts["Today's Read"].exists)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Sleep 7:12'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'since Monday'")).firstMatch.exists)
+    }
+
+    func testYourPlanShowsPastSessionsAndSendToWatch() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-plan", "-demo-plan-sessions"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Missed"].waitForExistence(timeout: 5), "a past session can be marked")
+        XCTAssertGreaterThanOrEqual(app.buttons.matching(identifier: "Send to Watch").count, 1)
+        XCTAssertTrue(app.buttons["Paste or import a new plan"].exists)
+    }
+
     func testLaunchPerformance() throws {
         if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
             // This measures how long it takes to launch your application.

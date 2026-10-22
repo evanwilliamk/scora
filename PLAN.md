@@ -15,6 +15,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 - [x] Sunday weekly read (generation + view)
 - [~] Sunday review names how the week tracked against the plan (`claude/weekly-plan-aware`, on `claude/integration-2026-10-22`)
 - [x] Driver-existence + banned-phrase validators, unit tests
+- [~] UI smoke tests on the DEBUG demo data: dashboard numbers and Week So Far; Your Plan past sessions and Send to Watch (`claude/ui-smoke-tests`, on `claude/integration-2026-10-22`; run with `-only-testing:ScoraUITests`)
 - [~] Route tests: the real Fastify routes driven with inject (flag gates, input checks); `SCORA_NO_LISTEN=1` keeps tests off the port and the scheduler (`claude/route-tests`, on `claude/integration-2026-10-22`)
 - [~] Tests: Strava and Oura token refresh (5-minute window, rotation, errors); a refreshed token that fails to save is now logged (`claude/tests-token-refresh`, on `claude/integration-2026-10-22`)
 - [~] Tests: the Supabase stores production runs (preferences claim/release, plan adaptations) pinned with a recording fake (`claude/tests-supabase-stores`, on `claude/integration-2026-10-22`)
