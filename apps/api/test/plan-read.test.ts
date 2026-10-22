@@ -147,3 +147,11 @@ test('weekly plan driver: run minutes against planned run minutes over the same 
   assert.deepEqual([v.bannedHits, v.unbackedNumbers], [[], []]);
   assert.equal(weeklyPlanDriver(rows.slice(3, 5), runs, '2026-10-16', '2026-10-22'), null, 'no planned run minutes: no driver');
 });
+
+test('weekly plan driver: a run with no duration means no driver (review 5)', () => {
+  const rows = [
+    { scheduled_date: '2026-10-16', planned_type: 'run', planned_intensity: 'easy', planned_duration_min: 40 },
+    { scheduled_date: '2026-10-18', planned_type: 'run', planned_intensity: 'long', planned_duration_min: null },
+  ];
+  assert.equal(weeklyPlanDriver(rows, [], '2026-10-16', '2026-10-22'), null);
+});

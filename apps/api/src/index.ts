@@ -1095,9 +1095,12 @@ fastify.post('/api/weekly', async (request, reply) => {
     // may name how the week tracked against it, never what to do about it.
     if (hasData) {
       try {
+        // The 7 complete days before today: a Sunday-morning review must not
+        // count Sunday's long run as missed.
         const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
-        const from = addDays(today, -6);
-        const planDriverWeek = weeklyPlanDriver(await planStore().workoutsBetween(String(athleteId), from, today), activities, from, today);
+        const from = addDays(today, -7);
+        const to = addDays(today, -1);
+        const planDriverWeek = weeklyPlanDriver(await planStore().workoutsBetween(String(athleteId), from, to), activities, from, to);
         if (planDriverWeek) drivers.push(planDriverWeek);
       } catch (e) {
         fastify.log.warn(`Plan not loaded for weekly: ${e instanceof Error ? e.message : e}`);
