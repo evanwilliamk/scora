@@ -9,6 +9,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: added the missing bans; "run a/an" now counts as an order only when it is not part of a session name ("long run a week ago") or a span of time. A parity test lists one phrasing per ban plus the descriptive sentences that must pass.
 - Why: false positives cost a retry or the plain fallback read; misses let prescriptive or anti-coach text through.
 - To reverse: BANNED_PATTERNS in `apps/api/src/validator.ts`.
+
 ### 2026-10-22: Chat (CDV) replies get the driver-existence check
 - Status: DECIDED (reversible)
 - Branch: claude/cdv-driver-check
