@@ -180,8 +180,9 @@ export function buildDashboard(
 
   // --- Recovery Signal (HRV + resting HR from Oura) ---
   if (oura && oura.hrvMs != null) {
+    // No trend without a week average to compare against (never "n/a wk").
     const trend =
-      oura.hrvWeekAvgMs != null ? `${pct(oura.hrvMs, oura.hrvWeekAvgMs)} wk` : undefined;
+      oura.hrvWeekAvgMs != null && oura.hrvWeekAvgMs > 0 ? `${pct(oura.hrvMs, oura.hrvWeekAvgMs)} wk` : undefined;
     cards.push({
       id: 'recovery_signal',
       title: 'Recovery Signal',
@@ -338,7 +339,7 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null)
       drivers.push({ metric: 'Sleep (last night)', value: dur, trend: oura.sleepScore != null ? `Oura ${oura.sleepScore}` : undefined });
     }
     if (oura.hrvMs != null) {
-      const trend = oura.hrvWeekAvgMs != null ? `${pct(oura.hrvMs, oura.hrvWeekAvgMs)} vs wk avg` : undefined;
+      const trend = oura.hrvWeekAvgMs != null && oura.hrvWeekAvgMs > 0 ? `${pct(oura.hrvMs, oura.hrvWeekAvgMs)} vs wk avg` : undefined;
       stats.push({ label: 'HRV', value: `${oura.hrvMs} ms`, trend });
       drivers.push({ metric: 'HRV', value: `${oura.hrvMs}ms`, trend });
     }

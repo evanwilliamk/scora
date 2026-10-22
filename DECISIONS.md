@@ -17,6 +17,13 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: A, drop the item and rely on manual paste; an LLM transcription like manual paste (one more gpt-4o-mini call per import, more fields filled); server-side feed fetch with refresh (needs the feed URL stored, which is often a private link, and SSRF guards).
 - Open for later: refreshing an imported plan (today the athlete re-imports), and repeating events.
 - To reverse: delete `apps/api/src/plan-ical.ts`, the route in `index.ts`, and migration `20261022000000_ical_plans.sql` (restores the manual-only unique index).
+### 2026-10-22: Review round 4 leftovers: observed plan changes, HRV trend, Week So Far wording
+- Status: DECIDED (reversible; the Week So Far line is copy, yours to change)
+- Branch: claude/review4-leftovers
+- Context: three findings left open on 2026-10-18.
+- Choice: (1) The plan-override check lets a sentence through when its only hits are "moved ... to" or "instead", it says the change happened ("is now", "was", "moved", "the plan"), it shares a weekday or session word with a recorded plan change, and it has no advice cue. Everything else still fails. (2) HRV shows no trend when there is no week average, instead of "n/a wk". (3) Week So Far names the weekday it compares through ("95 min through Thursday last week") instead of "by this point", since today may not be over.
+- Alternatives: (1) drop the override check when any plan change exists (too loose); (3) compare through yesterday.
+- To reverse: `overrideIsObservation` in `apps/api/src/validator.ts`; the `through` line in `apps/api/src/week-so-far.ts`.
 
 ### 2026-10-18: Week So Far line is built in code, not by the LLM
 - Status: DECIDED (reversible; copy is yours)

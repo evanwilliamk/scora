@@ -25,3 +25,8 @@ test('push body: numbers on the first line, the read below, trimmed', () => {
   assert.ok(long.startsWith('Sleep 7:12 · Load 412\n') && long.endsWith('…'));
   assert.equal(pushBody('', 'Plain.'), 'Plain.');
 });
+
+test('HRV with no week average shows no trend, never "n/a" (review 4)', () => {
+  assert.equal(numericLine([{ metric: 'HRV', value: '52ms', trend: 'n/a wk' }]), 'HRV 52ms');
+  assert.equal(numericLine([{ metric: 'HRV', value: '52ms', trend: '-12% wk' }]), 'HRV 52ms (-12% wk)');
+});

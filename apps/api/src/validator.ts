@@ -45,6 +45,32 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
 export const PLAN_DRIVER_METRIC = 'Plan today';
 const PLAN_OVERRIDE = /\b(skip(s|ping|ped)?\b|swap(s|ping|ped)?\b|postpon(e|es|ing|ed)\b|push(es|ed|ing)? (it|the \w+|today'?s \w+) (back|to)\b|(move|moves|moving|moved|shift|shifting) (it|the \w+|today'?s \w+) to\b|(can|could|should) wait\b|hold(ing)? off\b|sav(e|ing) (it|the \w+) for\b|cut(ting)? (it|the \w+) short\b|shorten(s|ing|ed)?\b|instead\b|(a )?better day for\b|(an )?eas(y|ier) (day|session|run|effort) (would|fits|makes|might)\b|lighter (day|session|option)\b|take it easy\b|dial(ing|led)? (it|things|the \w+) back\b|scal(e|ing) (it|the \w+) back\b)/i;
 
+// Words that only describe a change the plan engine already made: "the plan
+// moved the tempo to Wednesday", "is now an endurance run instead".
+const OBSERVED_CHANGE = /^(moved (it|the \w+|today'?s \w+) to|instead)$/i;
+// Any sign the sentence argues or advises rather than observes.
+const ADVICE_CUE = /\b(you (could|should|might|can|may|need)|could|should|consider|try|maybe|perhaps|why not|better|would|let'?s|if you)\b|^\s*(move|skip|swap|push|shift|save|cut|shorten|hold|take|keep|go|run|do|make|ease|rest)\b/i;
+// An observation says the change happened: "is now", "was moved", "the plan".
+const CHANGE_MARKER = /\b(is now|was|were|has been|moved|the plan|plan engine)\b/i;
+const CHANGE_WORDS = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tempo|threshold|intervals?|long run|hard session)\b/gi;
+
+// True when every plan-override hit in the voice is a plain observation of a
+// change the engine made (a 'Plan change' driver), CLAUDE.md §1.3.
+function overrideIsObservation(voice: string, drivers: Driver[]): boolean {
+  const changes = drivers.filter((d) => d.metric === 'Plan change').map((d) => d.value.toLowerCase());
+  if (changes.length === 0) return false;
+  const sentences = voice.split(/(?<=[.?])\s+/);
+  for (const sentence of sentences) {
+    const global = new RegExp(PLAN_OVERRIDE.source, 'gi');
+    const hits = [...sentence.matchAll(global)].map((m) => m[0]);
+    if (hits.length === 0) continue;
+    if (!hits.every((h) => OBSERVED_CHANGE.test(h)) || ADVICE_CUE.test(sentence) || !CHANGE_MARKER.test(sentence)) return false;
+    const words = (sentence.match(CHANGE_WORDS) ?? []).map((w) => w.toLowerCase());
+    if (!words.some((w) => changes.some((c) => c.includes(w)))) return false;
+  }
+  return true;
+}
+
 const EXCLAMATION = /!/;
 // Any pictographic emoji (§3.7 no emoji).
 const EMOJI = /\p{Extended_Pictographic}/u;
@@ -62,7 +88,7 @@ export function validateVoice(voice: string, drivers: Driver[]): ValidationResul
   for (const { re, label } of BANNED_PATTERNS) {
     if (re.test(voice)) bannedHits.push(label);
   }
-  if (drivers.some((d) => d.metric === PLAN_DRIVER_METRIC) && PLAN_OVERRIDE.test(voice)) {
+  if (drivers.some((d) => d.metric === PLAN_DRIVER_METRIC) && PLAN_OVERRIDE.test(voice) && !overrideIsObservation(voice, drivers)) {
     bannedHits.push('plan override');
   }
   if (EXCLAMATION.test(voice)) bannedHits.push('exclamation point');

@@ -13,7 +13,8 @@ export function numericLine(drivers: Driver[]): string {
     if (sleep.trend && /^Oura \d+$/.test(sleep.trend)) parts.push(sleep.trend);
   }
   const hrv = get('HRV');
-  if (hrv) parts.push(`HRV ${hrv.value}${hrv.trend ? ` (${hrv.trend})` : ''}`);
+  // Only a real percentage is shown; a missing comparison shows nothing.
+  if (hrv) parts.push(`HRV ${hrv.value}${hrv.trend && /^[+-]?\d+% wk$/.test(hrv.trend) ? ` (${hrv.trend})` : ''}`);
   const load = get('Load');
   if (load) parts.push(`Load ${load.value.replace(/\s*min$/, '')}`);
   return parts.join(' · ');

@@ -46,7 +46,10 @@ export function weekSoFar(activities: any[], today: string): WeekSoFar {
   let line = n === 0
     ? 'No runs yet this week.'
     : `${n} run${n === 1 ? '' : 's'}, ${total} min since Monday`;
-  if (last > 0) line += n === 0 ? ` Last week had ${last} min by this point.` : `; ${last} min by this point last week.`;
+  // Last week through the same weekday, named, so the comparison says exactly
+  // what it counts (today may not be over; last Wednesday was).
+  const through = new Date(t).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
+  if (last > 0) line += n === 0 ? ` Last week had ${last} min through ${through}.` : `; ${last} min through ${through} last week.`;
   else if (n > 0) line += '.';
   return { days, runs: n, total_min: total, last_week_to_date_min: last, line };
 }
