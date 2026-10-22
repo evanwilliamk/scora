@@ -91,6 +91,8 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 ## Later phases (not started, see the 90-day plan)
 
 - Phase 2 (rest): Stripe subscriptions, WorkoutKit, WhatsApp doorbell
+- [~] WhatsApp doorbell core: message composer, reply parser, Twilio signature check; no sending or storage (`claude/whatsapp-core`, on `claude/integration-2026-10-22`)
+- [ ] WhatsApp doorbell live: Twilio sandbox account, opt-in copy, inbound route, why-expansion prompt (Evan: account and copy). Done when a reply "why" in the sandbox returns a validated expansion
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`
