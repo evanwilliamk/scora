@@ -8,6 +8,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: doc 07 specifies POST /plan/adaptations/{id}/dismiss and the column existed, but nothing set it.
 - Choice: `POST /api/plan/adaptations/:id/dismiss` (off with `PLAN_ADAPTATIONS`), only the athlete's own change and only once; an x on each change in Your Plan. A dismissed change leaves the list and the morning read's plan-change context; the change itself stays in the plan and in the table. Like the other plan routes it trusts `athleteId` until Sign in with Apple.
 - To reverse: the route in `index.ts`, `dismiss` in both adapt stores, the button in `PlanView.swift`.
+
 ### 2026-10-22: Marking past sessions done or missed (CLAUDE.md §6.2)
 - Status: DECIDED (reversible; copy is yours)
 - Branch: claude/missed-workouts
