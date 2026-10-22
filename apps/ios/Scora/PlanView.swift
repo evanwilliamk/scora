@@ -184,6 +184,28 @@ enum CalendarFeed {
     return url
   }
 
+  // The imported link stays on the phone so the plan can be re-imported when
+  // Your Plan opens. A pasted plan replaces the import and clears it.
+  static let linkKey = "scora.calendarFeedLink"
+  static let refreshedKey = "scora.calendarFeedRefreshedAt"
+  static let refreshEvery: TimeInterval = 12 * 3600
+
+  static func needsRefresh(link: String?, lastRefresh: Date?, now: Date = Date()) -> Bool {
+    guard let link, normalizedURL(link) != nil else { return false }
+    guard let lastRefresh else { return true }
+    return now.timeIntervalSince(lastRefresh) >= refreshEvery
+  }
+
+  static var savedLink: String? {
+    get { UserDefaults.standard.string(forKey: linkKey) }
+    set {
+      UserDefaults.standard.set(newValue, forKey: linkKey)
+      UserDefaults.standard.set(newValue == nil ? nil : Date(), forKey: refreshedKey)
+    }
+  }
+
+  static var lastRefresh: Date? { UserDefaults.standard.object(forKey: refreshedKey) as? Date }
+
   // The feed text, if it looks like a calendar and is not too large.
   static func calendarText(_ data: Data) -> String? {
     guard data.count <= maxBytes, let text = String(data: data, encoding: .utf8),
@@ -237,7 +259,12 @@ struct PlanView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)
     .preferredColorScheme(.dark)
-    .task { await loadPlan() }
+    .task {
+      await loadPlan()
+      if CalendarFeed.needsRefresh(link: CalendarFeed.savedLink, lastRefresh: CalendarFeed.lastRefresh), let link = CalendarFeed.savedLink {
+        await importFeed(link: link, silent: true)
+      }
+    }
     .task { await loadPrediction() } // independent: shown even if the plan list fails
   }
 
@@ -291,7 +318,7 @@ struct PlanView: View {
           .background(Color(white: 0.11))
           .cornerRadius(8)
           .foregroundColor(.white)
-        Button(action: { Task { await importFeed() } }) {
+        Button(action: { Task { await importFeed(link: feedLink, silent: false) } }) {
           HStack(spacing: 8) {
             if isImporting { ProgressView().tint(.black) }
             Text("Import").bold()
@@ -344,6 +371,16 @@ struct PlanView: View {
         .padding(12)
         .background(Color(white: 0.11))
         .cornerRadius(10)
+      }
+      if let link = CalendarFeed.savedLink {
+        Button(action: { Task { await importFeed(link: link, silent: false) } }) {
+          HStack(spacing: 6) {
+            if isImporting { ProgressView().tint(.orange) }
+            Text("Refresh from your calendar")
+          }
+        }
+        .font(.subheadline).foregroundColor(.orange).padding(.top, 4)
+        .disabled(isImporting)
       }
       Button("Paste or import a new plan") { isEditing = true; text = "" }
         .font(.subheadline).foregroundColor(.orange).padding(.top, 4)
@@ -409,6 +446,7 @@ struct PlanView: View {
           note = PlanDay.skippedNote(saved.rejected.count)
           isEditing = false
           isSaving = false
+          CalendarFeed.savedLink = nil // the paste replaced the calendar import
         }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
       } else {
@@ -421,11 +459,12 @@ struct PlanView: View {
   }
 
   // Fetches the feed on the phone, then sends its text. The endpoint is off
-  // (404) until calendar import is switched on.
-  private func importFeed() async {
-    guard let feed = CalendarFeed.normalizedURL(feedLink), let url = URL(string: "\(apiBase)/api/plan/ical") else { return }
-    await MainActor.run { isImporting = true; errorText = nil }
-    let fail = { (msg: String) async in await MainActor.run { errorText = msg; isImporting = false } }
+  // (404) until calendar import is switched on. A silent refresh (on open)
+  // shows no error and keeps the plan already shown.
+  private func importFeed(link: String, silent: Bool) async {
+    guard let feed = CalendarFeed.normalizedURL(link), let url = URL(string: "\(apiBase)/api/plan/ical") else { return }
+    await MainActor.run { isImporting = true; if !silent { errorText = nil } }
+    let fail = { (msg: String) async in await MainActor.run { if !silent { errorText = msg }; isImporting = false } }
     guard let (feedData, feedResp) = try? await URLSession.shared.data(from: feed),
           (feedResp as? HTTPURLResponse)?.statusCode == 200 else {
       return await fail("Could not open that calendar link.")
@@ -449,6 +488,7 @@ struct PlanView: View {
           isEditing = false
           isImporting = false
           feedLink = ""
+          CalendarFeed.savedLink = link
         }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
       } else if status == 404 {
