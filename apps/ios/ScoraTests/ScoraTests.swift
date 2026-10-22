@@ -307,6 +307,16 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(CalendarFeed.normalizedURL(""))
     }
 
+    func testCalendarFeedRefreshTiming() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let link = "webcal://plans.example.com/a.ics"
+        XCTAssertFalse(CalendarFeed.needsRefresh(link: nil, lastRefresh: nil, now: now))
+        XCTAssertFalse(CalendarFeed.needsRefresh(link: "not a link", lastRefresh: nil, now: now))
+        XCTAssertTrue(CalendarFeed.needsRefresh(link: link, lastRefresh: nil, now: now))
+        XCTAssertFalse(CalendarFeed.needsRefresh(link: link, lastRefresh: now.addingTimeInterval(-3600), now: now))
+        XCTAssertTrue(CalendarFeed.needsRefresh(link: link, lastRefresh: now.addingTimeInterval(-13 * 3600), now: now))
+    }
+
     func testCalendarFeedText() {
         XCTAssertNotNil(CalendarFeed.calendarText(Data("BEGIN:VCALENDAR\r\nEND:VCALENDAR".utf8)))
         XCTAssertNil(CalendarFeed.calendarText(Data("<html>sign in</html>".utf8)))
