@@ -87,3 +87,39 @@ export function verifyTwilioSignature(authToken: string, url: string, params: Re
   const given = Buffer.from(signature);
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
+
+// 'why' and 'more' replies (doc 08 §5 and §6): LLM expansions of the morning
+// read, sent through generateValidatedVoice with the read's own drivers, so
+// they pass the same driver-existence and banned-phrase checks (or fall back).
+export interface ExpansionPrompt {
+  systemPrompt: string;
+  userPrompt: string;
+  maxTokens: number;
+}
+
+const EXPANSION_RULES = `RULES:
+- Every number must be one of the DRIVERS, written as it appears there. Never invent data.
+- Numeric-first: the value, then what it means.
+- You read and name what is happening. Never tell the athlete what to do, never suggest a workout, never change or question their plan. No "you should", "you need to", "go", "try", "take".
+- If the athlete disagrees, the read stands; do not apologize or change it.
+- Calm, plain English. No exclamation points, no emoji, no hype. Never call yourself a coach.
+- Plain text only, for a WhatsApp message.`;
+
+const driverBlock = (drivers: { metric: string; value: string; trend?: string }[]) =>
+  drivers.map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`).join('\n') || '- none';
+
+export function whyPrompt(read: string, posture: string, drivers: { metric: string; value: string; trend?: string }[]): ExpansionPrompt {
+  return {
+    systemPrompt: `You are SCORA, an interpretation layer for endurance athletes. The athlete replied "why" to this morning's read. Answer in 1 or 2 sentences: lead with the driver value that most shaped today's read and say why it matters.\n\n${EXPANSION_RULES}`,
+    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${posture}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
+    maxTokens: 100,
+  };
+}
+
+export function morePrompt(read: string, posture: string, drivers: { metric: string; value: string; trend?: string }[]): ExpansionPrompt {
+  return {
+    systemPrompt: `You are SCORA, an interpretation layer for endurance athletes. The athlete replied "more" to this morning's read. Write 3 or 4 sentences that connect today's posture to the shape of the week, using the drivers.\n\n${EXPANSION_RULES}`,
+    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${posture}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
+    maxTokens: 200,
+  };
+}

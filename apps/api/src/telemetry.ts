@@ -3,7 +3,7 @@
 // countable from the Railway logs. Labels and counts only: never the text,
 // never a health value (doc 10 §6.5, no PHI in logs).
 
-export type VoiceSurface = 'daily' | 'weekly' | 'card' | 'cdv' | 'adaptation_reason';
+export type VoiceSurface = 'daily' | 'weekly' | 'card' | 'cdv' | 'adaptation_reason' | 'why' | 'more';
 
 export interface VoiceEmission {
   surface: VoiceSurface;

@@ -49,3 +49,35 @@ test("Twilio signature matches Twilio's documented example and rejects tampering
   assert.equal(verifyTwilioSignature('', url, params, 'L/OH5YylLD5NRKLltdqwSvS0BnU='), false);
   assert.equal(verifyTwilioSignature('12345', url, params, 'short'), false);
 });
+
+test("why and more prompts carry the read, the posture and only the read's drivers (doc 08 §5, §6)", async () => {
+  const { whyPrompt, morePrompt } = await import('../src/whatsapp');
+  const drivers = [{ metric: 'HRV', value: '38ms', trend: '-9% wk' }, { metric: 'Sleep', value: '6:42' }];
+  const why = whyPrompt('You are two nights of thin sleep in.', 'back-off', drivers);
+  assert.equal(why.maxTokens, 100);
+  assert.match(why.systemPrompt, /1 or 2 sentences/);
+  assert.match(why.systemPrompt, /Never tell the athlete what to do/);
+  assert.match(why.userPrompt, /- HRV: 38ms \(-9% wk\)\n- Sleep: 6:42/);
+  assert.match(why.userPrompt, /TODAY'S POSTURE: back-off/);
+  const more = morePrompt('x', 'steady', []);
+  assert.equal(more.maxTokens, 200);
+  assert.match(more.systemPrompt, /3 or 4 sentences/);
+  assert.match(more.userPrompt, /- none/);
+});
+
+test('a why reply runs through the validators and falls back when it invents a number', async () => {
+  const { whyPrompt } = await import('../src/whatsapp');
+  const { generateValidatedVoice } = await import('../src/voice');
+  const drivers = [{ metric: 'HRV', value: '38ms', trend: '-9% wk' }];
+  const p = whyPrompt('read', 'back-off', drivers);
+  const drafts = ['HRV at 31ms is the lowest in a month.', 'HRV at 29ms.'];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ message: { content: drafts.shift() } }] }))) as typeof fetch;
+  try {
+    const r = await generateValidatedVoice({ ...p, drivers, surface: 'why' });
+    assert.equal(r.usedFallback, true);
+    assert.match(r.voice, /HRV 38ms \(-9% wk\)/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
