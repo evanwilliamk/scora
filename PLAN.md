@@ -31,6 +31,7 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] Numeric line first (PRD §5.A.2, CLAUDE.md §3.3) in the read, the push and Today's Read, plus the posture badge (PRD §5.A.3) (`claude/numeric-first-read`, on `claude/integration-2026-10-18`; seen on the simulator)
 - [~] Week So Far: Mon to Sun run-minute bars + one line built from the same numbers (PRD §5.A.3) (`claude/week-so-far`, on `claude/numeric-first-read`; seen on the simulator)
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key)
+- [~] Tests: APNs provider JWT verified against a throwaway key; scheduled push delivery (body format, dead-token pruning) (`claude/tests-push-prefs`, on `claude/integration-2026-10-22`)
 - [!] Sign in with Apple (auth: needs Evan)
 - [x] Review and land `origin/feat/voice-pattern-library` (pattern engine + 7 ported v0.3 entries) (merged 2026-10-15 from `claude/voice-pattern-library`)
 - [x] Posture engine as its own module with unit tests (merged 2026-10-15 from `claude/posture-engine`; not wired into the API yet)
