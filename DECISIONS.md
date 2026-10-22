@@ -6,7 +6,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Status: DECIDED (reversible; needs your device try)
 - Branch: claude/workoutkit-schedule
 - Context: PLAN item "WorkoutKit scheduling to the Watch" needs a paired device to try; the code can be built and tested without one.
-- Choice: `GET /api/plan` now returns each session's `workout_structure_json`. Your Plan shows "Send to Watch" on SCORA plan sessions the Watch can run as written (run or ride, with steps, today to 7 days out); it asks WorkoutScheduler for permission and schedules the session at 06:00 on its day. Pasted and imported plans have no steps, so they never show the button. Messages: "Sent to your Watch for Fri Oct 23." and three failure lines (copy is yours).
+- Choice: `GET /api/plan` now returns each session's `workout_structure_json`. Your Plan shows "Send to Watch" on SCORA plan sessions the Watch can run as written (run or ride, with steps, today to 7 days out); it asks WorkoutScheduler for permission and schedules the session at 06:00 on its day (today after 06:00: a minute from now). Sending again replaces the earlier send of that session; when the Watch's scheduled list is full it says so. Pasted and imported plans have no steps, so they never show the button. Messages: "Sent to your Watch for Fri Oct 23." and three failure lines (copy is yours).
 - Not yet known: whether WorkoutScheduler needs an extra Info.plist usage string on a real device; the first device try will say. DEBUG `-demo-plan-sessions` shows two sample sessions (screens/2026-10-22-send-to-watch.png).
 - To reverse: the "Send to Watch" button in `PlanView.swift`; `WatchSend` in `WorkoutExport.swift`.
 
