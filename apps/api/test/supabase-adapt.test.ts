@@ -49,3 +49,12 @@ test('the fake rejects builder methods supabase-js does not have', () => {
   const sb = fakeSupabase();
   assert.throws(() => (sb.from('x') as any).eqq('a', 1), /no builder method "eqq"/);
 });
+
+test('dismiss filters on the change, its athlete and not-yet-dismissed', async () => {
+  const sb = fakeSupabase([{ data: [{ id: 'x' }] }]);
+  assert.equal(await supabaseAdaptStore(sb).dismiss('a1', 'x'), true);
+  const calls = sb.queries[0].calls;
+  assert.equal(calls[0][0], 'update');
+  assert.deepEqual(calls.slice(1), [['eq', 'id', 'x'], ['eq', 'athlete_id', 'a1'], ['is', 'dismissed_at', null], ['select', 'id']]);
+  assert.equal(await supabaseAdaptStore(fakeSupabase([{ data: [] }])).dismiss('a1', 'x'), false);
+});

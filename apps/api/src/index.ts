@@ -1033,6 +1033,24 @@ fastify.get('/api/calories', async (request, reply) => {
 
 // Named plan adaptations, newest first (doc 07 v2 §5: GET /plan/adaptations).
 // Every change the engine made shows its reason; none are silent.
+// The athlete acknowledges a plan change (doc 07 v2 §5). It leaves the list
+// and the read; the change itself stays in the plan.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+fastify.post('/api/plan/adaptations/:id/dismiss', async (request, reply) => {
+  if (!adaptationsEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const { id } = request.params as { id: string };
+  const { athleteId } = (request.body as any) || {};
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  if (!UUID.test(id)) return reply.code(404).send({ error: 'No such plan change.' });
+  try {
+    const ok = await adaptStore().dismiss(String(athleteId), id);
+    return ok ? reply.send({ dismissed: id }) : reply.code(404).send({ error: 'No such plan change.' });
+  } catch (e) {
+    fastify.log.error(`Adaptation dismiss failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Dismissing the plan change failed.' });
+  }
+});
+
 fastify.get('/api/plan/adaptations', async (request, reply) => {
   // Off with the feature. Like /api/plan it trusts athleteId until Sign in
   // with Apple lands (auth is Evan's item).

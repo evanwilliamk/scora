@@ -108,6 +108,10 @@ enum PlanChanges {
   static func visible(_ rows: [PlanAdaptation]) -> [PlanAdaptation] {
     Array(rows.filter { $0.type != "skipped" }.sorted { $0.triggeredAt > $1.triggeredAt }.prefix(3))
   }
+
+  static func dismissing(_ id: String, from rows: [PlanAdaptation]) -> [PlanAdaptation] {
+    rows.filter { $0.id != id }
+  }
 }
 
 // Race prediction from GET /api/plan/prediction (PRD §5.B.6). Always a range.
@@ -363,13 +367,20 @@ struct PlanView: View {
       if !changes.isEmpty {
         Text("Plan changes").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
         ForEach(changes) { c in
-          Text(c.reason)
-            .font(.footnote)
-            .foregroundColor(Color(white: 0.8))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Color(white: 0.08))
-            .cornerRadius(10)
+          HStack(alignment: .top, spacing: 8) {
+            Text(c.reason)
+              .font(.footnote)
+              .foregroundColor(Color(white: 0.8))
+              .frame(maxWidth: .infinity, alignment: .leading)
+            // Acknowledge: the change stays in the plan, it leaves this list.
+            Button(action: { Task { await dismissChange(c) } }) {
+              Image(systemName: "xmark").font(.caption2.bold()).foregroundColor(.gray)
+            }
+            .accessibilityLabel("Dismiss this plan change")
+          }
+          .padding(12)
+          .background(Color(white: 0.08))
+          .cornerRadius(10)
         }
       }
       if let prediction {
@@ -469,6 +480,20 @@ struct PlanView: View {
           let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
     else { return }
     await MainActor.run { changes = PlanChanges.visible(decoded.adaptations) }
+  }
+
+  private func dismissChange(_ c: PlanAdaptation) async {
+    guard let url = URL(string: "\(apiBase)/api/plan/adaptations/\(c.id)/dismiss") else { return }
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId])
+    guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return }
+    let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+    // 404: already dismissed (another device) or gone; either way it leaves the list.
+    if status == 200 || status == 404 {
+      await MainActor.run { changes = PlanChanges.dismissing(c.id, from: changes) }
+    }
   }
 
   // Off (404) until predictions are switched on; then shown above the plan.

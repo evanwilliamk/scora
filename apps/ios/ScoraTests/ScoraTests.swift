@@ -406,6 +406,13 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(CalendarFeed.lastRefresh(for: "test-a"))
     }
 
+    func testDismissingAPlanChangeRemovesOnlyThatOne() throws {
+        let json = #"{"adaptations":[{"id":"a","adaptation_type":"moved","reason_text":"One.","triggered_at":"2026-10-21T06:00:00.000Z"},{"id":"b","adaptation_type":"downgraded","reason_text":"Two.","triggered_at":"2026-10-22T06:00:00.000Z"}]}"#
+        let rows = try JSONDecoder().decode(PlanAdaptationsResponse.self, from: Data(json.utf8)).adaptations
+        XCTAssertEqual(PlanChanges.dismissing("a", from: rows).map(\.id), ["b"])
+        XCTAssertEqual(PlanChanges.dismissing("zzz", from: rows).count, 2)
+    }
+
     func testCalendarFeedText() {
         XCTAssertNotNil(CalendarFeed.calendarText(Data("BEGIN:VCALENDAR\r\nEND:VCALENDAR".utf8)))
         XCTAssertNil(CalendarFeed.calendarText(Data("<html>sign in</html>".utf8)))
