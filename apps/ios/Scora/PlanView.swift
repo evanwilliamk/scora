@@ -163,11 +163,32 @@ enum PlanDay {
     Array(rows.filter { $0.date >= today }.sorted { $0.date < $1.date }.prefix(14))
   }
 
-  static func skippedNote(_ count: Int) -> String? {
+  static func skippedNote(_ count: Int, unit: String = "line") -> String? {
     guard count > 0 else { return nil }
     return count == 1
-      ? "1 line could not be read and was left out."
-      : "\(count) lines could not be read and were left out."
+      ? "1 \(unit) could not be read and was left out."
+      : "\(count) \(unit)s could not be read and were left out."
+  }
+}
+
+// A plan app's calendar link. The phone fetches the feed and sends its text
+// to POST /api/plan/ical; the link itself never leaves the device.
+enum CalendarFeed {
+  static let maxBytes = 1_000_000
+
+  // webcal:// and https:// links; anything else (http, file, data) is refused.
+  static func normalizedURL(_ raw: String) -> URL? {
+    var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if s.lowercased().hasPrefix("webcal://") { s = "https://" + s.dropFirst("webcal://".count) }
+    guard let url = URL(string: s), url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty else { return nil }
+    return url
+  }
+
+  // The feed text, if it looks like a calendar and is not too large.
+  static func calendarText(_ data: Data) -> String? {
+    guard data.count <= maxBytes, let text = String(data: data, encoding: .utf8),
+          text.range(of: "BEGIN:VCALENDAR", options: .caseInsensitive) != nil else { return nil }
+    return text
   }
 }
 
@@ -185,6 +206,8 @@ struct PlanView: View {
   @State private var errorText: String?
   @State private var isSaving = false
   @State private var isEditing = false
+  @State private var feedLink = ""
+  @State private var isImporting = false
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -252,6 +275,32 @@ struct PlanView: View {
           Button("Cancel") { isEditing = false }.foregroundColor(.gray).padding(.leading, 8)
         }
       }
+      Text("Or import a calendar link")
+        .font(.subheadline.bold())
+        .foregroundColor(.white)
+        .padding(.top, 12)
+      Text("If your plan app shares your plan as a calendar (a webcal or https link), paste the link here.")
+        .font(.footnote)
+        .foregroundColor(.gray)
+      HStack(spacing: 8) {
+        TextField("webcal://...", text: $feedLink)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+          .keyboardType(.URL)
+          .padding(10)
+          .background(Color(white: 0.11))
+          .cornerRadius(8)
+          .foregroundColor(.white)
+        Button(action: { Task { await importFeed() } }) {
+          HStack(spacing: 8) {
+            if isImporting { ProgressView().tint(.black) }
+            Text("Import").bold()
+          }
+          .padding(.horizontal, 14).padding(.vertical, 10)
+          .background(Color.orange).foregroundColor(.black).cornerRadius(8)
+        }
+        .disabled(isImporting || CalendarFeed.normalizedURL(feedLink) == nil)
+      }
     }
   }
 
@@ -296,7 +345,7 @@ struct PlanView: View {
         .background(Color(white: 0.11))
         .cornerRadius(10)
       }
-      Button("Paste a new plan") { isEditing = true; text = "" }
+      Button("Paste or import a new plan") { isEditing = true; text = "" }
         .font(.subheadline).foregroundColor(.orange).padding(.top, 4)
     }
   }
@@ -368,6 +417,47 @@ struct PlanView: View {
       }
     } catch {
       await MainActor.run { errorText = error.localizedDescription; isSaving = false }
+    }
+  }
+
+  // Fetches the feed on the phone, then sends its text. The endpoint is off
+  // (404) until calendar import is switched on.
+  private func importFeed() async {
+    guard let feed = CalendarFeed.normalizedURL(feedLink), let url = URL(string: "\(apiBase)/api/plan/ical") else { return }
+    await MainActor.run { isImporting = true; errorText = nil }
+    let fail = { (msg: String) async in await MainActor.run { errorText = msg; isImporting = false } }
+    guard let (feedData, feedResp) = try? await URLSession.shared.data(from: feed),
+          (feedResp as? HTTPURLResponse)?.statusCode == 200 else {
+      return await fail("Could not open that calendar link.")
+    }
+    guard let ics = CalendarFeed.calendarText(feedData) else {
+      return await fail("That link did not return a calendar.")
+    }
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: [
+      "athleteId": tokenManager.athleteId, "ics": ics, "today": PlanDay.today(), "timeZone": TimeZone.current.identifier,
+    ])
+    do {
+      let (data, resp) = try await URLSession.shared.data(for: req)
+      let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+      if status == 200, let saved = try? JSONDecoder().decode(PlanSaveResponse.self, from: data) {
+        await MainActor.run {
+          workouts = PlanDay.upcoming(saved.workouts, today: PlanDay.today())
+          note = PlanDay.skippedNote(saved.rejected.count, unit: "event")
+          isEditing = false
+          isImporting = false
+          feedLink = ""
+        }
+        NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
+      } else if status == 404 {
+        await fail("Calendar import is not available yet.")
+      } else {
+        await fail((try? JSONDecoder().decode(PlanErrorResponse.self, from: data))?.error ?? "Importing the calendar failed.")
+      }
+    } catch {
+      await fail(error.localizedDescription)
     }
   }
 }

@@ -9,6 +9,14 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: option B. When no day can take it (no window, or every window breaks the volume band), the session becomes easy at the same duration, reason code `posture_rest_hard_no_window`, named reason ("...is now an easy run at the same 45 minutes. Today's posture reads rest, and no other day this week keeps the hard days apart."). Long runs are excluded: they stay as planned and the skip is logged, since a long run is the block cornerstone. Engine version bumped to adaptation-v1.2.0.
 - Alternatives: A, leave it (hard session stays); C, skip it (drops about 15% of the week, breaks the 10% rule).
 - To reverse: delete the fallback block at the end of `evaluateAdaptation` in `packages/plan-engine/src/adaptation-rules.ts` and the matching tests.
+### 2026-10-22: Calendar (iCal) import as a plan source (Q17)
+- Status: DECIDED (Evan silent 3 days on a bucket 2 question, reversible)
+- Branch: claude/ical-plan-import
+- Context: Strava API v3 has no planned-workout endpoint, so "Strava scheduled activities ingestion" cannot be built. Q17 recommended iCal import.
+- Choice: option B, `POST /api/plan/ical`, off unless `ICAL_IMPORT=on`. The app fetches the athlete's feed and sends the .ics text; the server never fetches a URL (no SSRF surface, no stored feed link). No LLM: each VEVENT is a session, date from DTSTART (UTC times moved to the athlete's zone), type and intensity from plain keywords, and a duration or distance only when exactly one is written in the event's text; the rows then pass the same validator as a pasted plan. Repeating, cancelled and undated events are left out with a reason; past events are skipped quietly. One external plan per athlete: a calendar import replaces a pasted plan and the reverse (old ones marked replaced, never deleted). The calendar text is not stored, only the kept rows.
+- Alternatives: A, drop the item and rely on manual paste; an LLM transcription like manual paste (one more gpt-4o-mini call per import, more fields filled); server-side feed fetch with refresh (needs the feed URL stored, which is often a private link, and SSRF guards).
+- Open for later: refreshing an imported plan (today the athlete re-imports), and repeating events.
+- To reverse: delete `apps/api/src/plan-ical.ts`, the route in `index.ts`, and migration `20261022000000_ical_plans.sql` (restores the manual-only unique index).
 
 ### 2026-10-18: Week So Far line is built in code, not by the LLM
 - Status: DECIDED (reversible; copy is yours)

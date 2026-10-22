@@ -33,6 +33,7 @@ import { isValidTimezone, isValidDeliveryMinute } from './delivery';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore } from './plan-store';
+import { importIcs, IcalImportError } from './plan-ical';
 import { planForRead } from './plan-read';
 import { numericLine } from './numeric-line';
 import { weekSoFar } from './week-so-far';
@@ -876,6 +877,38 @@ fastify.post('/api/plan/manual', async (request, reply) => {
     if (e instanceof PlanParseError) return reply.code(422).send({ error: e.message });
     fastify.log.error(`Manual plan failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Saving the plan failed.' });
+  }
+});
+
+// Calendar import (Q17 option B): the app fetches the athlete's plan feed and
+// sends the .ics text; the server never fetches a URL. Off unless ICAL_IMPORT=on.
+fastify.post('/api/plan/ical', { bodyLimit: 1_100_000 }, async (request, reply) => {
+  if (process.env.ICAL_IMPORT !== 'on') return reply.code(404).send({ error: 'Not found' });
+  const { athleteId, ics, today: clientToday, timeZone } = (request.body as any) || {};
+  if (!athleteId || typeof ics !== 'string') {
+    return reply.code(400).send({ error: 'Missing: athleteId, ics' });
+  }
+  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  try {
+    const parsed = importIcs(ics, today, typeof timeZone === 'string' ? timeZone : undefined);
+    if (parsed.rows.length === 0) {
+      return reply.code(422).send({
+        error: 'No upcoming sessions were found in this calendar.',
+        rejected: parsed.rejected.map((r) => r.reason),
+      });
+    }
+    const { planId } = await planStore().saveIcalPlan(String(athleteId), parsed.rows);
+    return reply.send({
+      planId,
+      workouts: parsed.rows,
+      rejected: parsed.rejected.map((r) => r.reason),
+      adjusted: parsed.adjusted.map((r) => r.reason),
+      skipped_past: parsed.skipped_past,
+    });
+  } catch (e) {
+    if (e instanceof IcalImportError) return reply.code(422).send({ error: e.message });
+    fastify.log.error(`Calendar import failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Importing the calendar failed.' });
   }
 });
 

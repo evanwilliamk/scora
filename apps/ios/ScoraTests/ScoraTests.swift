@@ -294,6 +294,23 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(PlanDay.skippedNote(0))
         XCTAssertEqual(PlanDay.skippedNote(1), "1 line could not be read and was left out.")
         XCTAssertEqual(PlanDay.skippedNote(3), "3 lines could not be read and were left out.")
+        XCTAssertEqual(PlanDay.skippedNote(2, unit: "event"), "2 events could not be read and were left out.")
+    }
+
+    func testCalendarFeedLinks() {
+        XCTAssertEqual(CalendarFeed.normalizedURL(" webcal://plans.example.com/feed/abc.ics ")?.absoluteString, "https://plans.example.com/feed/abc.ics")
+        XCTAssertEqual(CalendarFeed.normalizedURL("WEBCAL://plans.example.com/a.ics")?.absoluteString, "https://plans.example.com/a.ics")
+        XCTAssertEqual(CalendarFeed.normalizedURL("https://plans.example.com/a.ics")?.host, "plans.example.com")
+        XCTAssertNil(CalendarFeed.normalizedURL("http://plans.example.com/a.ics"))
+        XCTAssertNil(CalendarFeed.normalizedURL("file:///etc/hosts"))
+        XCTAssertNil(CalendarFeed.normalizedURL("not a link"))
+        XCTAssertNil(CalendarFeed.normalizedURL(""))
+    }
+
+    func testCalendarFeedText() {
+        XCTAssertNotNil(CalendarFeed.calendarText(Data("BEGIN:VCALENDAR\r\nEND:VCALENDAR".utf8)))
+        XCTAssertNil(CalendarFeed.calendarText(Data("<html>sign in</html>".utf8)))
+        XCTAssertNil(CalendarFeed.calendarText(Data(repeating: 65, count: CalendarFeed.maxBytes + 1)))
     }
 
     // MARK: - Onboarding

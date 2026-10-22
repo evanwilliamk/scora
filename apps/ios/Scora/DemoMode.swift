@@ -1,12 +1,13 @@
 import Foundation
 
 // DEBUG only: launch with -demo-read to see the dashboard with a fixed sample
-// read (no sign-in, no network), and -demo-chart to open its HRV chart. For
+// read (no sign-in, no network), -demo-chart to open its HRV chart, and -demo-plan to open Your Plan. For
 // checking UI on the simulator; release builds never contain it.
 #if DEBUG
 enum DemoMode {
   static var isOn: Bool { ProcessInfo.processInfo.arguments.contains("-demo-read") }
   static var opensChart: Bool { ProcessInfo.processInfo.arguments.contains("-demo-chart") }
+  static var opensPlan: Bool { ProcessInfo.processInfo.arguments.contains("-demo-plan") }
 
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], [40, 0, 80, 0, nil, nil, nil] as [Int?]).enumerated().map { i, p in
