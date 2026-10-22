@@ -47,14 +47,15 @@ struct WeekSoFarView: View {
           let (h, p) = hp
           VStack(spacing: 4) {
             ZStack(alignment: .bottom) {
-              if let p, p > 0 {
-                RoundedRectangle(cornerRadius: 2)
-                  .stroke(Color(white: 0.45), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                  .frame(height: 44 * p)
-              }
               RoundedRectangle(cornerRadius: 2)
                 .fill(h == nil ? Color(white: 0.15) : (day.runMin ?? 0) > 0 ? Color.orange : Color(white: 0.3))
                 .frame(height: max(3, 44 * (h ?? 0)))
+              // The plan's outline sits in front, so it shows even when the run met it.
+              if let p, p > 0 {
+                RoundedRectangle(cornerRadius: 2)
+                  .stroke(Color(white: 0.75), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                  .frame(height: max(4, 44 * p))
+              }
             }
             .frame(height: 44, alignment: .bottom)
             Text(String(day.weekday.prefix(1))).font(.caption2).foregroundColor(.gray)
