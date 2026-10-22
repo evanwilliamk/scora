@@ -32,7 +32,7 @@ export function reasonPrompt(d: Decided, evidence: Driver[]): { system: string; 
     ? `MOVED: ${weekday(d.from)}'s ${d.facts.workout_intensity} session to ${weekday(d.to)}, unchanged.`
     : `DOWNGRADED: ${weekday(d.facts.workout_date)}'s ${d.from_intensity} session to ${d.to_intensity.replace('_', ' ')}`
       + (d.duration_min ? `, same ${d.duration_min} minutes.` : ', same duration.')
-      + (d.reason_code === 'posture_rest_hard_no_window' ? ' No other day this week could take it without sitting next to another hard day.' : '');
+      + (d.reason_code === 'posture_rest_hard_no_window' ? ' No other day this week could take it.' : '');
   const drivers = evidence.map((e) => `- ${e.metric}: ${e.value}${e.trend ? ` (${e.trend})` : ''}`).join('\n');
   return {
     system: SYSTEM,
