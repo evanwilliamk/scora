@@ -371,6 +371,9 @@ fastify.post('/api/cdv', async (request, reply) => {
       thisWeek: { miles: +thisWeekMiles.toFixed(1), runs: thisWeek.length },
       lastWeek: { miles: +lastWeekMiles.toFixed(1), runs: lastWeek.length },
       weekOverWeekMiles: weekDelta,
+      // Derived here so answers can cite them: the model may not compute numbers.
+      weekOverWeekMilesChange: +(thisWeekMiles - lastWeekMiles).toFixed(1),
+      recentRunCount: recentRuns.length,
       recentRuns,
       weekdayPatterns,
       todaySignal,
