@@ -103,15 +103,22 @@ test('plan override: a true description of an engine change passes; advice still
   ];
   for (const ok of [
     'The plan moved the tempo to Wednesday, and your body reads settled.',
-    "Tuesday's tempo is now an endurance run instead.",
-    "Today's easy run is the plan, instead of the tempo that moved.",
   ]) assert.deepEqual(validateVoice(ok, drivers).bannedHits, [], ok);
+  const downgrade = [drivers[0], { metric: 'Plan change', value: "Tuesday's tempo is now an endurance run at the same 40 minutes." }];
+  assert.deepEqual(validateVoice("Tuesday's tempo is now an endurance run instead.", downgrade).bannedHits, []);
+  // The same sentence against a move it does not describe fails.
+  assert.ok(validateVoice("Tuesday's tempo is now an endurance run instead.", drivers).bannedHits.includes('plan override'));
   for (const bad of [
     'Move the tempo to Wednesday.',
     'Run the tempo instead.',
     'Easy miles instead of the tempo today.',
     'The plan moved the tempo to Wednesday, and you could skip today too.',
     'The plan moved the tempo to Wednesday. A better day for it would be Friday.',
+    // Review of this fix: a shared word is not enough, the clause must match one change.
+    'The tempo is now yours to run Saturday instead.',
+    'Moved the tempo to Friday, which suits a body that is still settling.',
+    'HRV is 52ms. Tuesday: moved the tempo to Friday, easy miles instead.',
+    "Today's easy run is the plan, instead of the tempo that moved.",
   ]) assert.ok(validateVoice(bad, drivers).bannedHits.includes('plan override'), bad);
   // Without a recorded change there is nothing to observe.
   assert.ok(validateVoice('The plan moved the tempo to Wednesday.', drivers.slice(0, 1)).bannedHits.includes('plan override'));

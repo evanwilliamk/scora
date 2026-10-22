@@ -48,25 +48,30 @@ const PLAN_OVERRIDE = /\b(skip(s|ping|ped)?\b|swap(s|ping|ped)?\b|postpon(e|es|i
 // Words that only describe a change the plan engine already made: "the plan
 // moved the tempo to Wednesday", "is now an endurance run instead".
 const OBSERVED_CHANGE = /^(moved (it|the \w+|today'?s \w+) to|instead)$/i;
-// Any sign the sentence argues or advises rather than observes.
-const ADVICE_CUE = /\b(you (could|should|might|can|may|need)|could|should|consider|try|maybe|perhaps|why not|better|would|let'?s|if you)\b|^\s*(move|skip|swap|push|shift|save|cut|shorten|hold|take|keep|go|run|do|make|ease|rest)\b/i;
+// Any sign the sentence argues or advises rather than observes. A clause that
+// opens on "moved" or "instead" has no subject, so it reads as an instruction.
+const ADVICE_CUE = /\b(you (could|should|might|can|may|need)|could|should|consider|try|maybe|perhaps|why not|better|would|let'?s|if you|yours)\b|^\s*(move|moved|instead|skip|swap|push|shift|save|cut|shorten|hold|take|keep|go|run|do|make|ease|rest)\b/i;
 // An observation says the change happened: "is now", "was moved", "the plan".
 const CHANGE_MARKER = /\b(is now|was|were|has been|moved|the plan|plan engine)\b/i;
-const CHANGE_WORDS = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tempo|threshold|intervals?|long run|hard session)\b/gi;
+// Days and sessions a sentence names. Each must come from one recorded change.
+const CHANGE_WORDS = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tempo|threshold|intervals?|long|hard|easy|recovery|endurance|steady|moderate|rest)\b/gi;
 
 // True when every plan-override hit in the voice is a plain observation of a
-// change the engine made (a 'Plan change' driver), CLAUDE.md §1.3.
+// change the engine made (a 'Plan change' driver), CLAUDE.md §1.3: the clause
+// says the change happened, gives no advice, and names only days and sessions
+// that one recorded change names. Anything else is treated as an override.
 function overrideIsObservation(voice: string, drivers: Driver[]): boolean {
   const changes = drivers.filter((d) => d.metric === 'Plan change').map((d) => d.value.toLowerCase());
   if (changes.length === 0) return false;
-  const sentences = voice.split(/(?<=[.?])\s+/);
-  for (const sentence of sentences) {
-    const global = new RegExp(PLAN_OVERRIDE.source, 'gi');
-    const hits = [...sentence.matchAll(global)].map((m) => m[0]);
+  const clauses = voice.split(/(?<=[.?:;])\s+/);
+  for (const clause of clauses) {
+    const hits = [...clause.matchAll(new RegExp(PLAN_OVERRIDE.source, 'gi'))].map((m) => m[0]);
     if (hits.length === 0) continue;
-    if (!hits.every((h) => OBSERVED_CHANGE.test(h)) || ADVICE_CUE.test(sentence) || !CHANGE_MARKER.test(sentence)) return false;
-    const words = (sentence.match(CHANGE_WORDS) ?? []).map((w) => w.toLowerCase());
-    if (!words.some((w) => changes.some((c) => c.includes(w)))) return false;
+    if (!hits.every((h) => OBSERVED_CHANGE.test(h)) || ADVICE_CUE.test(clause) || !CHANGE_MARKER.test(clause)) return false;
+    const words = [...new Set((clause.match(CHANGE_WORDS) ?? []).map((w) => w.toLowerCase().replace(/s$/, '')))];
+    if (words.length === 0) return false;
+    const named = (c: string) => words.every((w) => new RegExp(`\\b${w}s?\\b`).test(c));
+    if (!changes.some(named)) return false;
   }
   return true;
 }
