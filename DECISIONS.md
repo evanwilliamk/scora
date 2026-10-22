@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-10-22: Review round 4 leftovers: observed plan changes, HRV trend, Week So Far wording
+- Status: DECIDED (reversible; the Week So Far line is copy, yours to change)
+- Branch: claude/review4-leftovers
+- Context: three findings left open on 2026-10-18.
+- Choice: (1) The plan-override check lets a sentence through when its only hits are "moved ... to" or "instead", it says the change happened ("is now", "was", "moved", "the plan"), it shares a weekday or session word with a recorded plan change, and it has no advice cue. Everything else still fails. (2) HRV shows no trend when there is no week average, instead of "n/a wk". (3) Week So Far names the weekday it compares through ("95 min through Thursday last week") instead of "by this point", since today may not be over.
+- Alternatives: (1) drop the override check when any plan change exists (too loose); (3) compare through yesterday.
+- To reverse: `overrideIsObservation` in `apps/api/src/validator.ts`; the `through` line in `apps/api/src/week-so-far.ts`.
+
 ### 2026-10-18: Week So Far line is built in code, not by the LLM
 - Status: DECIDED (reversible; copy is yours)
 - Branch: claude/week-so-far

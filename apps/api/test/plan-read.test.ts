@@ -95,3 +95,26 @@ test('a plan with nothing today says so', () => {
   const p = planForRead([w('2026-10-22', 'easy')], TODAY);
   assert.equal(p.promptLine, 'PLAN TODAY: nothing scheduled.');
 });
+
+test('plan override: a true description of an engine change passes; advice still fails (review 4)', () => {
+  const drivers = [
+    { metric: 'Plan today', value: 'easy run 40 min' },
+    { metric: 'Plan change', value: "Tuesday's tempo moved to Wednesday." },
+  ];
+  for (const ok of [
+    'The plan moved the tempo to Wednesday, and your body reads settled.',
+    "Tuesday's tempo is now an endurance run instead.",
+    "Today's easy run is the plan, instead of the tempo that moved.",
+  ]) assert.deepEqual(validateVoice(ok, drivers).bannedHits, [], ok);
+  for (const bad of [
+    'Move the tempo to Wednesday.',
+    'Run the tempo instead.',
+    'Easy miles instead of the tempo today.',
+    'The plan moved the tempo to Wednesday, and you could skip today too.',
+    'The plan moved the tempo to Wednesday. A better day for it would be Friday.',
+  ]) assert.ok(validateVoice(bad, drivers).bannedHits.includes('plan override'), bad);
+  // Without a recorded change there is nothing to observe.
+  assert.ok(validateVoice('The plan moved the tempo to Wednesday.', drivers.slice(0, 1)).bannedHits.includes('plan override'));
+  // A change to a different session does not vouch for this one.
+  assert.ok(validateVoice('The plan moved the intervals to Sunday.', drivers).bannedHits.includes('plan override'));
+});
