@@ -33,17 +33,23 @@ export function dataValues(data: unknown, out: string[] = []): string[] {
 
 // Small counts the athlete asked about ("my last 3 runs", "6 weeks") may be
 // repeated; a figure they assert ("did I run 50 miles?") is not evidence.
-const questionCounts = (q: string) => (q.match(/\b\d+\b/g) ?? []).filter((n) => Number(n) <= 12).join(' ');
+const questionCounts = (q: string) =>
+  [...q.matchAll(/\b(\d+)\s+(?:runs?|weeks?|days?|months?|sessions?|workouts?|rides?)\b/gi)]
+    .map((m) => m[1]).filter((n) => Number(n) <= 12).join(' ');
+
+// A clock time or pace ("8:47") is one value. Split into 8 and 47, its
+// seconds would vouch for any number from 0 to 59 ("HRV 47 ms").
+const timesWhole = (t: string) => t.replace(/\b(\d{1,2}):([0-5]\d)\b/g, '$1.$2');
 
 export function checkCdvReply(voice: string, metricLines: Driver[], data: unknown, question: string): CdvChecked {
   const source: Driver[] = [
-    { metric: '', value: dataValues(data).join(' ') },
+    { metric: '', value: timesWhole(dataValues(data).join(' ')) },
     { metric: '', value: questionCounts(question) },
   ];
   // A METRIC line is shown to the athlete as a driver, so its name, value and
   // trend must all be in the data. Posture words and "flat" carry no numbers.
-  const drivers = metricLines.filter((d) => validateVoice(`${d.metric} ${d.value} ${d.trend ?? ''}`, source).unbackedNumbers.length === 0);
-  const v = validateVoice(voice, source);
+  const drivers = metricLines.filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).unbackedNumbers.length === 0);
+  const v = validateVoice(timesWhole(voice), source);
   if (v.ok) return { voice, drivers, fallback: false, bannedHits: [], unbackedNumbers: [] };
   return {
     voice: drivers.length
