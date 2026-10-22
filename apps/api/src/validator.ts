@@ -57,6 +57,9 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
     ),
     label: 'workout imperative',
   },
+  // Plan advice in disguise: telling the athlete to recover lost minutes or to
+  // trim the plan (CLAUDE.md §1.3; the weekly review states adherence only).
+  { re: /\b(make up|catch up on|catch up|cut back|scale back|fell behind|fall behind|next week,? you)\b/i, label: 'plan advice' },
   { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
   { re: /\breplac(?:e|es|ed|ing) (?:your|a|the) coach\b/i, label: 'anti-coach' },
   {
