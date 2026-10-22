@@ -25,12 +25,13 @@ export function voiceGateReport(logText: string): GateReport {
   for (const line of logText.split('\n')) {
     const i = line.indexOf('telemetry {');
     if (i < 0) continue;
-    // A JSON log line wraps the message in a string, escaping its quotes.
-    // The payload is flat, so it ends at the first closing brace.
-    const payload = line.slice(i + 'telemetry '.length);
+    // A JSON log line wraps the message in a string, escaping its quotes, and
+    // a log export may wrap that again: unescape one level at a time. The
+    // payload is flat, so it ends at the first closing brace.
+    let c = line.slice(i + 'telemetry '.length);
     let e: any;
-    for (const c of [payload, payload.replace(/\\"/g, '"')]) {
-      try { e = JSON.parse(c.slice(0, c.indexOf('}') + 1)); break; } catch { e = undefined; }
+    for (let level = 0; level < 4 && e === undefined; level++) {
+      try { e = JSON.parse(c.slice(0, c.indexOf('}') + 1)); } catch { c = c.replace(/\\(["\\])/g, '$1'); }
     }
     if (!e || e.event !== 'voice_emission') continue;
     const s = (bySurface[e.surface] ??= { emissions: 0, caught: 0, fallbacks: 0, bannedEmissions: 0 });

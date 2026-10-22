@@ -6,7 +6,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Status: DECIDED (reversible)
 - Branch: claude/validator-telemetry
 - Context: doc 10 gates track the validator catch rate and banned-phrase hit rate (< 0.5%); PostHog needs an account and keys (blocked).
-- Choice: one `telemetry {"event":"voice_emission",...}` log line per daily, weekly, card, chat and adaptation-reason emission: surface, attempts, fallback, caught, banned labels, unbacked count. No text, no health values. Countable from Railway logs now; the same call can forward to PostHog later. `npx tsx scripts/voice-gate-report.ts <log export>` (from apps/api) prints catch, fallback and banned rates per surface and checks the doc 10 banned-phrase bar (counted on drafts: an emission whose draft had any banned hit counts, even if the retry or fallback was clean).
+- Choice: one `telemetry {"event":"voice_emission",...}` log line per daily, weekly, card, chat and adaptation-reason emission: surface, attempts, fallback, caught, banned labels, unbacked count. No text, no health values (after review 4, the older validator warning lines also log only labels and a count, never the unbacked numbers). Countable from Railway logs now; the same call can forward to PostHog later. `npx tsx scripts/voice-gate-report.ts <log export>` (from apps/api) prints catch, fallback and banned rates per surface and checks the doc 10 banned-phrase bar (counted on drafts: an emission whose draft had any banned hit counts, even if the retry or fallback was clean).
 - To reverse: `apps/api/src/telemetry.ts` and its `trackVoice` calls.
 
 ### 2026-10-22: Send to Watch (WorkoutKit scheduling), code half

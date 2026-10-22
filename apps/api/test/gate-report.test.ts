@@ -19,3 +19,9 @@ test('counts emissions per surface from plain and JSON-wrapped log lines', () =>
 test('no telemetry lines: no data, not a pass', () => {
   assert.match(voiceGateReport('nothing here').lines.at(-1)!, /NO DATA/);
 });
+
+test('a pino line wrapped again by a log export still parses (review 4)', () => {
+  const inner = JSON.stringify({ level: 30, msg: voiceEmissionLine({ surface: 'weekly', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0 }) });
+  const outer = JSON.stringify({ timestamp: 't', message: inner });
+  assert.equal(voiceGateReport(outer).bySurface.weekly?.emissions, 1);
+});

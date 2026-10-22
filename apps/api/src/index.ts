@@ -470,10 +470,10 @@ Answer THIS question specifically using the data above. If the data can't answer
     const checked = final.checked;
     trackVoice(fastify.log, {
       surface: 'cdv', attempts: final.attempts, fallback: checked.fallback,
-      bannedHits: checked.bannedHits, unbackedCount: checked.unbackedNumbers.length,
+      bannedHits: final.seenBanned, unbackedCount: final.seenUnbacked,
     });
     if (checked.fallback) {
-      fastify.log.warn(`CDV validator catch after ${final.attempts} attempts (banned: ${checked.bannedHits.join(', ') || 'none'}; unbacked: ${checked.unbackedNumbers.join(', ') || 'none'}), using fallback`);
+      fastify.log.warn(`CDV validator catch after ${final.attempts} attempts (banned: ${checked.bannedHits.join(', ') || 'none'}; unbacked numbers: ${checked.unbackedNumbers.length}), using fallback`);
     }
     // The model picks a chart kind; the spec and its data come from the activities.
     const chartKind = parseChartKind(final.raw);
@@ -592,8 +592,13 @@ fastify.post('/api/read', async (request, reply) => {
           ? {
               writeReason: async (d: Parameters<typeof writeReason>[0], fallback: string) => {
                 const r = await writeReason(d, posture.evidence, llm, fallback);
-                if (r.source === 'fallback') fastify.log.info(`adaptation reason fell back: ${r.issues.join('; ')}`);
-                trackVoice(fastify.log, { surface: 'adaptation_reason', attempts: 1, fallback: r.source === 'fallback', bannedHits: [], unbackedCount: 0 });
+                // Numbers masked: an unbacked number can be a health value.
+                if (r.source === 'fallback') fastify.log.info(`adaptation reason fell back: ${r.issues.map((x) => x.replace(/\d+(?:\.\d+)?/g, '#')).join('; ')}`);
+                trackVoice(fastify.log, {
+                  surface: 'adaptation_reason', attempts: 1, fallback: r.source === 'fallback',
+                  bannedHits: r.issues.filter((x) => x.startsWith('banned: ')).map((x) => x.slice('banned: '.length)),
+                  unbackedCount: r.issues.filter((x) => x.startsWith('unbacked number')).length,
+                });
                 return r.text;
               },
             }
@@ -774,6 +779,7 @@ fastify.post('/api/card-expand', async (request, reply) => {
     return reply.send({ cardId, reply: result.voice, drivers: plan.drivers, generated: true });
   } catch (e) {
     fastify.log.error(`Card expansion failed: ${e instanceof Error ? e.message : e}`);
+    trackVoice(fastify.log, { surface: 'card', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0 });
     return reply.send({ cardId, reply: card.translation ?? '', drivers: [], generated: false });
   }
 });
