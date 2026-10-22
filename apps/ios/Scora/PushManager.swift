@@ -62,6 +62,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
+    #if DEBUG
+    // Demo mode (simulator checks, UI tests) never shows system prompts.
+    if DemoMode.isOn { return true }
+    #endif
     PushManager.shared.requestAuthorization()
     return true
   }

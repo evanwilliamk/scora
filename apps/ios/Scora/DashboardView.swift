@@ -166,6 +166,9 @@ struct DashboardView: View {
     }
     .task {
       if read == nil {
+        #if DEBUG
+        if DemoMode.isOn { await loadRead(); return }
+        #endif
         _ = await HealthManager.shared.requestAuthorization()
         await loadRead()
       }
