@@ -17,6 +17,7 @@ import {
 } from './oura';
 import { consumeCdvQuota, pingDatabase, quotaDay } from './usage';
 import { generateValidatedVoice } from './voice';
+import { checkCdvReply } from './cdv-check';
 import { validateVoice, buildFallbackVoice } from './validator';
 import {
   registerDeviceToken,
@@ -377,6 +378,7 @@ fastify.post('/api/cdv', async (request, reply) => {
     const systemPrompt = `You are SCORA, a voice layer for endurance athletes. You READ and NAME patterns using postures: primed, steady, moderate, back-off, rest, taper.
 HARD RULES:
 - Every claim must be backed by a specific number in the data provided. Never invent data.
+- Write every number exactly as it appears in the data (18.4, not "about 18"). Replies with any other number are replaced.
 - Answer the athlete's ACTUAL question using the relevant data. Different questions -> different answers.
 - Numeric-first: lead with the number, then the interpretation.
 - Tone: calm, precise, human. No fitness-bro hype, no exclamation spam, no cheerleading ("great job", "amazing", "keep it up" are banned).
@@ -474,19 +476,18 @@ Answer THIS question specifically using the data above. If the data can't answer
       }
     }
 
-    // Banned-phrase check on the CDV voice line. (Number-existence isn't checked
-    // here: the drivers are parsed from the same output, so it would be circular
-    // — the voice legitimately cites data-block values not in the METRIC lines.)
-    let safeVoice = voice;
-    const banned = validateVoice(voice, drivers).bannedHits;
-    if (banned.length > 0) {
-      fastify.log.warn(`CDV voice banned-phrase catch (${banned.join(', ')}) — using fallback`);
-      safeVoice = buildFallbackVoice(drivers, 'Here');
+    // Validators on the reply (CLAUDE.md §3.2): every number in the voice and
+    // in each METRIC line must be in the data block sent to the model or in
+    // the athlete's question. The METRIC lines are the model's own words, so
+    // they never vouch for the voice.
+    const checked = checkCdvReply(voice, drivers, dataBlock, String(message ?? ''));
+    if (checked.fallback) {
+      fastify.log.warn(`CDV validator catch (banned: ${checked.bannedHits.join(', ') || 'none'}; unbacked: ${checked.unbackedNumbers.join(', ') || 'none'}), using fallback`);
     }
 
     return reply.send({
-      voice: safeVoice,
-      drivers,
+      voice: checked.voice,
+      drivers: checked.drivers,
       data: {
         weeklyMiles: parseFloat(weeklyMiles),
         runCount,
