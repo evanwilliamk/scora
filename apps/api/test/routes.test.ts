@@ -48,3 +48,31 @@ test('flagged Plan-tier routes stay off by default', async () => {
   assert.equal((await app.inject({ method: 'GET', url: '/api/plan/adaptations?athleteId=a' })).statusCode, 404);
   assert.equal((await app.inject({ method: 'GET', url: '/api/plan/prediction?athleteId=a' })).statusCode, 404);
 });
+
+test('health answers; every athlete route rejects a missing athleteId', async () => {
+  assert.equal((await app.inject({ method: 'GET', url: '/health' })).statusCode, 200);
+  for (const url of ['/api/read', '/api/weekly', '/api/card-expand', '/api/push/test', '/api/register-device']) {
+    assert.equal((await post(url, {})).statusCode, 400, url);
+  }
+  assert.equal((await app.inject({ method: 'GET', url: '/api/plan' })).statusCode, 400);
+  assert.equal((await app.inject({ method: 'PUT', url: '/api/preferences', payload: {} })).statusCode, 400);
+});
+
+test('preferences reject an unknown zone and an impossible delivery time before saving', async () => {
+  const put = (payload: unknown) => app.inject({ method: 'PUT', url: '/api/preferences', payload });
+  assert.equal((await put({ athleteId: 'a', timezone: 'Mars/Olympus' })).statusCode, 400);
+  for (const deliveryMinute of [-1, 1440, 6.5, '360']) {
+    assert.equal((await put({ athleteId: 'a', deliveryMinute })).statusCode, 400, String(deliveryMinute));
+  }
+});
+
+test('card expansion with no read in memory asks for a refresh; push test needs APNs', async () => {
+  assert.equal((await post('/api/card-expand', { athleteId: 'nobody', cardId: 'sleep' })).statusCode, 409);
+  for (const k of ['APNS_KEY_ID', 'APNS_TEAM_ID', 'APNS_BUNDLE_ID', 'APNS_KEY']) delete process.env[k];
+  assert.equal((await post('/api/push/test', { athleteId: 'a' })).statusCode, 503);
+});
+
+test('calorie estimates are off by default', async () => {
+  delete process.env.CALORIE_ENGINE;
+  assert.equal((await app.inject({ method: 'GET', url: '/api/calories?athleteId=a' })).statusCode, 404);
+});
