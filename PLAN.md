@@ -26,7 +26,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 ## Phase 0 / Phase 1 remaining
 
-All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc conflicts resolved, in `claude/integration-2026-10-18` (tests and typecheck pass there; it supersedes `claude/integration-2026-10-17`). Review the branches, then merge that one PR instead of each.
+All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged together, with doc conflicts resolved, in `claude/integration-2026-10-22` (tests and typecheck pass there; it supersedes `claude/integration-2026-10-18` and `-10-17`). Review the branches, then merge that one PR instead of each.
 
 - [~] Numeric line first (PRD §5.A.2, CLAUDE.md §3.3) in the read, the push and Today's Read, plus the posture badge (PRD §5.A.3) (`claude/numeric-first-read`, on `claude/integration-2026-10-18`; seen on the simulator)
 - [~] Week So Far: Mon to Sun run-minute bars + one line built from the same numbers (PRD §5.A.3) (`claude/week-so-far`, on `claude/numeric-first-read`; seen on the simulator)
@@ -79,14 +79,6 @@ All `[~]` branches from 2026-10-17 and 2026-10-18 are merged together, with doc 
 ## Later phases (not started, see the 90-day plan)
 
 - Phase 2 (rest): Stripe subscriptions, WorkoutKit, WhatsApp doorbell
-- [~] Adaptation rules engine, `packages/plan-engine` (doc 07 v2 §6.2, §9) (`claude/plan-engine-adaptation`). Done when every rule and guard has a unit test and the package typechecks
-- [~] Template schema + YAML loader + validator (`claude/plan-templates-loader`, stacked on `claude/plan-engine-adaptation`) (doc 07 v2 §4.2.1, CLAUDE.md §4.3 plan bans). Done when a malformed or rule-breaking template fails to load with a named error, tested on test fixtures only
-- [~] (`claude/plan-assembler`, stacked on `claude/plan-templates-loader`) Assembler: template + start date + race date + current weekly volume to scheduled workouts (doc 07 v2 §6.1 steps 3 to 5). Done when a fixture template assembles to a dated calendar whose numbers all trace to the template
-- [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
-- [ ] DB migration for `plan_templates`, `training_plans`, `plan_adaptations` and the write-enabled `scheduled_workouts` columns (local PGlite tests only; Evan applies it)
-- [~] WorkoutKit export: a plan session's structure becomes a CustomWorkout, Watch total equal to the plan (`claude/workoutkit-export`, on `claude/plan-adapt-job`; converter + tests only)
-- [ ] WorkoutKit scheduling to the Watch (WorkoutScheduler authorization + a Send to Watch action); needs a paired device to try (Evan)
-- [~] (`claude/plan-adapt-job`, stacked on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`; runs with the daily read, see DECISIONS) Nightly compute-adaptations job + `GET /plan/adaptations` (doc 07 v2 §6.2), behind a flag; Plan tier gating waits for the Stripe item
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`
