@@ -122,14 +122,29 @@ enum WorkoutExport {
 // WorkoutScheduler behind a protocol so the flow is testable without a Watch.
 protocol WatchScheduling {
   var isSupported: Bool { get }
+  var maxScheduled: Int { get }
   func authorize() async -> Bool
+  func scheduledCount() async -> Int
+  // Removes an earlier send of the same session (same name, same day).
+  func removeSameDay(named name: String, day: DateComponents) async
   func schedule(_ workout: CustomWorkout, at date: DateComponents) async
 }
 
 struct AppleWatchScheduler: WatchScheduling {
   var isSupported: Bool { WorkoutScheduler.isSupported }
+  var maxScheduled: Int { WorkoutScheduler.maxAllowedScheduledWorkoutCount }
   func authorize() async -> Bool {
     await WorkoutScheduler.shared.requestAuthorization() == .authorized
+  }
+  func scheduledCount() async -> Int {
+    await WorkoutScheduler.shared.scheduledWorkouts.count
+  }
+  func removeSameDay(named name: String, day: DateComponents) async {
+    for s in await WorkoutScheduler.shared.scheduledWorkouts {
+      guard s.date.year == day.year, s.date.month == day.month, s.date.day == day.day,
+            case .custom(let w) = s.plan.workout, w.displayName == name else { continue }
+      await WorkoutScheduler.shared.remove(s.plan, at: s.date)
+    }
   }
   func schedule(_ workout: CustomWorkout, at date: DateComponents) async {
     await WorkoutScheduler.shared.schedule(WorkoutPlan(.custom(workout)), at: date)
@@ -142,6 +157,7 @@ enum WatchSend {
     case unsupported
     case notAuthorized
     case cannotCopy
+    case full
   }
 
   // Only sessions the Watch can run as written, from today to a week out.
@@ -154,22 +170,30 @@ enum WatchSend {
     return diff >= 0 && diff <= daysAhead
   }
 
-  // 06:00 on the plan's date in the athlete's zone (the default read time),
-  // so the session is waiting on the Watch that morning.
-  static func scheduleTime(for date: String) -> DateComponents? {
+  // 06:00 on the plan's date (the default read time). For today once 06:00
+  // has passed, a minute from now, so the session is never set in the past.
+  static func scheduleTime(for date: String, now: Date = Date(), calendar: Calendar = .current) -> DateComponents? {
     let parts = date.split(separator: "-").compactMap { Int($0) }
     guard parts.count == 3 else { return nil }
-    return DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 6, minute: 0)
+    let six = DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 6, minute: 0)
+    guard let sixAt = calendar.date(from: six), sixAt <= now else { return six }
+    let soon = now.addingTimeInterval(60)
+    let c = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: soon)
+    // Past the plan's day entirely (a stale screen): nothing to schedule.
+    return c.year == parts[0] && c.month == parts[1] && c.day == parts[2] ? c : nil
   }
 
   static func send(
     steps: [PlanStep], type: String, date: String, displayName: String, dayLabel: String,
-    scheduler: WatchScheduling
+    scheduler: WatchScheduling, now: Date = Date()
   ) async -> Outcome {
     guard scheduler.isSupported else { return .unsupported }
     guard let workout = try? WorkoutExport.customWorkout(steps: steps, plannedType: type, displayName: displayName),
-          let when = scheduleTime(for: date) else { return .cannotCopy }
+          let when = scheduleTime(for: date, now: now) else { return .cannotCopy }
     guard await scheduler.authorize() else { return .notAuthorized }
+    // Sending again replaces the earlier send rather than adding a copy.
+    await scheduler.removeSameDay(named: displayName, day: when)
+    guard await scheduler.scheduledCount() < scheduler.maxScheduled else { return .full }
     await scheduler.schedule(workout, at: when)
     return .sent(dayLabel)
   }
@@ -180,6 +204,7 @@ enum WatchSend {
     case .unsupported: return "This iPhone cannot send workouts to a Watch."
     case .notAuthorized: return "SCORA needs permission to send workouts to your Watch (Settings > Privacy > Health)."
     case .cannotCopy: return "This session cannot be copied to the Watch as written."
+    case .full: return "Your Watch has as many scheduled workouts as it can hold. Remove one in the Workout app, then send again."
     }
   }
 

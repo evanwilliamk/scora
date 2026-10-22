@@ -272,18 +272,27 @@ final class ScoraTests: XCTestCase {
     final class FakeWatch: WatchScheduling {
         var isSupported = true
         var allow = true
-        var scheduled: [DateComponents] = []
+        var maxScheduled = 15
+        var scheduled: [(name: String, at: DateComponents)] = []
         func authorize() async -> Bool { allow }
-        func schedule(_ workout: CustomWorkout, at date: DateComponents) async { scheduled.append(date) }
+        func scheduledCount() async -> Int { scheduled.count }
+        func removeSameDay(named name: String, day: DateComponents) async {
+            scheduled.removeAll { $0.name == name && $0.at.day == day.day && $0.at.month == day.month && $0.at.year == day.year }
+        }
+        func schedule(_ workout: CustomWorkout, at date: DateComponents) async { scheduled.append((workout.displayName ?? "", date)) }
     }
 
     func testSendToWatchSchedulesAt6OnThePlanDay() async {
         let steps = [PlanStep(type: "warmup", durationMin: 10, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil),
                      PlanStep(type: "steady", durationMin: 30, intensity: "tempo", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
         let watch = FakeWatch()
-        let o = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch)
+        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
+        let o = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
         XCTAssertEqual(o, .sent("Fri Oct 23"))
-        XCTAssertEqual(watch.scheduled, [DateComponents(year: 2026, month: 10, day: 23, hour: 6, minute: 0)])
+        XCTAssertEqual(watch.scheduled.map(\.at), [DateComponents(year: 2026, month: 10, day: 23, hour: 6, minute: 0)])
+        // Sending again replaces the first send.
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        XCTAssertEqual(watch.scheduled.count, 1)
         XCTAssertEqual(WatchSend.message(o), "Sent to your Watch for Fri Oct 23.")
 
         watch.allow = false
@@ -293,8 +302,22 @@ final class ScoraTests: XCTestCase {
         let unsupported = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: watch)
         XCTAssertEqual(unsupported, .unsupported)
         XCTAssertEqual(watch.scheduled.count, 1, "nothing scheduled without permission or support")
+        let full = FakeWatch(); full.maxScheduled = 0
+        let fullOutcome = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: full, now: early)
+        XCTAssertEqual(fullOutcome, .full)
         let swim = await WatchSend.send(steps: steps, type: "swim", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: FakeWatch())
         XCTAssertEqual(swim, .cannotCopy)
+    }
+
+    func testTodaysSessionIsNeverScheduledInThePast() {
+        let cal = Calendar.current
+        let nine = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 9, minute: 30))!
+        let c = WatchSend.scheduleTime(for: "2026-10-22", now: nine)!
+        XCTAssertEqual([c.year, c.month, c.day, c.hour, c.minute], [2026, 10, 22, 9, 31])
+        let five = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 5))!
+        XCTAssertEqual(WatchSend.scheduleTime(for: "2026-10-22", now: five), DateComponents(year: 2026, month: 10, day: 22, hour: 6, minute: 0))
+        let lateNight = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 23, minute: 59, second: 30))!
+        XCTAssertNil(WatchSend.scheduleTime(for: "2026-10-22", now: lateNight), "the day is over")
     }
 
     func testSendToWatchOnlyOffersSessionsItCanCopyThisWeek() {

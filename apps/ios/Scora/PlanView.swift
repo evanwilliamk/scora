@@ -14,8 +14,10 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
   // The session's steps on a SCORA plan, for Send to Watch. Nil for pasted
   // and imported plans.
   var steps: [PlanStep]? = nil
+  // The stored row's id (GET /api/plan); freshly parsed rows have none.
+  var rowId: String? = nil
 
-  var id: String { "\(date)|\(type)|\(description ?? "")" }
+  var id: String { rowId ?? "\(date)|\(type)|\(description ?? "")" }
 
   enum CodingKeys: String, CodingKey {
     case date, type, intensity, description
@@ -24,6 +26,7 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
     case plannedIntensity = "planned_intensity", plannedDuration = "planned_duration_min"
     case plannedDistance = "planned_distance_km", plannedDescription = "planned_description"
     case structure = "workout_structure_json"
+    case rowId = "id"
   }
 
   init(date: String, type: String, intensity: String?, durationMin: Int?, distanceKm: Double?, description: String?) {
@@ -41,6 +44,7 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
     description = try c.decodeIfPresent(String.self, forKey: .description) ?? c.decodeIfPresent(String.self, forKey: .plannedDescription)
     // A structure the app cannot read only hides Send to Watch.
     steps = try? c.decodeIfPresent([PlanStep].self, forKey: .structure)
+    rowId = try? c.decodeIfPresent(String.self, forKey: .rowId)
   }
 
   // "Tue Oct 20", from the plan date as written (no time zone shift).
