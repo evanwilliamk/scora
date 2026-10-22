@@ -18,6 +18,9 @@ test("today's plan changes: active plan, not dismissed, either side of a move on
   const sb = fakeSupabase([{ data: [{ id: 'x', reason_text: 'Moved.', triggered_at: '2026-10-22 06:00:00+00', training_plans: { current_status: 'active' } }] }]);
   const rows = await supabaseAdaptStore(sb).forDay('a1', '2026-10-22');
   const calls = sb.queries[0].calls;
+  assert.equal(sb.queries[0].table, 'plan_adaptations');
+  assert.deepEqual(calls[0], ['select', 'id, adaptation_type, original_date, new_date, reason_code, reason_text, triggered_at, training_plans!inner(current_status)']);
+  assert.deepEqual(calls[1], ['eq', 'athlete_id', 'a1']);
   assert.ok(calls.some((c) => c[0] === 'is' && c[1] === 'dismissed_at' && c[2] === null));
   assert.ok(calls.some((c) => c[0] === 'eq' && c[1] === 'training_plans.current_status' && c[2] === 'active'));
   assert.ok(calls.some((c) => c[0] === 'or' && c[1] === 'original_date.eq.2026-10-22,new_date.eq.2026-10-22'));
@@ -40,4 +43,9 @@ test('recent changes: newest first with a stable tie-break, capped', async () =>
   assert.deepEqual(calls.filter((c) => c[0] === 'order' || c[0] === 'limit'), [
     ['order', 'triggered_at', { ascending: false }], ['order', 'id'], ['limit', 3],
   ]);
+});
+
+test('the fake rejects builder methods supabase-js does not have', () => {
+  const sb = fakeSupabase();
+  assert.throws(() => (sb.from('x') as any).eqq('a', 1), /no builder method "eqq"/);
 });
