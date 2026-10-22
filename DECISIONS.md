@@ -6,7 +6,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Status: DECIDED (reversible; reply copy is yours)
 - Branch: claude/whatsapp-core
 - Context: Phase 2 lists the WhatsApp doorbell (PRD §5.B.2). Sending needs a Twilio account (money) and opt-in copy (privacy), which wait on you.
-- Choice: `apps/api/src/whatsapp.ts` with the morning message in the §3.3 shape, the bounded reply set (why, more, pause N, resume, stop, help; STOP synonyms such as unsubscribe and cancel; anything else gets help), fixed replies for pause/resume/stop/help, and the Twilio webhook signature check tested against Twilio's documented example. "pause" alone is 3 days, at most 30. Nothing sends, stores a phone number or adds a route.
+- Choice: `apps/api/src/whatsapp.ts` with the morning message in the §3.3 shape, the bounded reply set (why, more, pause N, resume, stop, help; STOP synonyms such as unsubscribe and cancel; after review, width, emoji, zero-width and punctuation are ignored and a message that starts with stop, unsubscribe, opt out or revoke stops, while cancel, end and quit stop only on their own; anything else gets help), fixed replies for pause/resume/stop/help, and the Twilio webhook signature check tested against Twilio's documented example. "pause" alone is 3 days, at most 30. Nothing sends, stores a phone number or adds a route.
 - Next when you want it: Twilio sandbox credentials, the opt-in screen copy, and the `why` expansion prompt (doc 08 why-expansion.md) on the read's drivers.
 - To reverse: delete `apps/api/src/whatsapp.ts` and its test.
 

@@ -25,7 +25,11 @@ test('replies are a bounded set; anything else gets help', () => {
   assert.deepEqual(parseReply('resume'), { cmd: 'resume' });
   for (const s of ['STOP', 'stop.', 'Unsubscribe', 'cancel', 'quit', 'end', 'opt out']) assert.deepEqual(parseReply(s), { cmd: 'stop' }, s);
   assert.deepEqual(parseReply('help'), { cmd: 'help' });
-  for (const s of ['should I run today?', 'stop sending at 6', 'pause for a bit', '']) assert.deepEqual(parseReply(s), { cmd: 'unknown' }, s);
+  for (const s of ['should I run today?', 'pause for a bit', '', 'end of week was good', 'cancel that']) assert.deepEqual(parseReply(s), { cmd: 'unknown' }, s);
+  // Review 5: opting out must never fall through to help.
+  for (const s of ['STOP please', 'please stop', 'Stop \u{1F6D1}', 'stop :)', 'STOP ALL', 'opt-out', 'revoke', '\uFF33\uFF34\uFF2F\uFF30', 'stop\u200B', 'stop sending at 6']) {
+    assert.deepEqual(parseReply(s), { cmd: 'stop' }, JSON.stringify(s));
+  }
 });
 
 test('fixed replies name the commands and carry no emoji or exclamation points', () => {
@@ -48,4 +52,11 @@ test("Twilio signature matches Twilio's documented example and rejects tampering
   assert.equal(verifyTwilioSignature('12345', url, params, undefined), false);
   assert.equal(verifyTwilioSignature('', url, params, 'L/OH5YylLD5NRKLltdqwSvS0BnU='), false);
   assert.equal(verifyTwilioSignature('12345', url, params, 'short'), false);
+});
+
+test('a repeated parameter signs each of its values', () => {
+  const a = twilioSignature('t', 'https://x.test/hook', { MediaUrl: ['b', 'a'], Body: 'hi' });
+  const b = twilioSignature('t', 'https://x.test/hook', { Body: 'hi', MediaUrl: ['a', 'b'] });
+  assert.equal(a, b);
+  assert.notEqual(a, twilioSignature('t', 'https://x.test/hook', { Body: 'hi', MediaUrl: 'a' }));
 });
