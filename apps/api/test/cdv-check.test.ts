@@ -99,3 +99,16 @@ test('thousands separators read as one number; an empty fallback says the answer
   const r = checkCdvReply('You ran 99 miles.', [], DATA, 'Week?');
   assert.equal(r.voice, 'That answer could not be checked against your data, so it is not shown.');
 });
+
+// ---- review 3 ----
+
+test("a pace's seconds do not vouch for other numbers; the pace itself still passes", () => {
+  const data = { ...DATA, recentRuns: [{ miles: 6.2, pace: '8:47' }] };
+  assert.equal(checkCdvReply('Your average HR was 47 bpm.', [], data, 'HR?').fallback, true);
+  assert.equal(checkCdvReply('Your last run was 6.2 miles at 8:47 per mile.', [], data, 'Pace?').fallback, false);
+});
+
+test('only a count the athlete asked about is theirs to repeat, not a figure', () => {
+  assert.equal(checkCdvReply('You ran 10 miles Tuesday.', [], DATA, 'Did I run 10 miles Tuesday?').fallback, true);
+  assert.equal(checkCdvReply('Across your last 5 runs, 3 were this week.', [], DATA, 'What about my last 5 runs?').fallback, false);
+});
