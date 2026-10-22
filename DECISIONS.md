@@ -9,6 +9,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: option B. When no day can take it (no window, or every window breaks the volume band), the session becomes easy at the same duration, reason code `posture_rest_hard_no_window`, named reason ("...is now an easy run at the same 45 minutes. Today's posture reads rest, and no other day this week keeps the hard days apart."). Long runs are excluded: they stay as planned and the skip is logged, since a long run is the block cornerstone. Engine version bumped to adaptation-v1.2.0.
 - Alternatives: A, leave it (hard session stays); C, skip it (drops about 15% of the week, breaks the 10% rule).
 - To reverse: delete the fallback block at the end of `evaluateAdaptation` in `packages/plan-engine/src/adaptation-rules.ts` and the matching tests.
+
 ### 2026-10-22: Calendar (iCal) import as a plan source (Q17)
 - Status: DECIDED (Evan silent 3 days on a bucket 2 question, reversible)
 - Branch: claude/ical-plan-import
@@ -17,6 +18,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: A, drop the item and rely on manual paste; an LLM transcription like manual paste (one more gpt-4o-mini call per import, more fields filled); server-side feed fetch with refresh (needs the feed URL stored, which is often a private link, and SSRF guards).
 - Open for later: refreshing an imported plan (today the athlete re-imports), and repeating events.
 - To reverse: delete `apps/api/src/plan-ical.ts`, the route in `index.ts`, and migration `20261022000000_ical_plans.sql` (restores the manual-only unique index).
+
 ### 2026-10-22: Review round 4 leftovers: observed plan changes, HRV trend, Week So Far wording
 - Status: DECIDED (reversible; the Week So Far line is copy, yours to change)
 - Branch: claude/review4-leftovers
@@ -47,6 +49,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Decided: plan-adherence-strong-week now also requires workouts_planned_this_week > 0 (doc 06's rule fired on "0 of 0"). Differs from doc 06; update the doc or revert.
 - For you: (1) coach-note-preserve-verbatim's template "A week of quality work." is a claim no driver backs and fires at any posture with completeness 0; something neutral like "{{coach_name}}'s note this week:" avoids it. (2) coach-recent-message-acknowledge says "yesterday" but fires on the last 24 hours, and keeps doc 06's em dash.
 - To reverse: drop the first line of that driver_rule.
+
 ### 2026-10-17: Last 5 v0.3 pattern entries ported as written
 - Status: DECIDED (review when you can)
 - Branch: claude/port-v03-patterns
@@ -54,6 +57,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: copied §6.8 to §6.12 verbatim, same as the first 7. coach-recent-message-acknowledge keeps doc 06's em dash in its template (voice copy, same call as 2026-10-11 note 3). None can fire in production yet: they need adaptation, missed-workout, adherence and coach drivers that nothing computes.
 - Why: doc 06 is the source of truth for voice copy.
 - To reverse: delete the 5 YAML files in packages/voice/patterns.
+
 ### 2026-10-17: Card expansion reads from a 10 minute snapshot of the last read
 - Status: DECIDED (review when you can)
 - Branch: claude/card-expand
@@ -62,6 +66,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: persist reads in Postgres (also what read_citations wants eventually), or recompute per tap.
 - Why: one LLM call per tap, nothing new to store.
 - To reverse: replace SnapshotCache with a reads table, or recompute in the route.
+
 ### 2026-10-17: Driver record definitions for the posture engine
 - Status: DECIDED (review when you can)
 - Branch: claude/driver-record
@@ -76,6 +81,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
   - Oura fetch now pulls 29 days of daily_sleep (was 8) for the baselines.
 - Why: these match what the dashboard cards already show, so the voice and the posture read the same numbers.
 - To reverse: edit the constants at the top of apps/api/src/drivers.ts.
+
 ### 2026-10-17: Root package-lock.json synced with packages/posture
 - Status: DECIDED
 - Branch: claude/driver-record
@@ -83,6 +89,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: ran `npm install` at the root and committed the 16-line lockfile change.
 - Why: the routine's test command (`npm ci && npm test`) must work.
 - To reverse: revert commit b289e96.
+
 ### 2026-10-17: CDV charts: LLM picks the kind, server builds the spec
 - Status: DECIDED (review when you can)
 - Branch: claude/cdv-chart-api
@@ -91,6 +98,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: let the model write the full spec with data, then validate every value against the data block.
 - Why: same guarantee as the driver-existence validator, at zero extra cost. New kinds are a few lines each in apps/api/src/cdv-chart.ts.
 - To reverse: remove the CHART line from the CDV prompt and the `chart` field from the response.
+
 ### 2026-10-17: Oura link outcome copy and Strava deep-link token
 - Status: NEEDS EVAN (copy is cheap to change; the token point is yours)
 - Branch: claude/oura-success
@@ -98,6 +106,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: banner copy "Oura connected. Sleep and recovery now read from your ring." and, on failure, "Oura was not connected. You can try again from the Sleep card." (cancelled) or "Oura did not connect. Nothing changed; try again from the Sleep card." Strava page now says "Welcome, <name>." (no exclamation point).
 - Not changed, flagging: the Strava callback puts the Strava access token in the scora:// deep link URL. Any app that registers the scora scheme, or a browser history entry, can see it. The app no longer needs it (the API refreshes tokens itself). Removing it touches sign-in, so it is yours to call.
 - To reverse: copy lives in OuraLinkResult (DashboardView.swift) and apps/api/src/pages.ts callers.
+
 ### 2026-10-17: Knowledge retrieval in the daily read
 - Status: DECIDED (review when you can)
 - Branch: claude/knowledge-retrieval
@@ -106,6 +115,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: retrieval on by default; showing sources in the response.
 - Why: keeps today's behavior until you have a starter library to test against (spec §8 step 5).
 - To reverse: unset the env var, or remove the knowledgeForRead call in /api/read.
+
 ### 2026-10-18: Plan generation route shape
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-generate (on claude/plan-adapt-job)
@@ -113,6 +123,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `POST /api/plan/generate` behind `PLAN_GENERATION=on` (404 when off). Loads reviewed templates only. The race must fit the template from this week's Monday, otherwise `race_too_soon`; no match is `template_not_available`, never an improvised plan. Sessions before today are not stored. A new plan marks the active SCORA or pasted plan `replaced` (rows kept). The request must carry the athlete's local `today`. A template version is immutable: the same slug and version with different content is refused (review fields may move from draft to reviewed). Refused while a coach plan is active, with the copy "Your coach sets your plan." Triathlon sessions store `planned_type` 'other' until templates name a discipline per session. planned_description stays empty until the workout-description prompt exists.
 - Why: everything a plan contains traces to a reviewed template (CLAUDE.md §6.1, §6.3).
 - To reverse: `apps/api/src/plan-generate.ts` and migration `20261018020000_create_scora_plan.sql`.
+
 ### 2026-10-18: Adaptation reasons worded by gpt-4o-mini, checked in code
 - Status: DECIDED (reversible); turning it on is NEEDS EVAN (small OpenAI cost per adaptation)
 - Branch: claude/adaptation-reason-llm (on claude/plan-adapt-job)
@@ -120,6 +131,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: behind `ADAPTATION_REASON_LLM=on` (default off) and only when adaptations are on. One gpt-4o-mini call per adaptation with the decided change, today's posture and the posture's drivers. Code rejects a line that names the wrong or an extra weekday (any case, short forms), names another session type, names the wrong posture, describes a signed driver in the wrong direction ("-12%" as "above"), spells a number out, cites a number not in the drivers, advises or asks, says "coach", runs past two sentences or 220 characters, or hits the banned-phrase validator (review fixes); then the fixed sentence is stored and the issues are logged. No retry.
 - Prompt copy is yours to change (`apps/api/src/adaptation-reason.ts`, SYSTEM).
 - To reverse: leave the flag off; nothing else changes.
+
 ### 2026-10-18: Inline chart-expansion: spans found in code, recorded values only
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/inline-charts (on claude/plan-adapt-job)
@@ -127,6 +139,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: behind `INLINE_CHARTS=on` (default off; Plan tier gating waits for Stripe). After validation, code links each driver's quoted value in the read (or its name: sleep, load, volume, HRV, resting HR) to a 28-day series: Strava run minutes and miles as rolling 7-day totals, so the newest point is the number the read cites (review fix; was per-day), and Oura nightly sleep, HRV and resting HR (nights with no value are left out, never filled in). One link per series, first mention. The chart marks the newest day and draws the average of the days before it. Oura sleep is now fetched for 29 days (was 9) so the chart can show a month. HealthKit-only athletes: the app now sends up to 28 dated nights (`claude/healthkit-nights`), and the API drops malformed days and implausible values instead of charting them.
 - Alternative: the LLM marks driver spans in its output. Rejected: the spans would need validating anyway, and code finds them reliably on numeric-first text.
 - To reverse: leave the flag off; the app shows plain text when `links` is absent.
+
 ### 2026-10-18: Race predictions v1: Riegel range from recent efforts
 - Status: DECIDED (reversible); the formula is a coaching call worth a look
 - Branch: claude/race-predictions (on claude/plan-adapt-job)
@@ -134,6 +147,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `GET /api/plan/prediction`, behind `RACE_PREDICTIONS=on`. Runs of 3 km or more from the last 8 weeks are projected to the race with Riegel (exponent 1.06); Strava-tagged races (timed start to finish) are used instead of training runs when any exist. The range spans the best three projections, never narrower than ±2%. No prediction without 3 qualifying runs, or without a long run of half the race distance (capped at 25 km). Every effort used is returned with the range. Plan progression and body state are not in v1.
 - Alternatives: VDOT tables (Daniels), or a model fitted on HR and pace. Riegel is the simplest that is honest with a range.
 - To reverse: constants in `apps/api/src/race-prediction.ts` (PREDICTION), versioned.
+
 ### 2026-10-18: Calorie engine v1: ACSM running, measured work or METs for rides
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/calorie-engine (on claude/plan-adapt-job)
@@ -141,12 +155,14 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `GET /api/calories` (last 14 days), behind `CALORIE_ENGINE=on`. Runs: ACSM running equation with uphill grade from elevation gain. Rides: Strava kilojoules when from a real power meter (`device_watts`), else a Compendium MET by average speed. Swims and other sports: no estimate in v1. Weight from the Strava profile; no weight, no estimate. HR is left out: HR equations need age and sex, which SCORA does not have.
 - Caveat: Strava sends weight only with `profile:read_all`; if the app's OAuth scope lacks it, nobody gets estimates until weight comes from HealthKit or onboarding.
 - To reverse: `apps/api/src/calories.ts`, versioned.
+
 ### 2026-10-18: CDV daily quota resets at the athlete's midnight
 - Status: DECIDED (reversible)
 - Branch: claude/cdv-local-day (on claude/plan-adapt-job)
 - Context: the 3 queries/day count reset at UTC midnight, which is mid-evening in the US (noted 2026-10-17).
 - Choice: the app sends its local date with each CDV query; the server uses it when it is within a day of the server's date, and the stored quota day never moves backwards, so a changed phone clock buys at most one early reset. Without a date (older app builds) the UTC day is used as before.
 - To reverse: drop `quotaDay(...)` from the `/api/cdv` call in `apps/api/src/index.ts`.
+
 ### 2026-10-18: WorkoutKit export copies the plan structure exactly
 - Status: DECIDED (reversible)
 - Branch: claude/workoutkit-export (on claude/plan-adapt-job)
@@ -179,6 +195,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: gpt-4o-mini (JSON mode, temperature 0) only transcribes. Code keeps a row only if its date resolves (yesterday to 26 weeks out), type and intensity are in closed lists, and every duration and distance appears in the pasted text (hours to minutes and miles to km allowed). Rejected rows come back as reasons. Tables keyed by athlete_id (strava_id) like the live API, Plan-tier columns left out. Added `tempo` to the intensity list (doc 07 omits it; the pattern library uses it). A new paste marks the old plan `replaced` and keeps its rows. iOS: "Your Plan" sheet from a header button; copy follows doc 09 ("Have a training plan?", "Paste plan here...", "Save plan"), minus the Strava-scheduled sentence since that source does not exist yet.
 - Cost: one gpt-4o-mini call per paste (fractions of a cent).
 - To reverse: drop the two tables; remove the routes and PlanView.
+
 ### 2026-10-17: Onboarding slice and per-athlete delivery time
 - Status: DECIDED (review when you can)
 - Branch: claude/onboarding
@@ -187,6 +204,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: keep one global push time until Plan tier.
 - Why: doc 09 makes delivery time part of Free onboarding; one fixed zone sends 6 AM New York reads at 3 AM in California.
 - To reverse: restore the two fixed crons in scheduler.ts; drop athlete_preferences; set needsOnboarding false.
+
 ### 2026-10-17: Knowledge library schema shape
 - Status: DECIDED (review when you can)
 - Branch: claude/knowledge-schema
@@ -195,6 +213,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: a `reads` table first, with read_citations.read_id as a foreign key. Better once reads are persisted; easy to add then.
 - Why: smallest shape that lets ingest and retrieval run end to end.
 - To reverse: drop the three tables and the function; nothing else depends on them yet.
+
 ### 2026-10-17: PGlite for migration tests
 - Status: DECIDED
 - Branch: claude/knowledge-schema
@@ -203,6 +222,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: Supabase CLI local stack (needs Docker).
 - Why: real Postgres plus pgvector in-process, no services.
 - To reverse: delete the test and the two devDependencies.
+
 ### 2026-10-17: Knowledge ingest chunking and embedding text
 - Status: DECIDED (review when you can)
 - Branch: claude/knowledge-ingest
@@ -211,6 +231,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternative: embed passage only; token-based chunking with a tokenizer dependency.
 - Why: FieldCopy passages are mostly short; this keeps one idea per chunk with no new dependency.
 - To reverse: CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS and embedText in apps/api/src/knowledge-ingest.ts.
+
 ### 2026-10-18: Plan assembler: no athlete scaling beyond template choice
 - Status: DECIDED (reversible, review when you can)
 - Branch: claude/plan-assembler
@@ -261,6 +282,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
   - Oura fetch now pulls 29 days of daily_sleep (was 8) for the baselines.
 - Why: these match what the dashboard cards already show, so the voice and the posture read the same numbers.
 - To reverse: edit the constants at the top of apps/api/src/drivers.ts.
+
 ### 2026-10-17: Root package-lock.json synced with packages/posture
 - Status: DECIDED
 - Branch: claude/driver-record
@@ -268,6 +290,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: ran `npm install` at the root and committed the 16-line lockfile change.
 - Why: the routine's test command (`npm ci && npm test`) must work.
 - To reverse: revert commit b289e96.
+
 ### 2026-10-11: Voice pattern library review notes
 - Status: NEEDS EVAN (none block merging)
 - Branch: claude/voice-pattern-library
@@ -279,6 +302,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
   4. Root package.json becomes an npm workspace (apps/*, packages/*). `cd apps/api && npm install` still works, but the first Railway deploy after merge is worth watching.
 - Why: voice copy and production deploys are Evan's call.
 - To reverse: n/a.
+
 ### 2026-10-11: Posture rules ported from doc 07 v1
 - Status: DECIDED (review when you can)
 - Branch: claude/posture-engine
@@ -287,6 +311,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Open questions: (1) taper fires only while load_7d is still above 0.8x weekly chronic, which reads backwards for a taper; (2) PRD v1 says taper window is 14 days, doc 07 says 7.
 - Why: the v1 doc is the only written spec.
 - To reverse: edit packages/posture/src/constants.ts and bump POSTURE_ENGINE_VERSION.
+
 ### 2026-10-13: Knowledge library: SCORA reasons over fixed sources (RAG)
 - Status: DECIDED (by Evan); spec details open for review
 - Branch: claude/knowledge-library-spec
@@ -304,6 +329,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Open when that phase starts: relation to Plan tier templates and the human coach marketplace, pricing, safety and liability position.
 - Why: Evan's call on the business model.
 - To reverse: restore "Permanently" in CLAUDE.md §11 and remove the notes in §0 and §2.2.
+
 ### 2026-10-13: CDV chart WebView loads Vega from a pinned CDN
 - Status: DECIDED
 - Branch: claude/cdv-chart-webview
@@ -311,6 +337,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: the chart page loads vega 5.30.0, vega-lite 5.21.0 and vega-embed 6.26.0 from cdn.jsdelivr.net. Specs with any `url` or `href` key are rejected, so charts only use inline data. API contract: optional `chart` field (a Vega-Lite object) on the /api/cdv response.
 - Why: smallest change that works today. Alternative: bundle the three JS files in the app so charts render offline and nothing loads from a third party.
 - To reverse: swap the three script tags in `CDVChart.html(for:)` for bundled files.
+
 ### 2026-10-12: Port of remaining voice patterns waits for Node on the Studio
 - Status: NEEDS EVAN
 - Branch: none yet
