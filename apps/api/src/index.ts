@@ -695,7 +695,7 @@ Write today's read using only these drivers.`;
       });
       voice = result.voice;
     } catch (e) {
-      fastify.log.error('OpenAI error (read):');
+      fastify.log.error({ err: e }, 'OpenAI error (read)');
       return reply.code(500).send({
         error: 'Read generation failed',
         detail: e instanceof Error ? e.message : String(e),
@@ -1118,7 +1118,7 @@ Write this week's review using only these drivers.`;
       });
       voice = result.voice;
     } catch (e) {
-      fastify.log.error('OpenAI error (weekly):');
+      fastify.log.error({ err: e }, 'OpenAI error (weekly)');
       return reply.code(500).send({
         error: 'Weekly read generation failed',
         detail: e instanceof Error ? e.message : String(e),
