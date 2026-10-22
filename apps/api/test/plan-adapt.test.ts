@@ -272,3 +272,21 @@ test('dismissing a plan change: only the athlete, only once; it leaves the list 
   const kept = await db.query<{ n: number }>(`select count(*)::int as n from plan_adaptations where athlete_id = 'dm1'`);
   assert.equal(kept.rows[0].n, 1, 'the change itself is kept');
 });
+
+test("dismissing a move also dismisses the change it displaced (review 6)", async () => {
+  const planId = await seedPlan('dm2', templateId);
+  const m = ids.get('dm2')!;
+  const add = async (type: string, workout: string, from: string, to: string | null, code: string) =>
+    (await db.query<{ id: string }>(
+      `insert into plan_adaptations (athlete_id, training_plan_id, scheduled_workout_id, adaptation_type,
+         original_date, new_date, reason_code, reason_text, engine_version, triggered_by)
+       values ('dm2', $1, $2, $3, $4, $5, $6, 'Named.', 'adaptation-v1.2.0', 'auto_engine') returning id`,
+      [planId, workout, type, from, to, code],
+    )).rows[0].id;
+  const move = await add('moved', m.get('w3:tuesday')!, '2026-11-03', '2026-11-05', 'posture_rest_hard_scheduled');
+  await add('skipped', m.get('w3:thursday')!, '2026-11-05', null, 'displaced_by_move');
+  const other = await add('skipped', m.get('w3:thursday')!, '2026-11-06', null, 'displaced_by_move');
+  assert.equal(await store.dismiss('dm2', move), true);
+  const live = (await db.query<{ id: string }>(`select id from plan_adaptations where athlete_id = 'dm2' and dismissed_at is null`)).rows.map((r) => r.id);
+  assert.deepEqual(live, [other], 'only the paired change goes with the move');
+});

@@ -277,10 +277,23 @@ export function sqlAdaptStore(db: Db): AdaptStore {
     async dismiss(athleteId, adaptationId) {
       const r = await db.query(
         `update plan_adaptations set dismissed_at = now()
-         where id = $1 and athlete_id = $2 and dismissed_at is null returning id`,
+         where id = $1 and athlete_id = $2 and dismissed_at is null
+         returning id, training_plan_id, adaptation_type, to_char(new_date, 'YYYY-MM-DD') as new_date`,
         [adaptationId, athleteId],
       );
-      return r.rows.length === 1;
+      const m = r.rows[0];
+      if (!m) return false;
+      // A move's paired change (the easy session it displaced, "gives way")
+      // goes with it, or the morning read would still mention it.
+      if (m.adaptation_type === 'moved' && m.new_date) {
+        await db.query(
+          `update plan_adaptations set dismissed_at = now()
+           where training_plan_id = $1 and athlete_id = $2 and adaptation_type = 'skipped'
+             and original_date = $3::date and dismissed_at is null`,
+          [m.training_plan_id, athleteId, m.new_date],
+        );
+      }
+      return true;
     },
   };
 }
@@ -339,12 +352,22 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
       return (r.data ?? []).map(({ training_plans: _p, ...a }: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
     },
     async dismiss(athleteId, adaptationId) {
+      const now = new Date().toISOString();
       const r = await sb.from('plan_adaptations')
-        .update({ dismissed_at: new Date().toISOString() })
+        .update({ dismissed_at: now })
         .eq('id', adaptationId).eq('athlete_id', athleteId).is('dismissed_at', null)
-        .select('id');
+        .select('id, training_plan_id, adaptation_type, new_date');
       check(r, 'Dismiss adaptation');
-      return (r.data ?? []).length === 1;
+      const m = (r.data ?? [])[0];
+      if (!m) return false;
+      // A move's paired "gives way" change goes with it (see the SQL store).
+      if (m.adaptation_type === 'moved' && m.new_date) {
+        check(await sb.from('plan_adaptations')
+          .update({ dismissed_at: now })
+          .eq('training_plan_id', m.training_plan_id).eq('athlete_id', athleteId)
+          .eq('adaptation_type', 'skipped').eq('original_date', m.new_date).is('dismissed_at', null), 'Dismiss paired change');
+      }
+      return true;
     },
   };
 }

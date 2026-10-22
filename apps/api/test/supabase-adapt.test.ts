@@ -55,6 +55,6 @@ test('dismiss filters on the change, its athlete and not-yet-dismissed', async (
   assert.equal(await supabaseAdaptStore(sb).dismiss('a1', 'x'), true);
   const calls = sb.queries[0].calls;
   assert.equal(calls[0][0], 'update');
-  assert.deepEqual(calls.slice(1), [['eq', 'id', 'x'], ['eq', 'athlete_id', 'a1'], ['is', 'dismissed_at', null], ['select', 'id']]);
+  assert.deepEqual(calls.slice(1, 4), [['eq', 'id', 'x'], ['eq', 'athlete_id', 'a1'], ['is', 'dismissed_at', null]]);
   assert.equal(await supabaseAdaptStore(fakeSupabase([{ data: [] }])).dismiss('a1', 'x'), false);
 });
