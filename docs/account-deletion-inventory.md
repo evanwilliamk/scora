@@ -4,7 +4,7 @@ Status: waiting on Q27 (deleting real user data is Evan's call). Doc 10 §6.6 as
 
 ## Two keys
 
-Older tables hang off `athletes.id` (uuid) and cascade from it. Every table added since October keys by the Strava id as text (`athlete_id text`), with no foreign key to `athletes`, so they do **not** cascade and each needs its own delete.
+Older tables hang off `athletes.id` (uuid) and cascade from it. Every later table (device tokens from July, everything from October) keys by the Strava id as text (`athlete_id text`), with no foreign key to `athletes`, so they do **not** cascade and each needs its own delete.
 
 ## Tables holding an athlete's data
 
