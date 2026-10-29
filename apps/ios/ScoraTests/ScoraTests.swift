@@ -333,6 +333,14 @@ final class ScoraTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(CDVChart.html(for: spec)).contains("messageHandlers.rendered"))
     }
 
+    func testPushTapRoutesDailyToTodaysReadAndWeeklyToThisWeek() {
+        XCTAssertEqual(PushRoute(kind: "daily"), .todaysRead)
+        XCTAssertEqual(PushRoute(kind: "weekly"), .weekly)
+        PushRoute.pending = .weekly
+        XCTAssertEqual(PushRoute.take(), .weekly)
+        XCTAssertNil(PushRoute.take(), "a route is followed once")
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")

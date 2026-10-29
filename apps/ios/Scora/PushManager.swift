@@ -34,6 +34,24 @@ struct PushOpen: Equatable, Codable {
   }
 }
 
+// Where a tap on a scheduled push lands (PRD §5.A.2): the daily read opens
+// Today's Read at the top of the dashboard, the weekly one opens This Week.
+enum PushRoute: Equatable {
+  case todaysRead, weekly
+
+  static let notice = Notification.Name("scoraOpenFromPush")
+  // Set on the main thread by the tap; the dashboard takes it when it appears
+  // or on the notice, whichever comes first (a tap can launch the app).
+  static var pending: PushRoute?
+
+  init(kind: String) { self = kind == "weekly" ? .weekly : .todaysRead }
+
+  static func take() -> PushRoute? {
+    defer { pending = nil }
+    return pending
+  }
+}
+
 final class PushManager {
   static let shared = PushManager()
 
@@ -188,6 +206,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
        let open = PushOpen(userInfo: response.notification.request.content.userInfo) {
       PushManager.shared.reportOpen(open)
+      DispatchQueue.main.async {
+        PushRoute.pending = PushRoute(kind: open.kind)
+        NotificationCenter.default.post(name: PushRoute.notice, object: nil)
+      }
     }
     completionHandler()
   }

@@ -38,6 +38,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] Numeric line first (PRD §5.A.2, CLAUDE.md §3.3) in the read, the push and Today's Read, plus the posture badge (PRD §5.A.3) (`claude/numeric-first-read`, on `claude/integration-2026-10-18`; seen on the simulator)
 - [~] Week So Far: Mon to Sun run-minute bars + one line built from the same numbers (PRD §5.A.3) (`claude/week-so-far`, on `claude/numeric-first-read`; seen on the simulator)
 - [~] Week So Far shows the plan's run minutes as outlines and states them in the line (`claude/week-planned`, on `claude/integration-2026-10-22`; seen on the simulator)
+- [~] Push tap-through (PRD §5.A.2): a tapped daily push closes any open sheet and scrolls to Today's Read; the weekly push opens This Week; works when the tap launches the app (`claude/push-tap-routing`, on `claude/integration-2026-10-28`; unit-tested, not tapped on the simulator)
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key). Done when a scheduled read arrives on Evan's phone at his delivery time
 - [~] Tests: APNs provider JWT verified against a throwaway key; scheduled push delivery (body format, dead-token pruning) (`claude/tests-push-prefs`, on `claude/integration-2026-10-22`)
 - [~] Tests: `sendPush` against a local HTTP/2 stand-in for APNs (path, headers, `scora` payload, refusal reasons); host override honored only under NODE_ENV=test (`claude/tests-send-push`, on `claude/integration-2026-10-28`)
