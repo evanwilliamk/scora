@@ -434,3 +434,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: CLAUDE.md §9.1 holds the workflow rules; PLAN.md, DECISIONS.md, MEMORY.md and memory/ are the shared state both agents read and write. Private per-tool memory is not a source of truth.
 - Why: git is the only thing both agents and both machines share.
 - To reverse: delete §9.1, PLAN.md and DECISIONS.md.
+
+### 2026-10-28: Plan adherence counts an unmarked session as not done
+- Status: DECIDED
+- Branch: claude/plan-gates
+- Context: doc 10 3.1.10 compares Strava activities to scheduled sessions, but activities are fetched live and never stored, so the SQL report can only use the athlete's done/missed marks.
+- Choice: done = marked done; missed and unmarked both count against adherence; rest days left out; last 28 days up to yesterday (UTC); SCORA plans only.
+- Alternatives: leave unmarked out of the denominator (flatters adherence when athletes stop marking); store activity dates to match them (needs a migration and a sync job).
+- Why: a gate should not pass because nobody marks sessions. The unmarked column is shown so the cause is visible.
+- To reverse: in apps/api/scripts/plan-gates.sql, divide by `done + missed` instead of `scheduled`.
