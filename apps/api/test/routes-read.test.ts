@@ -157,3 +157,56 @@ test('the model failing is a 500, never an unvalidated read', async () => {
   assert.equal(r.statusCode, 500);
   assert.equal(r.json().error, 'Read generation failed');
 });
+
+// Card tap-to-expand reads the snapshot the last read left (10 min).
+const expand = (cardId: string, athleteId = '42') => app.inject({ method: 'POST', url: '/api/card-expand', payload: { athleteId, cardId } });
+
+test('card expand: no read yet is a 409; an unknown card is a 404', async () => {
+  assert.equal((await expand('training_load', 'never-read')).statusCode, 409);
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  assert.equal((await read()).statusCode, 200);
+  assert.equal((await expand('no-such-card')).statusCode, 404);
+});
+
+test('card expand: a generated expansion is validated like the read', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const r = await read();
+  const cards: any[] = r.json().cards;
+  const before = llmCalls().length;
+  let checked = 0;
+  for (const card of cards) {
+    guard.openAi('You should go for a long run.', 'You need to do an easy run today.');
+    const e = await expand(card.id);
+    assert.equal(e.statusCode, 200, `${card.id}: ${e.body}`);
+    const out = e.json();
+    assert.equal(out.cardId, card.id);
+    assert.doesNotMatch(out.reply, /you should|you need to|go for|do an easy/i, card.id);
+    if (out.generated) {
+      assert.ok(validateVoice(out.reply, out.drivers).ok, `${card.id}: ${out.reply}`);
+      checked++;
+    }
+    guard.reset();
+    guard.stravaActivities(steady());
+  }
+  assert.ok(checked > 0, 'at least one card asks the model');
+  assert.ok(before >= 1);
+});
+
+test('card expand: the model down falls back to the card\'s own line', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const cards: any[] = (await read()).json().cards;
+  // The training load card has data from the runs, so it asks the model.
+  const card = cards.find((c) => c.id === 'training_load');
+  assert.ok(card && card.available, 'training_load card is available');
+  guard.openAi({ status: 503, body: {} });
+  const e = await expand(card.id);
+  assert.equal(e.statusCode, 200);
+  assert.equal(llmCalls().length, 2, 'the read, then the failed expansion');
+  assert.deepEqual(e.json(), { cardId: card.id, reply: card.translation ?? '', drivers: [], generated: false });
+});
