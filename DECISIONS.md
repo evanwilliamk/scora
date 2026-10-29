@@ -534,3 +534,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: no night dated today means sleep, HRV, resting HR, sleep score and readiness are empty for that read (the cards show their no-data line); history and charts keep every night. Alternative: show the older night labelled by its day ("Sunday night").
 - Why: a read that calls a three-day-old night "last night" breaks the driver-existence promise; the labelled version is a copy change that can come later.
 - To reverse: make `fresh` in apps/api/src/oura.ts accept older days.
+
+### 2026-10-29: Voice validator reads folded typography and bans paraphrased advice
+- Status: DECIDED
+- Branch: claude/validator-hardening
+- Context: an adversarial review found curly apostrophes, doubled spaces and non-ASCII digits slipped past every pattern, and paraphrases ("Aim for 45 minutes", "Consider a rest day") passed.
+- Choice: checks run on NFKC-folded text; new advice, override, coach and surrender patterns; number words checked when they are tens compounds or carry a unit, so "two nights" stays fine. Alternative: an LLM judge pass (costs money, not deterministic).
+- Why: the validator is the guarantee (CLAUDE.md §3.2, §8.5). Stricter rules can raise the fallback rate; watch the `voice` telemetry lines after deploy.
+- To reverse: revert the commit on claude/validator-hardening, or drop single patterns in apps/api/src/validator.ts.
