@@ -17,6 +17,11 @@ test('todaysWorkout picks the hardest session of the day, ignoring other days', 
   assert.equal(todaysWorkout(rows, '2026-10-22'), null);
 });
 
+test('todaysWorkout ranks downgraded sessions above easy ones (review)', () => {
+  assert.equal(todaysWorkout([w(TODAY, 'easy'), w(TODAY, 'steady_state')], TODAY)?.planned_intensity, 'steady_state');
+  assert.equal(todaysWorkout([w(TODAY, 'recovery'), w(TODAY, 'endurance')], TODAY)?.planned_intensity, 'endurance');
+});
+
 test('planDriver carries only stored values', () => {
   assert.deepEqual(planDriver(w(TODAY, 'tempo', { planned_duration_min: 45 })), { metric: 'Plan today', value: 'tempo, 45 min' });
   assert.deepEqual(planDriver(w(TODAY, null, { planned_type: 'ride', planned_distance_km: 25.75 })), { metric: 'Plan today', value: 'ride, 25.75 km' });

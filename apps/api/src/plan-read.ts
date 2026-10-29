@@ -11,7 +11,7 @@ import { toScheduledWorkout } from './plan-parse';
 
 // When a day has more than one session, the read keys off the hardest.
 const WEIGHT: Record<string, number> = {
-  long: 8, intervals: 7, threshold: 6, hard: 6, tempo: 5, moderate: 4, easy: 3, recovery: 2, rest: 1,
+  long: 8, intervals: 7, threshold: 6, hard: 6, tempo: 5, steady_state: 4, moderate: 4, endurance: 3, easy: 3, recovery: 2, rest: 1,
 };
 
 export function todaysWorkout(rows: StoredWorkout[], today: string): StoredWorkout | null {

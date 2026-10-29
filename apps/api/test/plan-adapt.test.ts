@@ -175,6 +175,11 @@ test("no active SCORA plan (none, or a coach's plan): nothing to adapt", async (
 test('downgraded structure: one continuous step at the same duration', () => {
   assert.deepEqual(downgradedStructure('steady_state', 50), [{ type: 'steady', duration_min: 50, intensity: 'steady' }]);
   assert.equal(downgradedStructure('endurance', null), null);
+  // Review (Today line): no planned minutes, but template steps: keep their total.
+  assert.deepEqual(
+    downgradedStructure('endurance', null, [{ type: 'steady', duration_min: 10, intensity: 'easy' }, { type: 'steady', duration_min: 25, intensity: 'tempo' }, { type: 'steady', duration_min: 10, intensity: 'easy' }]),
+    [{ type: 'steady', duration_min: 45, intensity: 'easy' }],
+  );
 });
 
 test('review fixes: a draft template never adapts unless opted in', async () => {

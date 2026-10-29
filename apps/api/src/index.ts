@@ -637,11 +637,16 @@ fastify.post('/api/read', async (request, reply) => {
       fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
     }
 
+    // CLAUDE.md §3.3: a SCORA session adds the Plan tier's "Today:" line,
+    // even on a day with too little activity to read.
+    const planTodayLine = todayLine(plan.workout, describeWorkout);
+
     // With no drivers there is nothing the voice can honestly say. Don't invent.
     if (drivers.length === 0) {
       return reply.send({
         read: {
           voice: 'Not enough recent activity to read yet. Once a few runs land in Strava, the morning read fills in.',
+          ...(planTodayLine ? { today: planTodayLine } : {}),
         },
         posture: postureOut,
         cards,
@@ -746,8 +751,6 @@ Write today's read using only these drivers.`;
       }
     }
 
-    // CLAUDE.md §3.3: a SCORA session adds the Plan tier's "Today:" line.
-    const planTodayLine = todayLine(plan.workout, describeWorkout);
     return reply.send({
       read: { voice, numbers: numericLine(readDrivers), ...(charts ?? {}), ...(planTodayLine ? { today: planTodayLine } : {}) },
       weekSoFar: weekSoFar(activities, today, weekPlanRows && weekPlanRows.length ? plannedRunMinutes(weekPlanRows) : undefined),

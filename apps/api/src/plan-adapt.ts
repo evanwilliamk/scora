@@ -8,7 +8,7 @@
 
 import type { Driver } from './metrics';
 import {
-  ADAPTATION_ENGINE_VERSION, evaluateAdaptation, templateWeekMinutes, validateTemplate,
+  ADAPTATION_ENGINE_VERSION, evaluateAdaptation, structureMinutes, templateWeekMinutes, validateTemplate,
 } from '../../../packages/plan-engine/src/index';
 import type {
   AdaptationDecision, Intensity, PlanTemplate, PlannedWorkout, Posture, WorkoutStep,
@@ -114,7 +114,10 @@ export function displacedReasonText(d: Extract<AdaptationDecision, { type: 'move
 }
 
 // A downgrade keeps the duration and drops the intensity: one continuous step.
-export function downgradedStructure(to: Intensity, minutes: number | null): WorkoutStep[] | null {
+// A session stored without planned minutes keeps its template steps' total,
+// so it still has a structure (and a "Today:" line).
+export function downgradedStructure(to: Intensity, minutes: number | null, steps?: WorkoutStep[] | null): WorkoutStep[] | null {
+  if (!minutes && steps && steps.length) minutes = Math.round(structureMinutes(steps));
   if (!minutes) return null;
   return [{ type: 'steady', duration_min: minutes, intensity: to === 'steady_state' ? 'steady' : 'easy' }];
 }
@@ -183,7 +186,7 @@ export async function adaptTomorrow(
       type: decision.type,
       new_date: decision.type === 'moved' ? decision.to : null,
       new_workout: decision.type === 'downgraded'
-        ? { planned_intensity: decision.to_intensity, workout_structure_json: downgradedStructure(decision.to_intensity, decision.duration_min) }
+        ? { planned_intensity: decision.to_intensity, workout_structure_json: downgradedStructure(decision.to_intensity, decision.duration_min, workout.workout_structure_json) }
         : null,
       displaced_workout_id: displaced?.id ?? null,
       reason_code: decision.reason_code,
