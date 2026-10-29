@@ -291,6 +291,21 @@ final class ScoraTests: XCTestCase {
         func schedule(_ workout: CustomWorkout, at date: DateComponents) async { scheduled.append((workout.displayName ?? "", date)) }
     }
 
+    func testWaitingPushOpensDropOldAndDuplicateReports() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func open(_ date: String, _ sentAt: Int) -> PushOpen {
+            PushOpen(userInfo: ["scora": ["kind": "daily", "date": date, "sent_at": NSNumber(value: sentAt)]])!
+        }
+        let fresh = open("2026-12-01", 1_800_000_000 - 3600)
+        let old = open("2026-11-20", 1_800_000_000 - 8 * 86_400)
+        let kept = PushOpen.pruned([old, fresh, fresh], now: now)
+        XCTAssertEqual(kept, [fresh])
+        let many = (0..<40).map { open("2026-12-01", 1_800_000_000 - $0) }
+        XCTAssertEqual(PushOpen.pruned(many, now: now).count, 30)
+        let data = try! JSONEncoder().encode([fresh])
+        XCTAssertEqual(try! JSONDecoder().decode([PushOpen].self, from: data), [fresh])
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")
