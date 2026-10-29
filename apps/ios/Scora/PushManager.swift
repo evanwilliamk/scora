@@ -8,7 +8,7 @@ import UserNotifications
 // The `scora` payload of a scheduled push (kind, local date, send time in
 // unix seconds), echoed to the API when the athlete opens the app from it, so
 // the open rate can be measured (doc 10 1.1.2). Nothing else is sent.
-struct PushOpen: Equatable {
+struct PushOpen: Equatable, Codable {
   let kind: String
   let date: String
   let sentAt: Int
@@ -22,6 +22,15 @@ struct PushOpen: Equatable {
     self.kind = kind
     self.date = date
     self.sentAt = sentAt
+  }
+
+  // Reports waiting to be sent: the API refuses a send time over 7 days old,
+  // so older ones are dropped, and the list stays short.
+  static func pruned(_ items: [PushOpen], now: Date = Date()) -> [PushOpen] {
+    let cutoff = Int(now.timeIntervalSince1970) - 7 * 86_400 + 3600
+    var seen = Set<String>()
+    let kept = items.filter { $0.sentAt >= cutoff && seen.insert("\($0.kind)|\($0.date)|\($0.sentAt)").inserted }
+    return Array(kept.suffix(30))
   }
 }
 
@@ -58,21 +67,55 @@ final class PushManager {
   // Called after sign-in so a token captured before auth still gets registered.
   func onAuthenticated() {
     sync()
+    flushOpens()
   }
 
-  // The athlete tapped a scheduled push.
+  // The athlete tapped a scheduled push. Kept until the API has it, so an
+  // open made offline or before sign-in still counts (doc 10 1.1.2).
+  private let pendingKey = "scora.pendingPushOpens"
+  private let pendingQueue = DispatchQueue(label: "scora.pushOpens")
+
+  private func loadPending() -> [PushOpen] {
+    guard let data = UserDefaults.standard.data(forKey: pendingKey) else { return [] }
+    return (try? JSONDecoder().decode([PushOpen].self, from: data)) ?? []
+  }
+
+  private func savePending(_ items: [PushOpen]) {
+    UserDefaults.standard.set(try? JSONEncoder().encode(items), forKey: pendingKey)
+  }
+
   func reportOpen(_ open: PushOpen) {
-    guard
-      let athleteId = UserDefaults.standard.string(forKey: athleteIdKey), !athleteId.isEmpty,
-      let url = URL(string: "\(apiBase)/api/events/push-open")
-    else { return }
-    var req = URLRequest(url: url)
-    req.httpMethod = "POST"
-    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    req.httpBody = try? JSONSerialization.data(
-      withJSONObject: ["athleteId": athleteId, "kind": open.kind, "date": open.date, "sentAt": open.sentAt]
-    )
-    URLSession.shared.dataTask(with: req).resume()
+    pendingQueue.async {
+      self.savePending(PushOpen.pruned(self.loadPending() + [open]))
+      self.flushOpens()
+    }
+  }
+
+  // Sends every waiting report; called on launch, after sign-in and after a tap.
+  func flushOpens() {
+    pendingQueue.async {
+      let items = PushOpen.pruned(self.loadPending())
+      self.savePending(items)
+      guard
+        !items.isEmpty,
+        let athleteId = UserDefaults.standard.string(forKey: self.athleteIdKey), !athleteId.isEmpty,
+        let url = URL(string: "\(self.apiBase)/api/events/push-open")
+      else { return }
+      for open in items {
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(
+          withJSONObject: ["athleteId": athleteId, "kind": open.kind, "date": open.date, "sentAt": open.sentAt]
+        )
+        URLSession.shared.dataTask(with: req) { _, resp, _ in
+          let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+          // Delivered, or refused for good (400): either way it leaves the list.
+          guard (200..<300).contains(status) || status == 400 else { return }
+          self.pendingQueue.async { self.savePending(self.loadPending().filter { $0 != open }) }
+        }.resume()
+      }
+    }
   }
 
   private func sync() {
@@ -104,6 +147,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     if DemoMode.isOn { return true }
     #endif
     PushManager.shared.requestAuthorization()
+    PushManager.shared.flushOpens()
     return true
   }
 
