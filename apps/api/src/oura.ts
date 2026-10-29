@@ -186,7 +186,12 @@ export interface OuraSummary {
 // Pull the last week of Oura data and reduce it to the values the two cards
 // (Sleep, Recovery Signal) and the read actually cite. Best-effort: any route
 // that fails leaves its fields null rather than blocking the dashboard.
-export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
+//
+// With the athlete's local date, "last night" must be last night: a newest
+// night older than yesterday (ring off, not synced) leaves sleep, HRV, resting
+// HR, the sleep score and readiness null rather than presenting old values as
+// fresh. The prior-night history and the chart series keep every night.
+export async function fetchOuraSummary(token: string, opts: { localToday?: string } = {}): Promise<OuraSummary> {
   const auth = { headers: { Authorization: `Bearer ${token}` } };
   const day = 86400000;
   const iso = (d: number) => new Date(d).toISOString().slice(0, 10);
@@ -195,6 +200,10 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
   const range = `start_date=${iso(start)}&end_date=${iso(end)}`;
   // Sleep score percentiles (posture baselines) need a longer window.
   const scoreRange = `start_date=${iso(Date.now() - 29 * day)}&end_date=${iso(end)}`;
+  const yesterday = opts.localToday ? iso(Date.parse(`${opts.localToday}T00:00:00Z`) - day) : null;
+  const fresh = (d: unknown) => yesterday === null || (typeof d === 'string' && d >= yesterday);
+  // The night "last night" refers to, once the sleep periods are read.
+  let lastNightDay: string | null = null;
 
   const summary: OuraSummary = {
     sleepSeconds: null,
@@ -223,7 +232,8 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
       }
       const periods = [...byDay.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
       const latest = periods[0];
-      if (latest) {
+      if (latest && fresh(latest.day)) {
+        lastNightDay = latest.day;
         summary.sleepSeconds = latest.total_sleep_duration ?? null;
         summary.hrvMs = latest.average_hrv ?? null;
         summary.restingHr = latest.lowest_heart_rate ?? null;
@@ -256,7 +266,9 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
     if (res.ok) {
       const json: any = await res.json();
       const rows: any[] = (json.data || []).slice().sort((a: any, b: any) => (a.day < b.day ? 1 : -1));
-      if (rows[0]) summary.sleepScore = rows[0].score ?? null;
+      // The score of the same night as the sleep values; else the newest, if fresh.
+      const night = lastNightDay ? rows.find((r) => r.day === lastNightDay) : rows[0] && fresh(rows[0].day) ? rows[0] : undefined;
+      if (night) summary.sleepScore = night.score ?? null;
       summary.sleepScoreHistory = rows
         .slice(1, 29)
         .map((r) => r.score)
@@ -272,7 +284,7 @@ export async function fetchOuraSummary(token: string): Promise<OuraSummary> {
     if (res.ok) {
       const json: any = await res.json();
       const rows: any[] = (json.data || []).slice().sort((a: any, b: any) => (a.day < b.day ? 1 : -1));
-      if (rows[0]) summary.readinessScore = rows[0].score ?? null;
+      if (rows[0] && fresh(rows[0].day)) summary.readinessScore = rows[0].score ?? null;
     }
   } catch {
     // leave null

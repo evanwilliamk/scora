@@ -536,6 +536,10 @@ fastify.post('/api/read', async (request, reply) => {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
 
+    // The athlete's local date for "last night" and calendar-day counts: the
+    // app's, else the newest activity's offset.
+    const localToday = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+
     // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
     // cards fall back to connect prompts. Never blocks the read on Oura errors.
     let ouraSummary = null;
@@ -543,7 +547,7 @@ fastify.post('/api/read', async (request, reply) => {
     try {
       const ouraToken = await getValidOuraToken(athleteId);
       ouraConnected = true;
-      ouraSummary = await fetchOuraSummary(ouraToken);
+      ouraSummary = await fetchOuraSummary(ouraToken, { localToday });
     } catch (e) {
       fastify.log.info(`Oura not available for ${athleteId}: ${e instanceof Error ? e.message : e}`);
     }
@@ -568,9 +572,6 @@ fastify.post('/api/read', async (request, reply) => {
       healthKitUsed = true;
     }
 
-    // The athlete's local date for calendar-day counts: the app's, else the
-    // newest activity's offset.
-    const localToday = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
     const { cards, drivers, connections } = buildDashboard(
       activities,
       { strava: true, oura: ouraConnected, healthKit: healthKitUsed },
@@ -1228,7 +1229,7 @@ fastify.post('/api/weekly', async (request, reply) => {
     let ouraSummary = null;
     try {
       const ouraToken = await getValidOuraToken(athleteId);
-      ouraSummary = await fetchOuraSummary(ouraToken);
+      ouraSummary = await fetchOuraSummary(ouraToken, { localToday: isoDay((request.body as any)?.today) ?? athleteLocalToday(activities) });
     } catch {
       // Oura optional — weekly read works on Strava alone.
     }

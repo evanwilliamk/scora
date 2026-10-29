@@ -106,3 +106,26 @@ test('the Oura authorize URL asks for a code at the callback; state carries the 
   // Pinned so the Q18 change (an HMAC-signed state) shows up as a deliberate test edit.
   assert.equal(u.searchParams.get('state'), '12345');
 });
+
+test('with the athlete\'s date, a stale newest night is not "last night" (review 10-29)', async () => {
+  // Ring off for four nights: the newest night is the 13th, today is the 17th.
+  const sleep = [13, 12, 11, 10].map((d, i) => ({ day: day(d), type: 'long_sleep', total_sleep_duration: 26000 + i, average_hrv: 55 + i, lowest_heart_rate: 47 + i }));
+  stubOura({ sleep: { data: sleep }, daily_sleep: { data: [{ day: day(13), score: 88 }] }, daily_readiness: { data: [{ day: day(13), score: 80 }] } });
+  const s = await fetchOuraSummary('token', { localToday: day(17) });
+  assert.equal(s.sleepSeconds, null);
+  assert.equal(s.hrvMs, null);
+  assert.equal(s.restingHr, null);
+  assert.equal(s.sleepScore, null);
+  assert.equal(s.readinessScore, null);
+  assert.equal(s.nights!.length, 4, 'the chart series keeps every night');
+});
+
+test('last night counts from today or yesterday, and the score is that night\'s (review 10-29)', async () => {
+  const sleep = [16, 15].map((d, i) => ({ day: day(d), type: 'long_sleep', total_sleep_duration: 27000 + i, average_hrv: 60 + i, lowest_heart_rate: 45 + i }));
+  // A daily_sleep row for today exists without a sleep period yet: not the same night.
+  stubOura({ sleep: { data: sleep }, daily_sleep: { data: [{ day: day(17), score: 70 }, { day: day(16), score: 86 }] }, daily_readiness: { data: [{ day: day(17), score: 79 }] } });
+  const s = await fetchOuraSummary('token', { localToday: day(17) });
+  assert.equal(s.sleepSeconds, 27000);
+  assert.equal(s.sleepScore, 86, 'the score matches the night the sleep values came from');
+  assert.equal(s.readinessScore, 79);
+});
