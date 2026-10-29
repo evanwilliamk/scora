@@ -158,13 +158,21 @@ export function supabaseGenerateStore(sb: { from: (t: string) => any; rpc: (fn: 
 }
 
 // What the plan setup screen may offer (doc 09 §2.3): each sport and goal the
-// loaded templates cover, with the experience levels they cover. With an
-// empty library the list is empty and the app shows no setup entry.
+// loaded templates cover, and per experience level the weekly km the
+// templates take ([min, max), as matchTemplate checks) and the shortest plan
+// in weeks (a race must be at least that far out). With an empty library the
+// list is empty and the app shows no setup entry.
+export interface PlanLevelOption {
+  level: string;
+  weekly_km: [number, number];
+  min_weeks: number;
+}
+
 export interface PlanOption {
   sport: string;
   goal_type: string;
   label: string;
-  experience_levels: string[];
+  levels: PlanLevelOption[];
 }
 
 const GOAL_LABELS: Record<string, string> = {
@@ -179,16 +187,26 @@ export function goalLabel(goal: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function planOptions(templates: { sport: string; goal_type: string; experience_level: string }[]): PlanOption[] {
+export function planOptions(templates: {
+  sport: string; goal_type: string; experience_level: string; weekly_volume_range_km: [number, number]; duration_weeks: number;
+}[]): PlanOption[] {
   const order = ['first_timer', 'regular', 'competitive'];
   const byGoal = new Map<string, PlanOption>();
   for (const t of templates) {
     const key = `${t.sport}|${t.goal_type}`;
-    const o = byGoal.get(key) ?? { sport: t.sport, goal_type: t.goal_type, label: goalLabel(t.goal_type), experience_levels: [] };
-    if (!o.experience_levels.includes(t.experience_level)) o.experience_levels.push(t.experience_level);
+    const o = byGoal.get(key) ?? { sport: t.sport, goal_type: t.goal_type, label: goalLabel(t.goal_type), levels: [] };
+    const l = o.levels.find((x) => x.level === t.experience_level);
+    if (l) {
+      // Several templates for one level: their ranges together (a gap between
+      // them still answers with a named volume error).
+      l.weekly_km = [Math.min(l.weekly_km[0], t.weekly_volume_range_km[0]), Math.max(l.weekly_km[1], t.weekly_volume_range_km[1])];
+      l.min_weeks = Math.min(l.min_weeks, t.duration_weeks);
+    } else {
+      o.levels.push({ level: t.experience_level, weekly_km: [...t.weekly_volume_range_km], min_weeks: t.duration_weeks });
+    }
     byGoal.set(key, o);
   }
   return [...byGoal.values()]
-    .map((o) => ({ ...o, experience_levels: o.experience_levels.sort((a, b) => order.indexOf(a) - order.indexOf(b)) }))
+    .map((o) => ({ ...o, levels: o.levels.sort((a, b) => order.indexOf(a.level) - order.indexOf(b.level)) }))
     .sort((a, b) => a.sport.localeCompare(b.sport) || a.label.localeCompare(b.label));
 }

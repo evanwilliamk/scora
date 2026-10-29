@@ -360,20 +360,25 @@ final class ScoraTests: XCTestCase {
     }
 
     func testPlanSetupSendsWhatGenerationReads() throws {
-        let json = #"{"goals":[{"sport":"run","goal_type":"half_marathon","label":"Half marathon","experience_levels":["first_timer","regular"]}]}"#
+        let json = #"{"goals":[{"sport":"run","goal_type":"half_marathon","label":"Half marathon","levels":[{"level":"regular","weekly_km":[30,50],"min_weeks":12},{"level":"first_timer","weekly_km":[20.5,35],"min_weeks":3}]}]}"#
         let goal = try XCTUnwrap(JSONDecoder().decode(PlanOptionsResponse.self, from: Data(json.utf8)).goals.first)
         XCTAssertEqual(goal.id, "run|half_marathon")
+        XCTAssertEqual(goal.levels[0].kmRange, 30...49, "the max does not match, so 49 is the top")
+        XCTAssertEqual(goal.levels[1].kmRange, 21...34)
+        XCTAssertEqual(PlanSetup.clamp(10, to: goal.levels[0].kmRange), 30)
+        XCTAssertEqual(PlanSetup.clamp(80, to: goal.levels[0].kmRange), 49)
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = .current
         let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 21))!
-        let earliest = PlanSetup.earliestRace(from: now, calendar: cal)
-        XCTAssertEqual(PlanDay.today(earliest), "2026-11-25", "four weeks out")
+        XCTAssertEqual(PlanDay.today(PlanSetup.earliestRace(from: now, minWeeks: 3, calendar: cal)), "2026-11-25", "never under four weeks")
+        let earliest = PlanSetup.earliestRace(from: now, minWeeks: 12, calendar: cal)
+        XCTAssertEqual(PlanDay.today(earliest), "2027-01-20", "the shortest plan for the level")
         let body = PlanSetup.body(athleteId: "a1", goal: goal, raceDate: earliest, weeklyKm: 35, level: "regular", now: now)
         XCTAssertEqual(body["sport"] as? String, "run")
         XCTAssertEqual(body["goal_type"] as? String, "half_marathon")
         XCTAssertEqual(body["experience_level"] as? String, "regular")
         XCTAssertEqual(body["current_weekly_km"] as? Int, 35)
-        XCTAssertEqual(body["goal_race_date"] as? String, "2026-11-25")
+        XCTAssertEqual(body["goal_race_date"] as? String, "2027-01-20")
         XCTAssertEqual(body["today"] as? String, "2026-10-28")
         XCTAssertEqual(PlanSetup.levelText("first_timer"), "First timer or first serious block")
     }

@@ -1007,11 +1007,16 @@ fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {
 // the Stripe item.
 let _templates: PlanTemplate[] | null = null;
 // The goals the plan setup screen may offer (doc 09 §2.3), from the loaded
-// templates. Off unless PLAN_GENERATION=on, like generation itself.
-fastify.get('/api/plan/options', async (_request, reply) => {
+// templates. Off unless PLAN_GENERATION=on, like generation itself. Empty
+// while a coach's plan is active: generation is hidden then (CLAUDE.md §5.3).
+fastify.get('/api/plan/options', async (request, reply) => {
   if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const { athleteId } = request.query as { athleteId?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {
     _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
+    planStore(); // same env check and client
+    if (await supabaseGenerateStore(_planSb!).hasActiveCoachPlan(String(athleteId))) return reply.send({ goals: [] });
     return reply.send({ goals: planOptions(_templates) });
   } catch (e) {
     fastify.log.error(`Plan options failed: ${e instanceof Error ? e.message : e}`);

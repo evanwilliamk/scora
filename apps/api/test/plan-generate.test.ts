@@ -124,17 +124,22 @@ test('review fixes: a template changed under the same version is refused; review
   assert.deepEqual(row, { status: 'reviewed', reviewed_by: 'A Coach' });
 });
 
-test('planOptions: one entry per sport and goal, levels in order, plain labels (doc 09 §2.3)', async () => {
+test('planOptions: one entry per sport and goal, each level with its km range and shortest plan (doc 09 §2.3)', async () => {
   const { planOptions, goalLabel } = await import('../src/plan-generate');
-  const t = (sport: string, goal_type: string, experience_level: string) => ({ sport, goal_type, experience_level });
+  const t = (sport: string, goal_type: string, experience_level: string, km: [number, number], weeks: number) =>
+    ({ sport, goal_type, experience_level, weekly_volume_range_km: km, duration_weeks: weeks });
   assert.deepEqual(planOptions([]), []);
   assert.deepEqual(planOptions([
-    t('run', 'marathon', 'competitive'), t('run', 'half_marathon', 'regular'), t('run', 'marathon', 'first_timer'),
-    t('run', 'marathon', 'first_timer'), t('ride', 'gravel_century', 'regular'),
+    t('run', 'marathon', 'competitive', [60, 90], 16), t('run', 'half_marathon', 'regular', [30, 50], 12),
+    t('run', 'marathon', 'first_timer', [30, 45], 18), t('run', 'marathon', 'first_timer', [40, 60], 16),
+    t('ride', 'gravel_century', 'regular', [100, 200], 10),
   ]), [
-    { sport: 'ride', goal_type: 'gravel_century', label: 'Gravel century', experience_levels: ['regular'] },
-    { sport: 'run', goal_type: 'half_marathon', label: 'Half marathon', experience_levels: ['regular'] },
-    { sport: 'run', goal_type: 'marathon', label: 'Marathon', experience_levels: ['first_timer', 'competitive'] },
+    { sport: 'ride', goal_type: 'gravel_century', label: 'Gravel century', levels: [{ level: 'regular', weekly_km: [100, 200], min_weeks: 10 }] },
+    { sport: 'run', goal_type: 'half_marathon', label: 'Half marathon', levels: [{ level: 'regular', weekly_km: [30, 50], min_weeks: 12 }] },
+    { sport: 'run', goal_type: 'marathon', label: 'Marathon', levels: [
+      { level: 'first_timer', weekly_km: [30, 60], min_weeks: 16 },
+      { level: 'competitive', weekly_km: [60, 90], min_weeks: 16 },
+    ] },
   ]);
   assert.equal(goalLabel('trail_30k'), 'Trail 30k');
 });
