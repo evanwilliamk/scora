@@ -50,6 +50,15 @@ export function checkCdvReply(voice: string, metricLines: Driver[], data: unknow
   // trend must all be in the data. Posture words and "flat" carry no numbers.
   const drivers = metricLines.filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).unbackedNumbers.length === 0);
   const v = validateVoice(timesWhole(voice), source);
+  // Folding makes "8:47" read as 8.47, so a decimal the voice writes as a
+  // decimal is backed only by a decimal in the data, never by a clock time
+  // ("HRV 7.12" is not backed by a 7:12 pace).
+  const dataDecimals = new Set((dataValues(data).join(' ').match(/(?<![\d:])\d+\.\d+/g) ?? []).map((n) => String(parseFloat(n))));
+  for (const dec of voice.match(/(?<![\d:.])\d+\.\d+(?![\d])/g) ?? []) {
+    const n = String(parseFloat(dec));
+    if (!dataDecimals.has(n) && !v.unbackedNumbers.includes(n)) v.unbackedNumbers.push(n);
+  }
+  v.ok = v.ok && v.unbackedNumbers.length === 0;
   if (v.ok) return { voice, drivers, fallback: false, bannedHits: [], unbackedNumbers: [] };
   return {
     voice: drivers.length

@@ -118,3 +118,11 @@ test('the chat prompt holds its read under pushback (CLAUDE.md §3.6)', async ()
   const src = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
   assert.match(src, /if the athlete disagrees or pushes back, restate what the data shows and stop\. Never change the read to agree/);
 });
+
+test('a clock time never backs a decimal: "HRV 7.12" is not a 7:12 pace (review 10-29)', () => {
+  const data = { recentRuns: [{ pace: '7:12', miles: 6.2 }] };
+  const bad = checkCdvReply('HRV sits at 7.12 this week.', [], data, 'How is my HRV?');
+  assert.equal(bad.fallback, true);
+  const good = checkCdvReply('The last run held 7:12 per mile over 6.2 miles.', [], data, 'How was my last run?');
+  assert.equal(good.fallback, false);
+});
