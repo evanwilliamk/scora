@@ -35,7 +35,7 @@ Paste into the Supabase SQL editor. Both are read-only `select`s.
 | File | Gates |
 |---|---|
 | `apps/api/scripts/phase1-gates.sql` | 2.1.1 ten athletes onboarded, 2.1.9 half used a chat chart. Edit `phase_start` first |
-| `apps/api/scripts/plan-gates.sql` | 3.1.10 plan adherence 70%, 3.1.11 at most 2 adaptations per athlete per week, last 28 days |
+| `apps/api/scripts/plan-gates.sql` | 3.1.10 plan adherence 70%, 3.1.11 at most 2 adaptations per athlete per week, 3.1.9 90% of sessions sent to the Watch (athletes who sent any), last 28 days |
 
 Adherence uses the athlete's done/missed marks, since Strava activities are not stored; an unmarked session counts as not done (DECISIONS.md, 2026-10-28).
 
@@ -43,4 +43,3 @@ Adherence uses the athlete's done/missed marks, since Strava activities are not 
 
 - Manual: 1.1.5 wow moment, 2.1.3 voice panel, 2.1.6 coach forwarding, 2.1.10 voice incidents, 3.1.12 plan complaints.
 - Needs Twilio, Stripe or App Store data: 2.1.7, 3.1.2 to 3.1.8, 3.1.13.
-- 3.1.9 WorkoutKit push success: the app does not report a Watch send to the API yet.

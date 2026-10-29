@@ -33,6 +33,9 @@ export interface PlanStore {
   // (CLAUDE.md §6.2: a miss is acknowledged, never rescheduled). False when
   // it is not theirs, not on an active plan, or still ahead.
   markCompleted(athleteId: string, workoutId: string, completed: boolean, today: string): Promise<boolean>;
+  // The app scheduled this session on the athlete's Watch (doc 10 3.1.9).
+  // False when it is not theirs or not on an active plan.
+  markWatchSent(athleteId: string, workoutId: string): Promise<boolean>;
 }
 
 type Db = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
@@ -75,6 +78,16 @@ export function sqlPlanStore(db: Db): PlanStore {
            and exists (select 1 from training_plans p where p.id = w.training_plan_id and p.current_status = 'active')
          returning w.id`,
         [workoutId, athleteId, completed, today],
+      );
+      return r.rows.length === 1;
+    },
+    async markWatchSent(athleteId, workoutId) {
+      const r = await db.query(
+        `update scheduled_workouts w set workout_kit_pushed_at = now(), updated_at = now()
+         where w.id = $1 and w.athlete_id = $2
+           and exists (select 1 from training_plans p where p.id = w.training_plan_id and p.current_status = 'active')
+         returning w.id`,
+        [workoutId, athleteId],
       );
       return r.rows.length === 1;
     },
@@ -133,6 +146,21 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
         .eq('id', workoutId).eq('athlete_id', athleteId).eq('training_plan_id', (w.data as any).training_plan_id)
         .lte('scheduled_date', today).select('id');
       check(r, 'Mark workout');
+      return (r.data ?? []).length === 1;
+    },
+    async markWatchSent(athleteId, workoutId) {
+      const w = await sb.from('scheduled_workouts')
+        .select('id, training_plan_id, training_plans!inner(current_status)')
+        .eq('id', workoutId).eq('athlete_id', athleteId)
+        .eq('training_plans.current_status', 'active').maybeSingle();
+      check(w, 'Load workout');
+      if (!w.data) return false;
+      const now = new Date().toISOString();
+      const r = await sb.from('scheduled_workouts')
+        .update({ workout_kit_pushed_at: now, updated_at: now })
+        .eq('id', workoutId).eq('athlete_id', athleteId).eq('training_plan_id', (w.data as any).training_plan_id)
+        .select('id');
+      check(r, 'Record Watch send');
       return (r.data ?? []).length === 1;
     },
   };

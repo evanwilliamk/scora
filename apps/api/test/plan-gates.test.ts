@@ -30,7 +30,7 @@ async function gates() {
 test('no SCORA plans: no data', async () => {
   const rows = await gates();
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].verdict, '3.1.10 NO DATA; 3.1.11 NO DATA');
+  assert.equal(rows[0].verdict, '3.1.10 NO DATA; 3.1.11 NO DATA; 3.1.9 NO DATA');
 });
 
 test('adherence and adaptation frequency per athlete and overall', async () => {
@@ -80,5 +80,11 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
     ['ALL', 5, 3, 3],
   ]);
   // 3 of 5 done is 60%; 3 adaptations over 2 athletes and 4 weeks.
-  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 60.0% FAIL; 3.1.11 0.38 adaptations per athlete per week PASS');
+  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 60.0% FAIL; 3.1.11 0.38 adaptations per athlete per week PASS; 3.1.9 NO DATA');
+
+  // Athlete a sent 2 of 3 sessions to the Watch; b never did, so b is not in the 3.1.9 share.
+  await db.query(`update scheduled_workouts set workout_kit_pushed_at = now() where athlete_id = 'a' and scheduled_date in (current_date - 3, current_date - 4)`);
+  const after = await gates();
+  assert.deepEqual(after.map((r) => [r.athlete_id, Number(r.watch_sent)]), [['a', 2], ['b', 0], ['ALL', 2]]);
+  assert.match(after.at(-1).verdict, /; 3\.1\.9 66\.7% sent to the Watch FAIL$/);
 });

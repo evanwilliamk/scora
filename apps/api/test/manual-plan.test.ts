@@ -260,3 +260,18 @@ test('marking a session done or missed: only past or today, only the active plan
   await store.saveManualPlan('mk1', 'y', rows.slice(0, 1));
   assert.equal(await store.markCompleted('mk1', tue.id, true, '2026-10-22'), false);
 });
+
+test('a Watch send is recorded on the active plan only, for its own athlete', async () => {
+  const store = sqlPlanStore(db);
+  const { rows } = validateParsedRows([
+    { date: '2026-10-29', type: 'run', intensity: 'tempo', description: 'tempo 40' },
+  ], 'Thu tempo 40', '2026-10-26');
+  await store.saveManualPlan('ws1', 'x', rows);
+  const [thu] = await store.workoutsBetween('ws1', '2026-10-26', '2026-11-01');
+  assert.equal(await store.markWatchSent('other', thu.id), false);
+  assert.equal(await store.markWatchSent('ws1', thu.id), true);
+  const r = await db.query<any>('select workout_kit_pushed_at from scheduled_workouts where id = $1', [thu.id]);
+  assert.ok(r.rows[0].workout_kit_pushed_at);
+  await store.saveManualPlan('ws1', 'y', rows);
+  assert.equal(await store.markWatchSent('ws1', thu.id), false, 'a replaced plan is not stamped');
+});

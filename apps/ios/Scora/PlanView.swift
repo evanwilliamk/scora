@@ -469,6 +469,21 @@ struct PlanView: View {
       scheduler: AppleWatchScheduler()
     )
     await MainActor.run { watchNote = WatchSend.message(outcome); sendingId = nil }
+    if case .sent = outcome { await recordWatchSend(w) }
+  }
+
+  // Tells the API the session is on the Watch (doc 10 3.1.9). Best effort: a
+  // failure only leaves the share uncounted.
+  private func recordWatchSend(_ w: PlanWorkout) async {
+    guard let rowId = w.rowId, let url = URL(string: "\(apiBase)/api/plan/workouts/\(rowId)/watch-sent") else { return }
+    #if DEBUG
+    if DemoMode.planSessions != nil { return }
+    #endif
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId])
+    _ = try? await URLSession.shared.data(for: req)
   }
 
   // MARK: Networking
