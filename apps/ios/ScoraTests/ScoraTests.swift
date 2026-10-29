@@ -159,6 +159,29 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(DriverSeries.format(52, unit: "ms"), "52 ms")
     }
 
+    func testLastNightSleepIsTodaysGroupedNightOnly() {
+        let nights = [HealthNight(day: "2026-10-27", sleepSeconds: 26000), HealthNight(day: "2026-10-28", sleepSeconds: 25920)]
+        XCTAssertEqual(HealthNights.lastNightSleep(nights, today: "2026-10-28"), 25920)
+        XCTAssertNil(HealthNights.lastNightSleep(nights, today: "2026-10-29"), "no night ending today, no last night")
+    }
+
+    func testWeekAverageHRVUsesTheSevenNightsBeforeTheNewest() {
+        let nights = [
+            HealthNight(day: "2026-10-01", hrvMs: 10), // weeks old: out
+            HealthNight(day: "2026-10-22", hrvMs: 40),
+            HealthNight(day: "2026-10-26", hrvMs: 50),
+            HealthNight(day: "2026-10-28", hrvMs: 90), // the newest: compared, not averaged
+        ]
+        XCTAssertEqual(HealthNights.weekAverageHRV(nights), 45)
+        XCTAssertNil(HealthNights.weekAverageHRV([HealthNight(day: "2026-10-28", hrvMs: 90)]))
+    }
+
+    func testAPIErrorTextNeverShowsARawBody() {
+        XCTAssertEqual(APIErrorText.message(from: Data(#"{"error":"You've used your 3 chats for today."}"#.utf8), fallback: "x"), "You've used your 3 chats for today.")
+        XCTAssertEqual(APIErrorText.message(from: Data("<html>502 Bad Gateway</html>".utf8), fallback: "fallback"), "fallback")
+        XCTAssertEqual(APIErrorText.message(from: Data(#"{"statusCode":500,"message":"boom"}"#.utf8), fallback: "fallback"), "fallback")
+    }
+
     func testSeriesBaselineLabelDecodesWhenSent() throws {
         let json = """
         {"load":{"key":"load","label":"Run minutes, last 7 days","unit":"min","points":[{"date":"2026-10-18","value":110}],"baseline":98,"baselineLabel":"last week"},

@@ -89,6 +89,9 @@ struct OuraLinkResult: Equatable {
 struct DashboardView: View {
   @ObservedObject var tokenManager: TokenManager
   @Environment(\.openURL) private var openURL
+  @Environment(\.scenePhase) private var scenePhase
+  // The local day the shown read was made for: a new day means a new read.
+  @State private var loadedDay: String?
 
   @State private var read: DailyRead?
   @State private var posture: String?
@@ -196,6 +199,10 @@ struct DashboardView: View {
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
       Task { await loadRead() }
     }
+    // Back from overnight in the background: yesterday's read is not today's.
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active, loadedDay != nil, loadedDay != PlanDay.today() { Task { await loadRead() } }
+    }
   }
 
   // A tapped push (PRD §5.A.2): close whatever is open over the dashboard, then
@@ -218,6 +225,8 @@ struct DashboardView: View {
     case .todaysRead:
       showWeekly = false
       withAnimation { scroller.scrollTo("top", anchor: .top) }
+      // The morning push opens today's read, never the one left from yesterday.
+      if loadedDay != PlanDay.today() { Task { await loadRead() } }
     }
   }
 
@@ -463,7 +472,7 @@ struct DashboardView: View {
     do {
       let (data, resp) = try await URLSession.shared.data(for: req)
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
+        let msg = APIErrorText.message(from: data, fallback: "The read could not load. Pull to try again.")
         await MainActor.run { errorText = msg; isLoading = false }
         return
       }
@@ -475,10 +484,23 @@ struct DashboardView: View {
         cards = decoded.cards
         expansions = [:] // a new read means new numbers to interpret
         readGeneration += 1
+        loadedDay = PlanDay.today()
         isLoading = false
       }
     } catch {
-      await MainActor.run { errorText = error.localizedDescription; isLoading = false }
+      await MainActor.run { errorText = "The read could not load. Pull to try again."; isLoading = false }
     }
+  }
+}
+
+// What an API failure says to the athlete: the server's own `error` sentence
+// when the body has one, else a fixed line. Never a raw body (a proxy's HTML
+// page or a framework's JSON).
+enum APIErrorText {
+  private struct Body: Decodable { let error: String }
+  static func message(from data: Data, fallback: String) -> String {
+    guard let text = (try? JSONDecoder().decode(Body.self, from: data))?.error,
+          !text.isEmpty, text.count <= 200, !text.contains("<") else { return fallback }
+    return text
   }
 }

@@ -70,6 +70,35 @@ enum HealthNights {
     for (day, v) in lastPerDay(restingHr) { touch(day) { $0.restingHr = v.rounded() } }
     return nights.values.sorted { $0.day < $1.day }
   }
+
+  // Last night is the night whose wake day is today, from the grouped nights,
+  // so iPhone and Watch samples of the same hours count once and naps never
+  // add to it.
+  static func lastNightSleep(_ nights: [HealthNight], today: String) -> Double? {
+    nights.first { $0.day == today }?.sleepSeconds
+  }
+
+  // The nights in the 7 days before the newest one, one value per night: the
+  // baseline the API compares last night's HRV with (oura.ts does the same).
+  static func weekAverageHRV(_ nights: [HealthNight]) -> Double? {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.dateFormat = "yyyy-MM-dd"
+    guard let newest = nights.last?.day, let newestDate = f.date(from: newest) else { return nil }
+    let from = f.string(from: newestDate.addingTimeInterval(-7 * 86400))
+    let values = nights.dropLast().filter { $0.day >= from }.compactMap { $0.hrvMs }
+    guard !values.isEmpty else { return nil }
+    return (values.reduce(0, +) / Double(values.count) * 10).rounded() / 10
+  }
+
+  static func localToday(_ calendar: Calendar = .current, now: Date = Date()) -> String {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = calendar.timeZone
+    f.dateFormat = "yyyy-MM-dd"
+    return f.string(from: now)
+  }
 }
 
 final class HealthManager {
@@ -101,17 +130,15 @@ final class HealthManager {
   // caller can simply omit the summary and fall back to connect prompts.
   func fetchSummary() async -> HealthSummary? {
     guard HKHealthStore.isHealthDataAvailable() else { return nil }
-    async let sleep = lastNightSleepSeconds()
     async let hrv = latestHRV()
     async let rhr = latestRestingHR()
-    async let hrvAvg = weekAvgHRV()
-    async let nights = recentNights()
+    let nights = await recentNights()
     let summary = HealthSummary(
-      sleepSeconds: await sleep,
+      sleepSeconds: HealthNights.lastNightSleep(nights ?? [], today: HealthNights.localToday()),
       hrvMs: await hrv,
       restingHr: await rhr,
-      hrvWeekAvgMs: await hrvAvg,
-      nights: await nights
+      hrvWeekAvgMs: HealthNights.weekAverageHRV(nights ?? []),
+      nights: nights
     )
     if summary.sleepSeconds == nil && summary.hrvMs == nil && summary.restingHr == nil {
       return nil
@@ -120,32 +147,6 @@ final class HealthManager {
   }
 
   // MARK: - Queries
-
-  private func lastNightSleepSeconds() async -> Double? {
-    guard let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return nil }
-    let start = Date().addingTimeInterval(-36 * 3600)
-    let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [])
-    return await withCheckedContinuation { continuation in
-      let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
-        guard let samples = samples as? [HKCategorySample], !samples.isEmpty else {
-          continuation.resume(returning: nil)
-          return
-        }
-        // Sum "asleep" intervals (anything that isn't inBed or awake).
-        let asleep = samples.filter { s in
-          if #available(iOS 16.0, *) {
-            return s.value != HKCategoryValueSleepAnalysis.inBed.rawValue
-              && s.value != HKCategoryValueSleepAnalysis.awake.rawValue
-          } else {
-            return s.value == HKCategoryValueSleepAnalysis.asleep.rawValue
-          }
-        }
-        let total = asleep.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
-        continuation.resume(returning: total > 0 ? total : nil)
-      }
-      store.execute(query)
-    }
-  }
 
   private func latestQuantity(_ id: HKQuantityTypeIdentifier, unit: HKUnit) async -> Double? {
     guard let type = HKObjectType.quantityType(forIdentifier: id) else { return nil }
@@ -198,22 +199,5 @@ final class HealthManager {
 
   private func latestRestingHR() async -> Double? {
     await latestQuantity(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()))
-  }
-
-  private func weekAvgHRV() async -> Double? {
-    guard let type = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return nil }
-    let start = Date().addingTimeInterval(-8 * 24 * 3600)
-    let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [])
-    let unit = HKUnit.secondUnit(with: .milli)
-    return await withCheckedContinuation { continuation in
-      let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .discreteAverage) { _, stats, _ in
-        guard let avg = stats?.averageQuantity() else {
-          continuation.resume(returning: nil)
-          return
-        }
-        continuation.resume(returning: avg.doubleValue(for: unit))
-      }
-      store.execute(query)
-    }
   }
 }

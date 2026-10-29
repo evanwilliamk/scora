@@ -411,8 +411,7 @@ struct ChatView: View {
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
         // Prefer the server's `error` message (e.g. the daily-limit text);
         // fall back to the raw body only if it isn't the expected shape.
-        let msg = (try? JSONDecoder().decode(CDVError.self, from: data))?.error
-          ?? String(data: data, encoding: .utf8) ?? "Unknown error"
+        let msg = APIErrorText.message(from: data, fallback: "That question could not be answered just now. Try again in a moment.")
         let isLimit = http.statusCode == 429
         await MainActor.run {
           messages.append(.error(msg))

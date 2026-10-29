@@ -154,7 +154,7 @@ struct WeeklyView: View {
     do {
       let (data, resp) = try await URLSession.shared.data(for: req)
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
+        let msg = APIErrorText.message(from: data, fallback: "This week's review could not load. Try again in a moment.")
         await MainActor.run { errorText = msg; isLoading = false }
         return
       }
