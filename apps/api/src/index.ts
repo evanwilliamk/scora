@@ -1244,12 +1244,17 @@ fastify.post('/api/register-device', async (request, reply) => {
 // local date and send time (unix seconds).
 fastify.post('/api/events/push-open', async (request, reply) => {
   const { athleteId, kind, date, sentAt } = (request.body as any) || {};
-  if (typeof athleteId !== 'string' || !athleteId || (kind !== 'daily' && kind !== 'weekly')
-      || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)
-      || typeof sentAt !== 'number' || !Number.isFinite(sentAt)) {
+  // A uuid, a real date and a send time in the last 7 days (a minute of clock
+  // skew allowed): nothing else can reach the log line or skew the gate.
+  const now = Date.now();
+  if (typeof athleteId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(athleteId)
+      || (kind !== 'daily' && kind !== 'weekly')
+      || typeof date !== 'string' || !isoDay(date)
+      || typeof sentAt !== 'number' || !Number.isFinite(sentAt)
+      || sentAt * 1000 > now + 60_000 || sentAt * 1000 < now - 7 * 86_400_000) {
     return reply.code(400).send({ error: 'Missing: athleteId, kind (daily or weekly), date, sentAt' });
   }
-  const afterMin = Math.max(0, Math.round((Date.now() - sentAt * 1000) / 60000));
+  const afterMin = Math.max(0, Math.round((now - sentAt * 1000) / 60000));
   fastify.log.info(pushOpenLine({ kind, athleteId, localDate: date, afterMin }));
   return reply.code(204).send();
 });

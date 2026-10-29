@@ -104,3 +104,17 @@ test('delivery gate: the last 14 mornings count; fewer is not enough to pass', (
   assert.equal(r.pass, null);
   assert.match(r.lines.join('\n'), /NOT ENOUGH MORNINGS/);
 });
+
+test('morning gates: a push no phone accepted is not an unopened morning; under 14 cannot pass', () => {
+  const lines: string[] = [];
+  for (let d = 1; d <= 5; d++) {
+    const date = `2026-11-${String(d).padStart(2, '0')}`;
+    lines.push(pushSentLine({ kind: 'daily', athleteId: 'a', localDate: date, numericFirst: true, devices: 1, accepted: d === 3 ? 0 : 1 }));
+    if (d !== 3) lines.push(pushOpenLine({ kind: 'daily', athleteId: 'a', localDate: date, afterMin: 10 }));
+  }
+  const r = morningGateReport(lines.join('\n'));
+  assert.deepEqual(r.byAthlete.a, { sent: 4, opened: 4, numericFirst: 4 });
+  assert.equal(r.openPass, null);
+  assert.equal(r.numericPass, true);
+  assert.match(r.lines.join('\n'), /Opened within 4h .*NOT ENOUGH MORNINGS/);
+});

@@ -158,7 +158,7 @@ export const OPEN_RATE_MIN = 12 / 14;
 
 export interface MorningReport {
   byAthlete: Record<string, { sent: number; opened: number; numericFirst: number }>;
-  openPass: boolean | null;
+  openPass: boolean | null; // null: no data, or under 14 mornings and on track
   numericPass: boolean | null;
   lines: string[];
 }
@@ -169,6 +169,9 @@ export function morningGateReport(logText: string): MorningReport {
   for (const e of telemetryEvents(logText)) {
     if (e.kind !== 'daily' || typeof e.athlete !== 'string' || typeof e.date !== 'string') continue;
     if (e.event === 'push_sent') {
+      // A morning no phone accepted cannot be opened; it shows in the
+      // delivery gate instead. Lines without the count are kept.
+      if (typeof e.accepted === 'number' && e.accepted === 0) continue;
       const a = sent.get(e.athlete) ?? new Map();
       sent.set(e.athlete, a);
       a.set(e.date, e.numeric_first === true);
@@ -179,7 +182,9 @@ export function morningGateReport(logText: string): MorningReport {
     }
   }
   const byAthlete: MorningReport['byAthlete'] = {};
-  for (const [athlete, days] of sent) {
+  for (const [athlete, all] of sent) {
+    const keys = [...all.keys()].sort().slice(-GATE_WINDOW_DAYS);
+    const days = new Map(keys.map((k) => [k, all.get(k)!]));
     const o = opened.get(athlete) ?? new Set();
     byAthlete[athlete] = {
       sent: days.size,
@@ -194,7 +199,11 @@ export function morningGateReport(logText: string): MorningReport {
       'Numeric-first morning messages (bar: 100%): NO DATA',
     ] };
   }
-  const openPass = athletes.every((k) => byAthlete[k].opened / byAthlete[k].sent >= OPEN_RATE_MIN);
+  // 12 of 14 allows two unopened mornings; fewer than 14 cannot pass yet.
+  const allowedUnopened = Math.round(GATE_WINDOW_DAYS * (1 - OPEN_RATE_MIN));
+  const openOk = athletes.every((k) => byAthlete[k].sent - byAthlete[k].opened <= allowedUnopened);
+  const enough = athletes.every((k) => byAthlete[k].sent >= GATE_WINDOW_DAYS);
+  const openPass = !openOk ? false : enough ? true : null;
   const numericPass = athletes.every((k) => byAthlete[k].numericFirst === byAthlete[k].sent);
   return {
     byAthlete,
@@ -207,7 +216,7 @@ export function morningGateReport(logText: string): MorningReport {
         return `${k.padEnd(36)} ${String(d.sent).padStart(5)}  ${String(d.opened).padStart(9)}  ${String(d.numericFirst).padStart(13)}`;
       }),
       '',
-      `Opened within 4h (bar: 12 of 14 mornings, every athlete): ${openPass ? 'PASS' : 'FAIL'}`,
+      `Opened within 4h (bar: 12 of 14 mornings, every athlete): ${openPass === null ? 'NOT ENOUGH MORNINGS' : openPass ? 'PASS' : 'FAIL'}`,
       `Numeric-first morning messages (bar: 100%): ${numericPass ? 'PASS' : 'FAIL'}`,
     ],
   };
