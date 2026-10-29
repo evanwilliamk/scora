@@ -200,12 +200,19 @@ struct DashboardView: View {
   // show Today's Read at the top, or This Week for the weekly review.
   private func followPush(_ scroller: ScrollViewProxy) {
     guard let route = PushRoute.take() else { return }
+    let otherSheetOpen = showChat || showPlan || chartSeries != nil
     showChat = false
     showPlan = false
     chartSeries = nil
     switch route {
     case .weekly:
-      showWeekly = true
+      // SwiftUI will not present a sheet while another is closing, so This
+      // Week waits for the other one to go.
+      if otherSheetOpen {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showWeekly = true }
+      } else {
+        showWeekly = true
+      }
     case .todaysRead:
       showWeekly = false
       withAnimation { scroller.scrollTo("top", anchor: .top) }
