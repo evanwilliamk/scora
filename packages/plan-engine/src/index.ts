@@ -34,3 +34,5 @@ import { fileURLToPath } from 'node:url';
 
 // The template library folder (packages/plan-templates).
 export const TEMPLATE_DIR = fileURLToPath(new URL('../../plan-templates/', import.meta.url));
+
+export { describeWorkout, spokenDuration } from './describe';

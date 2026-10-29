@@ -494,3 +494,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: doc 09 §2.3 lists four fields plus an optional rest day and a summary screen; generation existed with no way in from the app.
 - Choice: goal (only goals the loaded templates cover), race date (4+ weeks out), weekly km (stepper, km only), experience (doc 09's three descriptions). Left out for now: the rest-day picker (templates fix the week's pattern), miles (no Strava unit preference read yet), the LLM block summary screen (the plan list shows the result). The entry shows only when the server has generation on and templates exist; no tier check (Plan tier gating is Evan's item).
 - To reverse: remove the Build a SCORA plan button in PlanView.swift.
+
+### 2026-10-28: Session descriptions without an LLM
+- Status: DECIDED (deviates from CLAUDE.md §6.4, which has gpt-4o write them)
+- Branch: claude/workout-descriptions
+- Context: §6.4 has the LLM interpolate template values into a sentence; nothing wrote planned_description yet, and the insert function does not store one.
+- Choice: a deterministic sentence from the session's own steps (describe.ts in plan-engine), added when /api/plan returns sessions. Every number is the template's, so there is nothing to validate and no cost; existing plans get it too.
+- Alternatives: gpt-4o per session at generation (as §6.4 says), validated for invented numbers; needs a migration to store it.
+- Why: cheaper and safer for the same content. If the wording reads too mechanical, an LLM pass can replace the string later with the same inputs.
+- To reverse: drop the withDescriptions calls in the /api/plan route.

@@ -30,3 +30,20 @@ test('markWatchSent checks the row is theirs and on an active plan, then stamps 
   assert.equal(await supabasePlanStore(none).markWatchSent('a1', 'w1'), false);
   assert.equal(none.queries.length, 1);
 });
+
+test('withDescriptions: SCORA sessions are said from their steps; pasted text is kept', async () => {
+  const { withDescriptions } = await import('../src/plan-store');
+  const { describeWorkout } = await import('../../../packages/plan-engine/src/index');
+  const base = { id: 'w', scheduled_date: '2026-10-28', planned_type: 'run', planned_duration_min: 45, planned_distance_km: null };
+  const rows = withDescriptions([
+    { ...base, planned_intensity: 'tempo', planned_description: null, workout_structure_json: [
+      { type: 'warmup', duration_min: 10, intensity: 'easy' }, { type: 'steady', duration_min: 25, intensity: 'tempo' }, { type: 'cooldown', duration_min: 10, intensity: 'easy' }] },
+    { ...base, planned_intensity: 'easy', planned_description: 'Tue: 45 min easy with the club', workout_structure_json: null },
+    { ...base, planned_intensity: 'easy', planned_description: null, workout_structure_json: null },
+  ] as any, describeWorkout);
+  assert.deepEqual(rows.map((r) => r.planned_description), [
+    '45-minute tempo. 10 minutes easy, 25 minutes at tempo, 10 minutes easy.',
+    'Tue: 45 min easy with the club',
+    null,
+  ]);
+});

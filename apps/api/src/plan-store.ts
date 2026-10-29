@@ -165,3 +165,12 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
     },
   };
 }
+
+// SCORA plan sessions carry no stored description; it is said from the
+// session's own steps when the plan is read (CLAUDE.md §6.4). Pasted and
+// imported sessions keep the athlete's own text.
+export function withDescriptions(rows: StoredWorkout[], describe: (intensity: string, steps: any) => string | null): StoredWorkout[] {
+  return rows.map((w) => (w.planned_description || !w.workout_structure_json
+    ? w
+    : { ...w, planned_description: describe(w.planned_intensity ?? w.planned_type, w.workout_structure_json) }));
+}

@@ -1,7 +1,7 @@
 // Plan assembler (doc 07 v2 §6.1 steps 2 to 5). Template + dates -> a dated
 // calendar of scheduled workouts. Deterministic: every workout and every
-// number comes from the template (CLAUDE.md §6.1, §6.3). The LLM writes
-// planned_description afterwards from these rows; it adds nothing to them.
+// number comes from the template (CLAUDE.md §6.1, §6.3). The session's
+// sentence is said from these rows by describe.ts; it adds nothing to them.
 
 import { addDays, daysBetween, parseDate } from './dates';
 import { REST_SLOT, WEEKDAYS } from './template-types';

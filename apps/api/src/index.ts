@@ -35,7 +35,7 @@ import type { PrefsStore } from './preferences';
 import { isValidTimezone, isValidDeliveryMinute } from './delivery';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
-import { supabasePlanStore, type StoredWorkout } from './plan-store';
+import { supabasePlanStore, withDescriptions, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
 import { planForRead, planTodayCard, readNamesPlan, weeklyPlanDriver } from './plan-read';
 import { numericLine } from './numeric-line';
@@ -44,7 +44,7 @@ import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStor
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planBlock, planOptions, supabaseGenerateStore,
 } from './plan-generate';
-import { TEMPLATE_DIR, loadTemplates } from '../../../packages/plan-engine/src/index';
+import { TEMPLATE_DIR, describeWorkout, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
 import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
 import { buildDriverSeries, inlineChartsEnabled, linkDrivers, parseHealthNights } from './driver-links';
@@ -948,11 +948,11 @@ fastify.get('/api/plan', async (request, reply) => {
   const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
     const store = planStore();
-    const workouts = (await store.workoutsBetween(athleteId, today, addDays(today, 182))).slice(0, 14);
+    const workouts = withDescriptions((await store.workoutsBetween(athleteId, today, addDays(today, 182))).slice(0, 14), describeWorkout);
     // The last 7 days' sessions the athlete has not marked yet (CLAUDE.md
     // §6.2: a miss is theirs to acknowledge; nothing reschedules it).
-    const recent = (await store.workoutsBetween(athleteId, addDays(today, -7), addDays(today, -1)))
-      .filter((w) => w.athlete_completed == null && w.planned_intensity !== 'rest');
+    const recent = withDescriptions((await store.workoutsBetween(athleteId, addDays(today, -7), addDays(today, -1)))
+      .filter((w) => w.athlete_completed == null && w.planned_intensity !== 'rest'), describeWorkout);
     return reply.send({ today, workouts, recent });
   } catch (e) {
     fastify.log.error(`Plan load failed: ${e instanceof Error ? e.message : e}`);
