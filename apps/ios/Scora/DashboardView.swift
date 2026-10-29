@@ -126,9 +126,11 @@ struct DashboardView: View {
           .transition(.move(edge: .top).combined(with: .opacity))
           .onTapGesture { withAnimation { self.ouraBanner = nil } }
       }
+      ScrollViewReader { scroller in
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
           todaysRead
+            .id("top")
           if let week { WeekSoFarView(week: week) }
           if !cards.isEmpty {
             LazyVGrid(columns: columns, spacing: 12) {
@@ -148,6 +150,9 @@ struct DashboardView: View {
         .padding()
       }
       .refreshable { await loadRead() }
+      .onAppear { followPush(scroller) }
+      .onReceive(NotificationCenter.default.publisher(for: PushRoute.notice)) { _ in followPush(scroller) }
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)
@@ -188,6 +193,22 @@ struct DashboardView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
       Task { await loadRead() }
+    }
+  }
+
+  // A tapped push (PRD §5.A.2): close whatever is open over the dashboard, then
+  // show Today's Read at the top, or This Week for the weekly review.
+  private func followPush(_ scroller: ScrollViewProxy) {
+    guard let route = PushRoute.take() else { return }
+    showChat = false
+    showPlan = false
+    chartSeries = nil
+    switch route {
+    case .weekly:
+      showWeekly = true
+    case .todaysRead:
+      showWeekly = false
+      withAnimation { scroller.scrollTo("top", anchor: .top) }
     }
   }
 
