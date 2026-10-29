@@ -383,6 +383,14 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(PlanSetup.levelText("first_timer"), "First timer or first serious block")
     }
 
+    func testPlanBlockReadsWeekPhaseAndRace() throws {
+        let json = #"{"block":{"goal":"Half marathon","week":4,"weeks":12,"race_date":"2026-12-27","phases":[{"name":"Base","first_week":1,"last_week":4,"focus":"aerobic development","current":true},{"name":"Build","first_week":5,"last_week":9,"focus":"threshold work","current":false}]}}"#
+        let block = try XCTUnwrap(JSONDecoder().decode(PlanBlockResponse.self, from: Data(json.utf8)).block)
+        XCTAssertEqual(block.headline, "Week 4 of 12 · Base")
+        XCTAssertEqual(block.raceLine, "Half marathon, Dec 27")
+        XCTAssertNil(try JSONDecoder().decode(PlanBlockResponse.self, from: Data(#"{"block":null}"#.utf8)).block)
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")

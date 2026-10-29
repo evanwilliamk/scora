@@ -148,3 +148,23 @@ test('planOptions: one entry per sport and goal, each level with its km range an
   ]);
   assert.equal(goalLabel('trail_30k'), 'Trail 30k');
 });
+
+test('planBlock: week of the plan, phases with their weeks, the current one, the race (PRD 5.B.1)', async () => {
+  const { planBlock } = await import('../src/plan-generate');
+  const plan = {
+    start_date: '2026-10-05', goal_race_date: '2026-12-27',
+    template: { goal_type: 'half_marathon', duration_weeks: 12, phases: [
+      { name: 'Base', weeks: [1, 2, 3, 4], focus: 'aerobic development' },
+      { name: 'Build', weeks: [5, 6, 7, 8, 9], focus: 'threshold work' },
+      { name: 'Sharpen', weeks: [10, 11, 12], focus: 'race pace and taper' },
+    ] },
+  };
+  const b = planBlock(plan, '2026-10-28'); // day 23: week 4
+  assert.deepEqual([b.goal, b.week, b.weeks, b.race_date], ['Half marathon', 4, 12, '2026-12-27']);
+  assert.deepEqual(b.phases.map((p) => [p.name, p.first_week, p.last_week, p.current]), [
+    ['Base', 1, 4, true], ['Build', 5, 9, false], ['Sharpen', 10, 12, false],
+  ]);
+  assert.equal(planBlock(plan, '2026-10-05').week, 1);
+  assert.equal(planBlock(plan, '2026-09-30').week, 1, 'before the start reads as week 1');
+  assert.equal(planBlock(plan, '2027-02-01').week, 12, 'after the end stays on the last week');
+});

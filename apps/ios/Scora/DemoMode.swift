@@ -82,6 +82,13 @@ enum DemoMode {
     return try? JSONDecoder().decode(PlanOptionsResponse.self, from: Data(json.utf8)).goals
   }
 
+  // With -demo-plan-sessions: Your Plan shows a sample block above the sessions.
+  static var planBlock: PlanBlock? {
+    guard planSessions != nil else { return nil }
+    let json = #"{"goal":"Half marathon","week":4,"weeks":12,"race_date":"2026-12-27","phases":[{"name":"Base","first_week":1,"last_week":4,"focus":"aerobic development","current":true},{"name":"Build","first_week":5,"last_week":9,"focus":"threshold work","current":false},{"name":"Sharpen","first_week":10,"last_week":12,"focus":"race pace and taper","current":false}]}"#
+    return try? JSONDecoder().decode(PlanBlock.self, from: Data(json.utf8))
+  }
+
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], zip([40, 0, 80, 0, nil, nil, nil] as [Int?], [40, 0, 50, 45, 0, 100, 0])).enumerated().map { i, p in
       WeekSoFarDay(date: "2026-10-\(19 + i)", weekday: p.0, runMin: p.1.0, plannedMin: p.1.1)

@@ -222,3 +222,35 @@ export function planOptions(templates: {
     .map((o) => ({ ...o, levels: o.levels.sort((a, b) => order.indexOf(a.level) - order.indexOf(b.level)) }))
     .sort((a, b) => a.sport.localeCompare(b.sport) || a.label.localeCompare(b.label));
 }
+
+// The plan as a block (PRD §5.B.1: the athlete sees the whole structure,
+// this week and the phases up to the race), from the active SCORA plan.
+export interface PlanBlock {
+  goal: string;
+  week: number; // 1-based, clamped to the plan
+  weeks: number;
+  race_date: string | null;
+  phases: { name: string; first_week: number; last_week: number; focus: string; current: boolean }[];
+}
+
+export function planBlock(
+  plan: { start_date: string; goal_race_date: string | null; template: { goal_type: string; duration_weeks: number; phases: { name: string; weeks: number[]; focus: string }[] } },
+  today: string,
+): PlanBlock {
+  const days = Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${plan.start_date}T00:00:00Z`)) / 86_400_000);
+  const weeks = plan.template.duration_weeks;
+  const week = Math.min(Math.max(Math.floor(days / 7) + 1, 1), weeks);
+  return {
+    goal: goalLabel(plan.template.goal_type),
+    week,
+    weeks,
+    race_date: plan.goal_race_date,
+    phases: plan.template.phases.map((p) => ({
+      name: p.name,
+      first_week: Math.min(...p.weeks),
+      last_week: Math.max(...p.weeks),
+      focus: p.focus,
+      current: p.weeks.includes(week),
+    })),
+  };
+}

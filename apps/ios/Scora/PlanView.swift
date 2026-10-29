@@ -492,6 +492,85 @@ struct PlanSetupView: View {
   }
 }
 
+// MARK: - Plan block (PRD §5.B.1)
+
+// The active SCORA plan as a whole, from GET /api/plan/block.
+struct PlanBlock: Decodable, Equatable {
+  struct Phase: Decodable, Equatable {
+    let name: String
+    let firstWeek: Int
+    let lastWeek: Int
+    let focus: String
+    let current: Bool
+    enum CodingKeys: String, CodingKey { case name, firstWeek = "first_week", lastWeek = "last_week", focus, current }
+  }
+  let goal: String
+  let week: Int
+  let weeks: Int
+  let raceDate: String?
+  let phases: [Phase]
+  enum CodingKeys: String, CodingKey { case goal, week, weeks, raceDate = "race_date", phases }
+
+  // "Week 4 of 12 · Base"
+  var headline: String {
+    let phase = phases.first(where: \.current).map { " · \($0.name)" } ?? ""
+    return "Week \(week) of \(weeks)\(phase)"
+  }
+
+  // "Half marathon, Dec 27"
+  var raceLine: String? {
+    guard let raceDate else { return nil }
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.dateFormat = "yyyy-MM-dd"
+    guard let d = f.date(from: raceDate) else { return goal }
+    f.dateFormat = "MMM d"
+    return "\(goal), \(f.string(from: d))"
+  }
+}
+
+struct PlanBlockResponse: Decodable {
+  let block: PlanBlock?
+}
+
+struct PlanBlockView: View {
+  let block: PlanBlock
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text(block.headline).font(.subheadline.bold()).foregroundColor(.white)
+        Spacer()
+        if let race = block.raceLine { Text(race).font(.caption).foregroundColor(.gray) }
+      }
+      // One segment per phase, as wide as its weeks, its name under it; this
+      // week's phase in orange.
+      GeometryReader { geo in
+        HStack(alignment: .top, spacing: 3) {
+          ForEach(block.phases, id: \.name) { p in
+            let span = CGFloat(p.lastWeek - p.firstWeek + 1)
+            VStack(alignment: .leading, spacing: 6) {
+              RoundedRectangle(cornerRadius: 3)
+                .fill(p.current ? Color.orange : Color(white: 0.22))
+                .frame(height: 6)
+              Text(p.name).font(.caption2).foregroundColor(p.current ? .orange : .gray).lineLimit(1)
+            }
+            .frame(width: max(4, (geo.size.width - 3 * CGFloat(block.phases.count - 1)) * span / CGFloat(max(block.weeks, 1))))
+          }
+        }
+      }
+      .frame(height: 26)
+      if let focus = block.phases.first(where: \.current)?.focus, !focus.isEmpty {
+        Text(focus.prefix(1).uppercased() + focus.dropFirst()).font(.footnote).foregroundColor(Color(white: 0.7))
+      }
+    }
+    .padding(12)
+    .background(Color(white: 0.08))
+    .cornerRadius(10)
+  }
+}
+
 // MARK: - View
 
 struct PlanView: View {
@@ -517,6 +596,7 @@ struct PlanView: View {
   @State private var savedFeed: String?
   @State private var refreshTask: Task<Void, Never>?
   @State private var planGoals: [PlanGoal] = [] // empty: generation is off or no templates
+  @State private var block: PlanBlock?
   @State private var showSetup = false
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
@@ -564,12 +644,28 @@ struct PlanView: View {
     }
     .task { await loadPrediction() } // independent: shown even if the plan list fails
     .task { await loadOptions() }
+    .task { await loadBlock() }
     .sheet(isPresented: $showSetup) {
       PlanSetupView(goals: planGoals, athleteId: tokenManager.athleteId, apiBase: apiBase, replacesPlan: !workouts.isEmpty) {
-        Task { await loadPlan() }
+        Task { await loadPlan(); await loadBlock() }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
       }
     }
+  }
+
+  // The active SCORA plan's block. Off (404) unless plan generation is on.
+  private func loadBlock() async {
+    #if DEBUG
+    if let demo = DemoMode.planBlock { await MainActor.run { block = demo }; return }
+    #endif
+    var comps = URLComponents(string: "\(apiBase)/api/plan/block")
+    comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId), URLQueryItem(name: "today", value: PlanDay.today())]
+    guard let url = comps?.url,
+          let (data, resp) = try? await URLSession.shared.data(from: url),
+          (resp as? HTTPURLResponse)?.statusCode == 200,
+          let decoded = try? JSONDecoder().decode(PlanBlockResponse.self, from: data)
+    else { return }
+    await MainActor.run { block = decoded.block }
   }
 
   // Off (404) unless plan generation is on; then the goals the templates cover.
@@ -652,6 +748,7 @@ struct PlanView: View {
 
   private var upcomingSection: some View {
     VStack(alignment: .leading, spacing: 10) {
+      if let block { PlanBlockView(block: block) }
       if !changes.isEmpty {
         Text("Plan changes").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
         ForEach(changes) { c in

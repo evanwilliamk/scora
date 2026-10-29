@@ -42,7 +42,7 @@ import { numericLine } from './numeric-line';
 import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
-  GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planOptions, supabaseGenerateStore,
+  GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planBlock, planOptions, supabaseGenerateStore,
 } from './plan-generate';
 import { TEMPLATE_DIR, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
@@ -1022,6 +1022,26 @@ fastify.get('/api/plan/options', async (request, reply) => {
   } catch (e) {
     fastify.log.error(`Plan options failed: ${e instanceof Error ? e.message : e}`);
     return reply.code(500).send({ error: 'Loading plan options failed.' });
+  }
+});
+
+// The active SCORA plan as a block: this week, the phases, the race (PRD
+// §5.B.1). Null without one, or while a coach's plan is active. Off unless
+// PLAN_GENERATION=on, since only generation makes SCORA plans.
+fastify.get('/api/plan/block', async (request, reply) => {
+  if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const { athleteId, today: clientToday } = request.query as { athleteId?: string; today?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  const today = isoDay(clientToday);
+  if (!today) return reply.code(400).send({ error: 'Missing: today (YYYY-MM-DD, local)' });
+  try {
+    const store = adaptStore();
+    if (await store.hasActiveCoachPlan(athleteId)) return reply.send({ block: null });
+    const plan = await store.activeScoraPlan(athleteId);
+    return reply.send({ block: plan ? planBlock(plan, today) : null });
+  } catch (e) {
+    fastify.log.error(`Plan block load failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading the plan failed.' });
   }
 });
 

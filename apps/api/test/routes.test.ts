@@ -120,3 +120,15 @@ test('plan options are off unless PLAN_GENERATION=on', async () => {
   delete process.env.PLAN_GENERATION;
   assert.equal((await app.inject({ method: 'GET', url: '/api/plan/options' })).statusCode, 404);
 });
+
+test('plan block is off unless PLAN_GENERATION=on, and needs an athlete and a day', async () => {
+  delete process.env.PLAN_GENERATION;
+  assert.equal((await app.inject({ method: 'GET', url: '/api/plan/block?athleteId=a&today=2026-10-28' })).statusCode, 404);
+  process.env.PLAN_GENERATION = 'on';
+  try {
+    assert.equal((await app.inject({ method: 'GET', url: '/api/plan/block?today=2026-10-28' })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/plan/block?athleteId=a' })).statusCode, 400);
+  } finally {
+    delete process.env.PLAN_GENERATION;
+  }
+});
