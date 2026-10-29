@@ -487,3 +487,10 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: Moved, Changed (downgrades), Made a rest day (a session displaced by a move), Race week; dismissed rows say Dismissed. Dates are the UTC day the engine acted.
 - Why: descriptive, never advice; the reason sentence stays the server's.
 - To reverse: `PlanChanges.label` in apps/ios/Scora/PlanView.swift.
+
+### 2026-10-28: Plan setup screen scope
+- Status: DECIDED
+- Branch: claude/plan-setup-screen
+- Context: doc 09 §2.3 lists four fields plus an optional rest day and a summary screen; generation existed with no way in from the app.
+- Choice: goal (only goals the loaded templates cover), race date (4+ weeks out), weekly km (stepper, km only), experience (doc 09's three descriptions). Left out for now: the rest-day picker (templates fix the week's pattern), miles (no Strava unit preference read yet), the LLM block summary screen (the plan list shows the result). The entry shows only when the server has generation on and templates exist; no tier check (Plan tier gating is Evan's item).
+- To reverse: remove the Build a SCORA plan button in PlanView.swift.

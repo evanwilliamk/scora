@@ -306,6 +306,128 @@ enum CalendarFeed {
   }
 }
 
+// MARK: - Plan setup (doc 09 §2.3)
+
+// One goal the loaded templates cover, from GET /api/plan/options.
+struct PlanGoal: Decodable, Identifiable, Equatable {
+  let sport: String
+  let goalType: String
+  let label: String
+  let experienceLevels: [String]
+  var id: String { "\(sport)|\(goalType)" }
+
+  enum CodingKeys: String, CodingKey {
+    case sport, goalType = "goal_type", label, experienceLevels = "experience_levels"
+  }
+}
+
+struct PlanOptionsResponse: Decodable {
+  let goals: [PlanGoal]
+}
+
+enum PlanSetup {
+  // Doc 09 §2.3: a race at least 4 weeks out.
+  static let minWeeksAhead = 4
+
+  static func earliestRace(from now: Date = Date(), calendar: Calendar = .current) -> Date {
+    calendar.date(byAdding: .day, value: 7 * minWeeksAhead, to: calendar.startOfDay(for: now))!
+  }
+
+  static func levelText(_ level: String) -> String {
+    switch level {
+    case "first_timer": return "First timer or first serious block"
+    case "regular": return "Regular racer"
+    case "competitive": return "Competitive racer"
+    default: return level.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+  }
+
+  static func body(athleteId: String, goal: PlanGoal, raceDate: Date, weeklyKm: Int, level: String, now: Date = Date()) -> [String: Any] {
+    [
+      "athleteId": athleteId, "today": PlanDay.today(now),
+      "sport": goal.sport, "goal_type": goal.goalType, "experience_level": level,
+      "current_weekly_km": weeklyKm, "goal_race_date": PlanDay.today(raceDate),
+    ]
+  }
+}
+
+struct PlanSetupView: View {
+  let goals: [PlanGoal]
+  let athleteId: String
+  let apiBase: String
+  var onBuilt: () -> Void
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var goalId: String = ""
+  @State private var raceDate = PlanSetup.earliestRace()
+  @State private var weeklyKm = 30
+  @State private var level = ""
+  @State private var isBuilding = false
+  @State private var message: String?
+
+  private var goal: PlanGoal? { goals.first { $0.id == goalId } ?? goals.first }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("Goal race") {
+          Picker("Race", selection: $goalId) {
+            ForEach(goals) { g in Text(g.label).tag(g.id) }
+          }
+          DatePicker("Race date", selection: $raceDate, in: PlanSetup.earliestRace()..., displayedComponents: .date)
+        }
+        Section("Where you are now") {
+          Stepper("\(weeklyKm) km a week", value: $weeklyKm, in: 0...200, step: 5)
+          Picker("Experience", selection: $level) {
+            ForEach(goal?.experienceLevels ?? [], id: \.self) { l in Text(PlanSetup.levelText(l)).tag(l) }
+          }
+        }
+        Section {
+          Button(isBuilding ? "Building…" : "Build my plan") { Task { await build() } }
+            .disabled(isBuilding || goal == nil || level.isEmpty)
+          if let message { Text(message).font(.footnote).foregroundColor(.gray) }
+        } footer: {
+          Text("Plans come from coach-reviewed templates, scaled to your current volume.")
+        }
+      }
+      .navigationTitle("Build a plan")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+      .onAppear {
+        if goalId.isEmpty { goalId = goals.first?.id ?? "" }
+        if level.isEmpty { level = goal?.experienceLevels.first ?? "" }
+      }
+      .onChange(of: goalId) {
+        if let g = goal, !g.experienceLevels.contains(level) { level = g.experienceLevels.first ?? "" }
+      }
+    }
+    .preferredColorScheme(.dark)
+  }
+
+  private func build() async {
+    guard let goal, let url = URL(string: "\(apiBase)/api/plan/generate") else { return }
+    await MainActor.run { isBuilding = true; message = nil }
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: PlanSetup.body(
+      athleteId: athleteId, goal: goal, raceDate: raceDate, weeklyKm: weeklyKm, level: level))
+    let result = try? await URLSession.shared.data(for: req)
+    let status = (result?.1 as? HTTPURLResponse)?.statusCode ?? 0
+    // The server's own sentence on a refusal (no template yet, race too soon).
+    let error = result.flatMap { try? JSONDecoder().decode(CDVError.self, from: $0.0) }?.error
+    await MainActor.run {
+      isBuilding = false
+      if status == 200 {
+        onBuilt()
+        dismiss()
+      } else {
+        message = error ?? "Building the plan failed. Try again in a moment."
+      }
+    }
+  }
+}
+
 // MARK: - View
 
 struct PlanView: View {
@@ -330,6 +452,8 @@ struct PlanView: View {
   @State private var isImporting = false
   @State private var savedFeed: String?
   @State private var refreshTask: Task<Void, Never>?
+  @State private var planGoals: [PlanGoal] = [] // empty: generation is off or no templates
+  @State private var showSetup = false
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -352,6 +476,10 @@ struct PlanView: View {
           if let errorText {
             Text(errorText).font(.footnote).foregroundColor(.gray)
           }
+          if !planGoals.isEmpty && !isEditing {
+            Button("Build a SCORA plan") { showSetup = true }
+              .font(.subheadline).foregroundColor(.orange)
+          }
         }
         .padding()
       }
@@ -371,6 +499,23 @@ struct PlanView: View {
       }
     }
     .task { await loadPrediction() } // independent: shown even if the plan list fails
+    .task { await loadOptions() }
+    .sheet(isPresented: $showSetup) {
+      PlanSetupView(goals: planGoals, athleteId: tokenManager.athleteId, apiBase: apiBase) {
+        Task { await loadPlan() }
+        NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
+      }
+    }
+  }
+
+  // Off (404) unless plan generation is on; then the goals the templates cover.
+  private func loadOptions() async {
+    guard let url = URL(string: "\(apiBase)/api/plan/options"),
+          let (data, resp) = try? await URLSession.shared.data(from: url),
+          (resp as? HTTPURLResponse)?.statusCode == 200,
+          let decoded = try? JSONDecoder().decode(PlanOptionsResponse.self, from: data)
+    else { return }
+    await MainActor.run { planGoals = decoded.goals }
   }
 
   private var pasteSection: some View {

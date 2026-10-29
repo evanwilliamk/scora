@@ -156,3 +156,39 @@ export function supabaseGenerateStore(sb: { from: (t: string) => any; rpc: (fn: 
     },
   };
 }
+
+// What the plan setup screen may offer (doc 09 §2.3): each sport and goal the
+// loaded templates cover, with the experience levels they cover. With an
+// empty library the list is empty and the app shows no setup entry.
+export interface PlanOption {
+  sport: string;
+  goal_type: string;
+  label: string;
+  experience_levels: string[];
+}
+
+const GOAL_LABELS: Record<string, string> = {
+  '5k': '5K', '10k': '10K', half_marathon: 'Half marathon', marathon: 'Marathon',
+  '50k': '50K', '100k': '100K', '100mi': '100 miles', gravel_century: 'Gravel century',
+  century: 'Century', olympic_tri: 'Olympic tri', sprint_tri: 'Sprint tri',
+};
+
+export function goalLabel(goal: string): string {
+  if (GOAL_LABELS[goal]) return GOAL_LABELS[goal];
+  const words = goal.replace(/[_-]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+export function planOptions(templates: { sport: string; goal_type: string; experience_level: string }[]): PlanOption[] {
+  const order = ['first_timer', 'regular', 'competitive'];
+  const byGoal = new Map<string, PlanOption>();
+  for (const t of templates) {
+    const key = `${t.sport}|${t.goal_type}`;
+    const o = byGoal.get(key) ?? { sport: t.sport, goal_type: t.goal_type, label: goalLabel(t.goal_type), experience_levels: [] };
+    if (!o.experience_levels.includes(t.experience_level)) o.experience_levels.push(t.experience_level);
+    byGoal.set(key, o);
+  }
+  return [...byGoal.values()]
+    .map((o) => ({ ...o, experience_levels: o.experience_levels.sort((a, b) => order.indexOf(a) - order.indexOf(b)) }))
+    .sort((a, b) => a.sport.localeCompare(b.sport) || a.label.localeCompare(b.label));
+}
