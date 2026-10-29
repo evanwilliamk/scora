@@ -69,3 +69,12 @@ test('each push carries kind, date and send time, and one push_sent line counts 
   const events = lines.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice(10)));
   assert.deepEqual(events, [{ event: 'push_sent', kind: 'daily', athlete: 'a1', date: '2026-10-22', numeric_first: true, devices: 2, accepted: 1 }]);
 });
+
+test('a read with a Today line pushes it last', async () => {
+  const { stub, calls } = io(
+    { status: 200, body: { read: { voice: 'Body is settled.', numbers: 'Sleep 7:12', today: 'Today: 40-minute easy run.' } } },
+    { t: { ok: true, status: 200 } },
+  );
+  await pushToAthlete('http://x', 'a1', '/api/read', 'Today', '2026-10-28', quiet, stub);
+  assert.equal(calls.sent[0][1].body, 'Sleep 7:12\nBody is settled.\nToday: 40-minute easy run.');
+});

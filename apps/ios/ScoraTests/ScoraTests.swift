@@ -393,6 +393,13 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(PlanBlock.self, from: Data(later.utf8)).headline, "Starts Nov 23 · 16 weeks")
     }
 
+    func testReadDecodesTheTodayLineWhenPresent() throws {
+        let with = #"{"voice":"Body is settled.","numbers":"Sleep 7:12","today":"Today: 40-minute easy run."}"#
+        XCTAssertEqual(try JSONDecoder().decode(DailyRead.self, from: Data(with.utf8)).today, "Today: 40-minute easy run.")
+        let without = #"{"voice":"Body is settled."}"#
+        XCTAssertNil(try JSONDecoder().decode(DailyRead.self, from: Data(without.utf8)).today)
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")

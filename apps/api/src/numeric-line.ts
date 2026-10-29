@@ -22,8 +22,12 @@ export function numericLine(drivers: Driver[]): string {
 
 // APNs body: the numbers on the first line, the read below, trimmed to what
 // a notification shows (~178 characters).
-export function pushBody(numbers: string, voice: string, max = 178): string {
+// The Plan tier's "Today:" line (CLAUDE.md §3.3) goes last but is kept
+// whole: the voice gives way to it when the alert runs long.
+export function pushBody(numbers: string, voice: string, max = 178, today = ''): string {
   const read = voice.replace(/\s+/g, ' ').trim();
+  const tail = today ? `\n${today}` : '';
+  const room = max - tail.length;
   const text = numbers ? `${numbers}\n${read}` : read;
-  return text.length <= max ? text : text.slice(0, max - 1).trimEnd() + '…';
+  return (text.length <= room ? text : text.slice(0, room - 1).trimEnd() + '…') + tail;
 }

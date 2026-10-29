@@ -11,6 +11,8 @@ struct DailyRead: Decodable {
   // them off.
   let links: [DriverLink]?
   let series: [String: DriverSeries]?
+  // "Today: 45-minute tempo. ..." for a session SCORA built; absent otherwise.
+  var today: String? = nil
 }
 
 struct DashboardCard: Decodable, Identifiable {
@@ -293,6 +295,10 @@ struct DashboardView: View {
             chartSeries = read.series?[key]
             return .handled
           })
+        // The plan's session for today (CLAUDE.md §3.3), only on a SCORA plan.
+        if let today = read.today, !today.isEmpty {
+          Text(today).font(.footnote).foregroundColor(.orange)
+        }
       } else if isLoading {
         HStack(spacing: 10) {
           ProgressView().tint(.white)
@@ -422,6 +428,8 @@ struct DashboardView: View {
     if DemoMode.isOn {
       await MainActor.run {
         read = DemoMode.read
+        // With sample SCORA sessions, the read carries today's line as the API would.
+        if DemoMode.planSessions != nil { read?.today = "Today: 40-minute easy run." }
         posture = "steady"
         week = DemoMode.week
         if let demoCards = DemoMode.cards { cards = demoCards }

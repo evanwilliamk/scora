@@ -64,6 +64,7 @@ export async function pushToAthlete(
   const body: any = await res.json();
   const voice: string | undefined = body?.read?.voice;
   const numbers: string = typeof body?.read?.numbers === 'string' ? body.read.numbers : '';
+  const today: string = typeof body?.read?.today === 'string' ? body.read.today : '';
   if (!voice) return false;
 
   const kind = path === '/api/read' ? 'daily' : 'weekly';
@@ -74,7 +75,7 @@ export async function pushToAthlete(
     // Numbers first (PRD §5.A.2); the weekly read has none and sends the voice.
     const r = await sendPush(
       token,
-      { title, body: numbers ? pushBody(numbers, voice) : trimBody(voice) },
+      { title, body: numbers || today ? pushBody(numbers, voice, 178, today) : trimBody(voice) },
       { kind, date: localDate, sent_at: sentAt },
     );
     if (r.ok) accepted++;

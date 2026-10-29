@@ -503,3 +503,10 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: gpt-4o per session at generation (as §6.4 says), validated for invented numbers; needs a migration to store it.
 - Why: cheaper and safer for the same content. If the wording reads too mechanical, an LLM pass can replace the string later with the same inputs.
 - To reverse: drop the withDescriptions calls in the /api/plan route.
+
+### 2026-10-28: "Today:" line only for SCORA-built sessions
+- Status: DECIDED
+- Branch: claude/today-workout-line
+- Context: CLAUDE.md §3.3 gives Plan and Coach tiers a workout line in the morning message; there is no tier column yet (Q30).
+- Choice: show it when today's session has steps, which only a SCORA plan (Plan tier) produces. Pasted and imported plans (Free tier) get no line; the voice reads them instead. The push keeps the line whole and shortens the voice to fit 178 characters.
+- To reverse: drop `planTodayLine` in the read route; the app and push ignore a missing field.

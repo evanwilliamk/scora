@@ -116,3 +116,12 @@ export function planTodayCard(rows: StoredWorkout[], today: string): Card | null
   if (w.planned_distance_km != null) return { ...base, value: String(Number(w.planned_distance_km)), unit: 'km', trend: kind, translation };
   return { ...base, value: kind[0].toUpperCase() + kind.slice(1), translation };
 }
+
+// The morning message's "Today:" line (CLAUDE.md §3.3, Plan and Coach tiers):
+// only for a session SCORA built (it has steps), never for a pasted plan,
+// which the Free tier reads in the voice instead. Rest days have no line.
+export function todayLine(workout: StoredWorkout | null, describe: (intensity: string, steps: any) => string | null): string | null {
+  if (!workout || !workout.workout_structure_json || workout.planned_intensity === 'rest') return null;
+  const d = describe(workout.planned_intensity ?? workout.planned_type, workout.workout_structure_json);
+  return d ? `Today: ${d}` : null;
+}

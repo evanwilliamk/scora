@@ -30,3 +30,13 @@ test('HRV with no week average shows no trend, never "n/a" (review 4)', () => {
   assert.equal(numericLine([{ metric: 'HRV', value: '52ms', trend: 'n/a wk' }]), 'HRV 52ms');
   assert.equal(numericLine([{ metric: 'HRV', value: '52ms', trend: '-12% wk' }]), 'HRV 52ms (-12% wk)');
 });
+
+test('pushBody keeps the Today line whole; the voice gives way to it', () => {
+  const today = 'Today: 45-minute tempo. 10 minutes easy, 25 minutes at tempo, 10 minutes easy.';
+  const short = pushBody('Load 412', 'Body is settled.', 178, today);
+  assert.equal(short, `Load 412\nBody is settled.\n${today}`);
+  const long = pushBody('Sleep 7:12 · Load 412', 'y'.repeat(300), 178, today);
+  assert.ok(long.length <= 178);
+  assert.ok(long.endsWith(`…\n${today}`));
+  assert.ok(long.startsWith('Sleep 7:12 · Load 412\n'));
+});

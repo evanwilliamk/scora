@@ -192,3 +192,17 @@ test('planTodayCard: only with a plan; states the session, the rest day, or noth
   assert.equal(planTodayCard([row('2026-10-29', 'easy', 30)], '2026-10-28')!.translation, 'Nothing on your plan today.');
   for (const c of [tempo, long]) assert.equal(validateVoice(c.translation!, [{ metric: 'Plan today', value: c.translation!.slice(21, -1) }]).bannedHits.length, 0);
 });
+
+test('todayLine: only for a SCORA session with steps; pasted plans and rest days get none (CLAUDE.md 3.3)', async () => {
+  const { todayLine } = await import('../src/plan-read');
+  const { describeWorkout } = await import('../../../packages/plan-engine/src/index');
+  const w = (intensity: string, steps: unknown) => ({
+    id: 'w', scheduled_date: '2026-10-28', planned_type: 'run', planned_intensity: intensity,
+    planned_duration_min: 45, planned_distance_km: null, planned_description: null, workout_structure_json: steps,
+  }) as any;
+  const tempo = [{ type: 'warmup', duration_min: 10, intensity: 'easy' }, { type: 'steady', duration_min: 25, intensity: 'tempo' }, { type: 'cooldown', duration_min: 10, intensity: 'easy' }];
+  assert.equal(todayLine(w('tempo', tempo), describeWorkout), 'Today: 45-minute tempo. 10 minutes easy, 25 minutes at tempo, 10 minutes easy.');
+  assert.equal(todayLine(w('tempo', null), describeWorkout), null, 'a pasted session: the voice reads it instead');
+  assert.equal(todayLine(w('rest', []), describeWorkout), null);
+  assert.equal(todayLine(null, describeWorkout), null);
+});

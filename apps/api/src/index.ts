@@ -37,7 +37,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore, withDescriptions, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
-import { planForRead, planTodayCard, readNamesPlan, weeklyPlanDriver } from './plan-read';
+import { planForRead, planTodayCard, readNamesPlan, todayLine, weeklyPlanDriver } from './plan-read';
 import { numericLine } from './numeric-line';
 import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
@@ -746,8 +746,10 @@ Write today's read using only these drivers.`;
       }
     }
 
+    // CLAUDE.md §3.3: a SCORA session adds the Plan tier's "Today:" line.
+    const planTodayLine = todayLine(plan.workout, describeWorkout);
     return reply.send({
-      read: { voice, numbers: numericLine(readDrivers), ...(charts ?? {}) },
+      read: { voice, numbers: numericLine(readDrivers), ...(charts ?? {}), ...(planTodayLine ? { today: planTodayLine } : {}) },
       weekSoFar: weekSoFar(activities, today, weekPlanRows && weekPlanRows.length ? plannedRunMinutes(weekPlanRows) : undefined),
       posture: postureOut,
       knowledge: { mode: knowledge.mode, chunks: knowledge.chunks.length, pattern: knowledge.pattern?.id ?? null },
