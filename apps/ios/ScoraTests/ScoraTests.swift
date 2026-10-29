@@ -296,16 +296,16 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(WatchSend.message(o), "Sent to your Watch for Fri Oct 23.")
 
         watch.allow = false
-        let denied = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: watch)
+        let denied = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: watch, now: early)
         XCTAssertEqual(denied, .notAuthorized)
         watch.isSupported = false
-        let unsupported = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: watch)
+        let unsupported = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: watch, now: early)
         XCTAssertEqual(unsupported, .unsupported)
         XCTAssertEqual(watch.scheduled.count, 1, "nothing scheduled without permission or support")
         let full = FakeWatch(); full.maxScheduled = 0
         let fullOutcome = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: full, now: early)
         XCTAssertEqual(fullOutcome, .full)
-        let swim = await WatchSend.send(steps: steps, type: "swim", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: FakeWatch())
+        let swim = await WatchSend.send(steps: steps, type: "swim", date: "2026-10-23", displayName: "x", dayLabel: "x", scheduler: FakeWatch(), now: early)
         XCTAssertEqual(swim, .cannotCopy)
     }
 
