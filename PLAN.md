@@ -64,6 +64,7 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] Calendar (iCal) import as a plan source, `POST /api/plan/ical`, `ICAL_IMPORT=on` (Q17 option B), plus a calendar link field on Your Plan that fetches the feed on the phone (`claude/ical-plan-import`, on `claude/integration-2026-10-18`; migration tested on PGlite, Evan applies it; sheet seen on the simulator with `-demo-read -demo-plan`)
 - [~] Calendar import refresh: the phone re-imports a saved link when Your Plan opens (12 h), plus a Refresh button (`claude/ical-refresh`, on `claude/integration-2026-10-22`)
 - [~] Validator and banned-phrase telemetry as structured log lines, ready to forward to PostHog (`claude/validator-telemetry`, on `claude/integration-2026-10-22`)
+- [~] Phase 1 gates 2.1.1 (10 onboarded) and 2.1.9 (half used CDV) as a read-only SQL report, `apps/api/scripts/phase1-gates.sql` (`claude/plan-gates`)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys). Done when validator catches, banned-phrase hits and CDV fallbacks are counted in PostHog (doc 10 §6.1 rates)
 
 ## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags that default off, no deploy or money)
