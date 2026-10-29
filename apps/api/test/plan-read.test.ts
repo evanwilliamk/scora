@@ -165,3 +165,14 @@ test('readNamesPlan: the word plan, or the session minutes or km as stated', () 
   assert.equal(readNamesPlan('Planning aside, HRV is at 52ms.', d), false);
   assert.equal(readNamesPlan('Your plan reads cleanly.', null), false);
 });
+
+test('readNamesPlan: anchored numbers, spelled-out units, the kind tied to today (review)', () => {
+  const d = { metric: 'Plan today', value: 'tempo, 45 min, 25.8 km' };
+  assert.equal(readNamesPlan('Load sits at 145 min for the week.', d), false, '145 is not 45');
+  assert.equal(readNamesPlan('The block ran 125.8 km so far.', d), false);
+  assert.equal(readNamesPlan('A 45-minute session lands on a settled body.', d), true);
+  assert.equal(readNamesPlan('The 25.8 kilometres ahead meet good sleep.', d), true);
+  assert.equal(readNamesPlan("Today's tempo meets an HRV of 52ms.", d), true);
+  assert.equal(readNamesPlan('The tempo lands today on 7:12 of sleep.', d), true);
+  assert.equal(readNamesPlan('Tempo work earlier in the week left load at 412 min. Today HRV is 52ms.', d), false);
+});
