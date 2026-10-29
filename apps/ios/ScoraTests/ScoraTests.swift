@@ -313,6 +313,12 @@ final class ScoraTests: XCTestCase {
         XCTAssertNotNil(image)
         XCTAssertEqual(image?.size.width, WeeklyShare.width)
         XCTAssertGreaterThan(image?.size.height ?? 0, 120)
+        // The stat tiles are drawn: four tiles make the card taller than none.
+        let four = stats + [WeeklyStat(label: "LONG RUN", value: "95 min", trend: nil), WeeklyStat(label: "HRV", value: "52ms", trend: nil)]
+        let bare = WeeklyShare.render(voice: "Load came to 412 min across five runs, close to last week.", stats: [], scale: 2)
+        let full = WeeklyShare.render(voice: "Load came to 412 min across five runs, close to last week.", stats: four, scale: 2)
+        XCTAssertGreaterThan((full?.size.height ?? 0) - (bare?.size.height ?? 0), 100)
+        XCTAssertNotNil(full?.pngData(), "exports as PNG for the share sheet")
     }
 
     func testPushOpenReadsTheScoraPayloadOnly() {
