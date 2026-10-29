@@ -174,6 +174,8 @@ final class ScoraTests: XCTestCase {
         ]
         XCTAssertEqual(HealthNights.weekAverageHRV(nights), 45)
         XCTAssertNil(HealthNights.weekAverageHRV([HealthNight(day: "2026-10-28", hrvMs: 90)]))
+        // A newest night without HRV: the latest HRV night is compared, not averaged.
+        XCTAssertEqual(HealthNights.weekAverageHRV(nights + [HealthNight(day: "2026-10-29", sleepSeconds: 25000)]), 45)
     }
 
     func testAPIErrorTextNeverShowsARawBody() {
@@ -191,7 +193,7 @@ final class ScoraTests: XCTestCase {
 
     func testTimeZoneSyncOnlyAfterAZoneWasSent() {
         TimeZoneSync.forget()
-        XCTAssertFalse(TimeZoneSync.needsSync(current: "Europe/London"), "nothing sent yet: onboarding sends it")
+        XCTAssertTrue(TimeZoneSync.needsSync(current: "Europe/London"), "none recorded: sent once")
         TimeZoneSync.remember("America/New_York")
         XCTAssertTrue(TimeZoneSync.needsSync(current: "Europe/London"))
         XCTAssertFalse(TimeZoneSync.needsSync(current: "America/New_York"))
