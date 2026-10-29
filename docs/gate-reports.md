@@ -35,7 +35,7 @@ Paste into the Supabase SQL editor. Both are read-only `select`s.
 | File | Gates |
 |---|---|
 | `apps/api/scripts/phase1-gates.sql` | 2.1.1 ten athletes onboarded, 2.1.9 half used a chat chart. Edit `phase_start` first |
-| `apps/api/scripts/plan-gates.sql` | 3.1.10 plan adherence 70%, 3.1.11 at most 2 adaptations per athlete per week, 3.1.9 90% of sessions sent to the Watch (athletes who sent any), last 28 days |
+| `apps/api/scripts/plan-gates.sql` | 3.1.10 plan adherence 70%, 3.1.11 at most 2 adaptations per athlete per week, 3.1.9 90% of sendable sessions (with steps) sent to the Watch, from each athlete's first send, last 28 days |
 
 Adherence uses the athlete's done/missed marks, since Strava activities are not stored; an unmarked session counts as not done (DECISIONS.md, 2026-10-28).
 

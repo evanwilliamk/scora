@@ -59,6 +59,13 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
   await session('b', b, 3, 'easy', null);
   const c = await plan('c', 'coach'); // coach plans are not Plan tier
   await session('c', c, 2, 'easy', false);
+  // A plan abandoned in the window still counts; a replaced one does not.
+  const d = await plan('d');
+  await session('d', d, 2, 'easy', true);
+  await db.query(`update training_plans set current_status = 'abandoned' where id = $1`, [d]);
+  const e = await plan('e');
+  await session('e', e, 2, 'easy', false);
+  await db.query(`update training_plans set current_status = 'replaced' where id = $1`, [e]);
 
   for (let i = 0; i < 3; i++) {
     await db.query(
@@ -77,14 +84,22 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
   assert.deepEqual(rows.map((r) => [r.athlete_id, r.scheduled, r.done, r.adaptations]), [
     ['a', 3, 2, 3],
     ['b', 2, 1, 0],
-    ['ALL', 5, 3, 3],
+    ['d', 1, 1, 0],
+    ['ALL', 6, 4, 3],
   ]);
-  // 3 of 5 done is 60%; 3 adaptations over 2 athletes and 4 weeks.
-  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 60.0% FAIL; 3.1.11 0.38 adaptations per athlete per week PASS; 3.1.9 NO DATA');
+  // 4 of 6 done is 66.7%; 3 adaptations over 3 athletes and 4 weeks.
+  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 66.7% FAIL; 3.1.11 0.25 adaptations per athlete per week PASS; 3.1.9 NO DATA');
 
-  // Athlete a sent 2 of 3 sessions to the Watch; b never did, so b is not in the 3.1.9 share.
+  // 3.1.9 counts sessions with steps (the only ones the app can send), from
+  // each athlete's first send on. a: steps on days 5, 4, 3 and 1 ago; sent 4
+  // and 3; day 5 is before the first send. b never sent, so b is left out.
+  await session('a', a, 1, 'easy', null);
+  await db.query(`update scheduled_workouts set workout_structure_json = '[]' where athlete_id = 'a' and scheduled_date in (current_date - 5, current_date - 4, current_date - 3, current_date - 1)`);
+  await db.query(`update scheduled_workouts set workout_structure_json = '[]' where athlete_id = 'b'`);
   await db.query(`update scheduled_workouts set workout_kit_pushed_at = now() where athlete_id = 'a' and scheduled_date in (current_date - 3, current_date - 4)`);
   const after = await gates();
-  assert.deepEqual(after.map((r) => [r.athlete_id, Number(r.watch_sent)]), [['a', 2], ['b', 0], ['ALL', 2]]);
+  assert.deepEqual(after.map((r) => [r.athlete_id, Number(r.watch_sent), Number(r.sendable)]), [['a', 2, 3], ['b', 0, 0], ['d', 0, 0], ['ALL', 2, 3]]);
   assert.match(after.at(-1).verdict, /; 3\.1\.9 66\.7% sent to the Watch FAIL$/);
+  await db.query(`update scheduled_workouts set workout_kit_pushed_at = now() where athlete_id = 'a' and scheduled_date = current_date - 1`);
+  assert.match((await gates()).at(-1).verdict, /; 3\.1\.9 100\.0% sent to the Watch PASS$/);
 });

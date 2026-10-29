@@ -2,8 +2,9 @@
 -- yesterday:
 --   3.1.10 plan adherence: at least 70% of scheduled sessions done
 --   3.1.11 adaptation frequency: at most 2 per athlete per week
---   3.1.9 WorkoutKit push: at least 90% of sessions sent to the Watch, among
---         athletes who sent at least one (they granted the permission)
+--   3.1.9 WorkoutKit push: at least 90% of sendable sessions (those with
+--         steps) sent to the Watch, from each athlete's first send on (a
+--         first send means they granted the permission)
 -- Read-only. Paste into the Supabase SQL editor. Strava activities are not
 -- stored, so "done" is the athlete's own mark; an unmarked session counts as
 -- not done. Rest days are left out. The last row (athlete_id = 'ALL') carries
@@ -11,17 +12,28 @@
 with win as (
   select (current_date - 28)::date as from_day, (current_date - 1)::date as to_day
 ),
+first_send as (
+  select w.athlete_id, min(w.scheduled_date) as since
+  from scheduled_workouts w
+  join training_plans p on p.id = w.training_plan_id
+  where p.source = 'scora_ai' and p.current_status <> 'replaced' and w.workout_kit_pushed_at is not null
+  group by w.athlete_id
+),
 sessions as (
   select w.athlete_id,
          count(*) as scheduled,
          count(*) filter (where w.athlete_completed is true) as done,
          count(*) filter (where w.athlete_completed is false) as missed,
          count(*) filter (where w.athlete_completed is null) as unmarked,
-         count(*) filter (where w.workout_kit_pushed_at is not null) as watch_sent
+         count(*) filter (where w.workout_kit_pushed_at is not null) as watch_sent,
+         count(*) filter (where w.workout_structure_json is not null and w.scheduled_date >= f.since) as sendable
   from scheduled_workouts w
   join training_plans p on p.id = w.training_plan_id
+  left join first_send f on f.athlete_id = w.athlete_id
   cross join win
-  where p.source = 'scora_ai' and p.current_status = 'active'
+  -- A plan completed or abandoned in the window still counts; a replaced
+  -- one does not (its successor carries the athlete's sessions).
+  where p.source = 'scora_ai' and p.current_status <> 'replaced'
     and w.scheduled_date between win.from_day and win.to_day
     and coalesce(w.planned_intensity, '') <> 'rest'
   group by w.athlete_id
@@ -31,22 +43,24 @@ adaptations as (
   from plan_adaptations a
   join training_plans p on p.id = a.training_plan_id
   cross join win
-  where p.source = 'scora_ai' and a.triggered_by = 'auto_engine'
+  where p.source = 'scora_ai' and p.current_status <> 'replaced' and a.triggered_by = 'auto_engine'
     and a.triggered_at >= win.from_day and a.triggered_at < win.to_day + 1
   group by a.athlete_id
 ),
 per_athlete as (
-  select s.athlete_id, s.scheduled, s.done, s.missed, s.unmarked, s.watch_sent,
+  select s.athlete_id, s.scheduled, s.done, s.missed, s.unmarked, s.watch_sent, s.sendable,
          coalesce(a.adaptations, 0) as adaptations
+  -- An athlete with adaptations but no session in the window has nothing to
+  -- adhere to and is left out of both gates.
   from sessions s left join adaptations a using (athlete_id)
 ),
 rows as (
-  select athlete_id, scheduled, done, missed, unmarked, watch_sent, adaptations,
+  select athlete_id, scheduled, done, missed, unmarked, watch_sent, sendable, adaptations,
          round(adaptations / 4.0, 2) as adaptations_per_week, null::text as verdict, 0 as sort
   from per_athlete
   union all
   select 'ALL', coalesce(sum(scheduled), 0), coalesce(sum(done), 0), coalesce(sum(missed), 0),
-         coalesce(sum(unmarked), 0), coalesce(sum(watch_sent), 0), coalesce(sum(adaptations), 0),
+         coalesce(sum(unmarked), 0), coalesce(sum(watch_sent), 0), coalesce(sum(sendable), 0), coalesce(sum(adaptations), 0),
          round(coalesce(sum(adaptations), 0) / greatest(count(*), 1) / 4.0, 2),
          case when count(*) = 0 then '3.1.10 NO DATA; 3.1.11 NO DATA'
            else '3.1.10 adherence ' || round(100.0 * sum(done) / sum(scheduled), 1) || '% '
@@ -54,12 +68,12 @@ rows as (
              || '; 3.1.11 ' || round(sum(adaptations) / count(*) / 4.0, 2) || ' adaptations per athlete per week '
              || case when sum(adaptations) <= 2 * 4 * count(*) then 'PASS' else 'FAIL' end
          end
-         || '; 3.1.9 ' || case when coalesce(sum(scheduled) filter (where watch_sent > 0), 0) = 0 then 'NO DATA'
-              else round(100.0 * sum(watch_sent) / sum(scheduled) filter (where watch_sent > 0), 1) || '% sent to the Watch '
-                || case when sum(watch_sent) >= 0.9 * sum(scheduled) filter (where watch_sent > 0) then 'PASS' else 'FAIL' end end,
+         || '; 3.1.9 ' || case when coalesce(sum(sendable), 0) = 0 then 'NO DATA'
+              else round(100.0 * sum(watch_sent) / sum(sendable), 1) || '% sent to the Watch '
+                || case when sum(watch_sent) >= 0.9 * sum(sendable) then 'PASS' else 'FAIL' end end,
          1
   from per_athlete
 )
-select athlete_id, scheduled, done, missed, unmarked, watch_sent, adaptations, adaptations_per_week, verdict
+select athlete_id, scheduled, done, missed, unmarked, watch_sent, sendable, adaptations, adaptations_per_week, verdict
 from rows
 order by sort, athlete_id;
