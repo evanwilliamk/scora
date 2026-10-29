@@ -238,15 +238,18 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
         summary.hrvMs = latest.average_hrv ?? null;
         summary.restingHr = latest.lowest_heart_rate ?? null;
       }
-      const hrvs = periods
-        .slice(1, 8)
+      // The seven calendar nights before the newest one, not the seven newest
+      // recorded: with nights missing, a "week" must not reach back a month.
+      const newestDay = periods[0]?.day as string | undefined;
+      const weekFrom = newestDay ? iso(Date.parse(`${newestDay}T00:00:00Z`) - 7 * day) : null;
+      const priorWeek = periods.slice(1).filter((p) => weekFrom !== null && p.day >= weekFrom);
+      const hrvs = priorWeek
         .map((p) => p.average_hrv)
         .filter((v) => typeof v === 'number');
       if (hrvs.length > 0) {
         summary.hrvWeekAvgMs = Math.round(hrvs.reduce((s, v) => s + v, 0) / hrvs.length);
       }
-      summary.restingHrHistory = periods
-        .slice(1, 8)
+      summary.restingHrHistory = priorWeek
         .map((p) => p.lowest_heart_rate)
         .filter((v) => typeof v === 'number');
       summary.nights = periods.map((p) => ({

@@ -129,3 +129,12 @@ test('last night counts from today or yesterday, and the score is that night\'s 
   assert.equal(s.sleepScore, 86, 'the score matches the night the sleep values came from');
   assert.equal(s.readinessScore, 79);
 });
+
+test('the HRV week average and resting HR history cover seven calendar nights, not seven recordings (review 10-29)', async () => {
+  // Last night (17th), then only the 15th inside the week; the rest are weeks old.
+  const sleep = [17, 15, 6, 5, 4, 3, 2, 1].map((d, i) => ({ day: day(d), type: 'long_sleep', total_sleep_duration: 26000, average_hrv: 40 + i * 10, lowest_heart_rate: 45 + i }));
+  stubOura({ sleep: { data: sleep } });
+  const s = await fetchOuraSummary('token');
+  assert.equal(s.hrvWeekAvgMs, 50, 'only the 15th is in the prior week');
+  assert.deepEqual(s.restingHrHistory, [46]);
+});
