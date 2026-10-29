@@ -33,7 +33,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 
 ## Phase 0 / Phase 1 remaining
 
-All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged together, with doc conflicts resolved, in `claude/integration-2026-10-22` (tests and typecheck pass there; it supersedes `claude/integration-2026-10-18` and `-10-17`). Review the branches, then merge that one PR instead of each.
+All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc conflicts resolved, in `claude/integration-2026-10-28` (tests and typecheck pass there; it supersedes `claude/integration-2026-10-22` and the older ones). Review the branches, then merge that one PR instead of each. How to run the gate reports: `docs/gate-reports.md`.
 
 - [~] Numeric line first (PRD §5.A.2, CLAUDE.md §3.3) in the read, the push and Today's Read, plus the posture badge (PRD §5.A.3) (`claude/numeric-first-read`, on `claude/integration-2026-10-18`; seen on the simulator)
 - [~] Week So Far: Mon to Sun run-minute bars + one line built from the same numbers (PRD §5.A.3) (`claude/week-so-far`, on `claude/numeric-first-read`; seen on the simulator)
