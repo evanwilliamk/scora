@@ -308,16 +308,32 @@ enum CalendarFeed {
 
 // MARK: - Plan setup (doc 09 §2.3)
 
-// One goal the loaded templates cover, from GET /api/plan/options.
+// One goal the loaded templates cover, from GET /api/plan/options, with
+// what each experience level's templates take.
+struct PlanLevel: Decodable, Equatable {
+  let level: String
+  let weeklyKm: [Double] // [min, max): the max itself does not match
+  let minWeeks: Int
+
+  enum CodingKeys: String, CodingKey { case level, weeklyKm = "weekly_km", minWeeks = "min_weeks" }
+
+  // Whole km the form may offer.
+  var kmRange: ClosedRange<Int> {
+    let lo = Int((weeklyKm.first ?? 0).rounded(.up))
+    let hi = Int((weeklyKm.last ?? 0).rounded(.up)) - 1
+    return lo...max(lo, hi)
+  }
+}
+
 struct PlanGoal: Decodable, Identifiable, Equatable {
   let sport: String
   let goalType: String
   let label: String
-  let experienceLevels: [String]
+  let levels: [PlanLevel]
   var id: String { "\(sport)|\(goalType)" }
 
   enum CodingKeys: String, CodingKey {
-    case sport, goalType = "goal_type", label, experienceLevels = "experience_levels"
+    case sport, goalType = "goal_type", label, levels
   }
 }
 
@@ -326,11 +342,25 @@ struct PlanOptionsResponse: Decodable {
 }
 
 enum PlanSetup {
-  // Doc 09 §2.3: a race at least 4 weeks out.
+  // Doc 09 §2.3: a race at least 4 weeks out, and never closer than the
+  // shortest plan for that level (generation refuses a plan that would have
+  // started before this week).
   static let minWeeksAhead = 4
 
-  static func earliestRace(from now: Date = Date(), calendar: Calendar = .current) -> Date {
-    calendar.date(byAdding: .day, value: 7 * minWeeksAhead, to: calendar.startOfDay(for: now))!
+  static func earliestRace(from now: Date = Date(), minWeeks: Int = 0, calendar: Calendar = .current) -> Date {
+    calendar.date(byAdding: .day, value: 7 * max(minWeeksAhead, minWeeks), to: calendar.startOfDay(for: now))!
+  }
+
+  static func clamp(_ km: Int, to range: ClosedRange<Int>) -> Int { min(max(km, range.lowerBound), range.upperBound) }
+
+  // Short name for the picker; levelText is the full line under it.
+  static func levelName(_ level: String) -> String {
+    switch level {
+    case "first_timer": return "First timer"
+    case "regular": return "Regular racer"
+    case "competitive": return "Competitive racer"
+    default: return level.replacingOccurrences(of: "_", with: " ").capitalized
+    }
   }
 
   static func levelText(_ level: String) -> String {
@@ -355,17 +385,33 @@ struct PlanSetupView: View {
   let goals: [PlanGoal]
   let athleteId: String
   let apiBase: String
+  let replacesPlan: Bool // the athlete already has a plan; building replaces it
   var onBuilt: () -> Void
   @Environment(\.dismiss) private var dismiss
 
-  @State private var goalId: String = ""
-  @State private var raceDate = PlanSetup.earliestRace()
-  @State private var weeklyKm = 30
-  @State private var level = ""
+  @State private var goalId: String
+  @State private var level: String
+  @State private var raceDate: Date
+  @State private var weeklyKm: Int
   @State private var isBuilding = false
+  @State private var confirming = false
   @State private var message: String?
 
+  init(goals: [PlanGoal], athleteId: String, apiBase: String, replacesPlan: Bool, onBuilt: @escaping () -> Void) {
+    self.goals = goals
+    self.athleteId = athleteId
+    self.apiBase = apiBase
+    self.replacesPlan = replacesPlan
+    self.onBuilt = onBuilt
+    let first = goals.first?.levels.first
+    _goalId = State(initialValue: goals.first?.id ?? "")
+    _level = State(initialValue: first?.level ?? "")
+    _raceDate = State(initialValue: PlanSetup.earliestRace(minWeeks: first?.minWeeks ?? 0))
+    _weeklyKm = State(initialValue: first.map { PlanSetup.clamp(30, to: $0.kmRange) } ?? 30)
+  }
+
   private var goal: PlanGoal? { goals.first { $0.id == goalId } ?? goals.first }
+  private var levelInfo: PlanLevel? { goal?.levels.first { $0.level == level } }
 
   var body: some View {
     NavigationStack {
@@ -374,17 +420,24 @@ struct PlanSetupView: View {
           Picker("Race", selection: $goalId) {
             ForEach(goals) { g in Text(g.label).tag(g.id) }
           }
-          DatePicker("Race date", selection: $raceDate, in: PlanSetup.earliestRace()..., displayedComponents: .date)
+          DatePicker("Race date", selection: $raceDate, in: PlanSetup.earliestRace(minWeeks: levelInfo?.minWeeks ?? 0)..., displayedComponents: .date)
         }
         Section("Where you are now") {
-          Stepper("\(weeklyKm) km a week", value: $weeklyKm, in: 0...200, step: 5)
           Picker("Experience", selection: $level) {
-            ForEach(goal?.experienceLevels ?? [], id: \.self) { l in Text(PlanSetup.levelText(l)).tag(l) }
+            ForEach(goal?.levels ?? [], id: \.level) { l in Text(PlanSetup.levelName(l.level)).tag(l.level) }
+          }
+          if !level.isEmpty {
+            Text(PlanSetup.levelText(level)).font(.footnote).foregroundColor(.gray)
+          }
+          if let range = levelInfo?.kmRange {
+            Stepper("\(weeklyKm) km a week", value: $weeklyKm, in: range)
           }
         }
         Section {
-          Button(isBuilding ? "Building…" : "Build my plan") { Task { await build() } }
-            .disabled(isBuilding || goal == nil || level.isEmpty)
+          Button(isBuilding ? "Building…" : "Build my plan") {
+            if replacesPlan { confirming = true } else { Task { await build() } }
+          }
+          .disabled(isBuilding || goal == nil || levelInfo == nil)
           if let message { Text(message).font(.footnote).foregroundColor(.gray) }
         } footer: {
           Text("Plans come from coach-reviewed templates, scaled to your current volume.")
@@ -393,15 +446,26 @@ struct PlanSetupView: View {
       .navigationTitle("Build a plan")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-      .onAppear {
-        if goalId.isEmpty { goalId = goals.first?.id ?? "" }
-        if level.isEmpty { level = goal?.experienceLevels.first ?? "" }
-      }
       .onChange(of: goalId) {
-        if let g = goal, !g.experienceLevels.contains(level) { level = g.experienceLevels.first ?? "" }
+        if let g = goal, !g.levels.contains(where: { $0.level == level }) { level = g.levels.first?.level ?? "" }
+        fitToLevel()
+      }
+      .onChange(of: level) { fitToLevel() }
+      .confirmationDialog("This replaces your current plan. Its sessions stay on record.", isPresented: $confirming, titleVisibility: .visible) {
+        Button("Build my plan") { Task { await build() } }
+        Button("Cancel", role: .cancel) {}
       }
     }
+    .interactiveDismissDisabled(isBuilding)
+    .tint(.orange)
     .preferredColorScheme(.dark)
+  }
+
+  // Keep the km and the race date inside what the chosen level's templates take.
+  private func fitToLevel() {
+    guard let info = levelInfo else { return }
+    weeklyKm = PlanSetup.clamp(weeklyKm, to: info.kmRange)
+    raceDate = max(raceDate, PlanSetup.earliestRace(minWeeks: info.minWeeks))
   }
 
   private func build() async {
@@ -501,7 +565,7 @@ struct PlanView: View {
     .task { await loadPrediction() } // independent: shown even if the plan list fails
     .task { await loadOptions() }
     .sheet(isPresented: $showSetup) {
-      PlanSetupView(goals: planGoals, athleteId: tokenManager.athleteId, apiBase: apiBase) {
+      PlanSetupView(goals: planGoals, athleteId: tokenManager.athleteId, apiBase: apiBase, replacesPlan: !workouts.isEmpty) {
         Task { await loadPlan() }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
       }
@@ -510,7 +574,12 @@ struct PlanView: View {
 
   // Off (404) unless plan generation is on; then the goals the templates cover.
   private func loadOptions() async {
-    guard let url = URL(string: "\(apiBase)/api/plan/options"),
+    #if DEBUG
+    if let demo = DemoMode.planGoals { await MainActor.run { planGoals = demo; showSetup = true }; return }
+    #endif
+    var comps = URLComponents(string: "\(apiBase)/api/plan/options")
+    comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
+    guard let url = comps?.url,
           let (data, resp) = try? await URLSession.shared.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanOptionsResponse.self, from: data)

@@ -74,6 +74,14 @@ enum DemoMode {
     ]
   }
 
+  // -demo-plan-setup (with -demo-plan): the plan setup form opens with two
+  // sample goals, as GET /api/plan/options would list them. Sample data only.
+  static var planGoals: [PlanGoal]? {
+    guard ProcessInfo.processInfo.arguments.contains("-demo-plan-setup") else { return nil }
+    let json = #"{"goals":[{"sport":"run","goal_type":"half_marathon","label":"Half marathon","levels":[{"level":"first_timer","weekly_km":[15,30],"min_weeks":12},{"level":"regular","weekly_km":[30,50],"min_weeks":12}]},{"sport":"run","goal_type":"marathon","label":"Marathon","levels":[{"level":"regular","weekly_km":[45,70],"min_weeks":16}]}]}"#
+    return try? JSONDecoder().decode(PlanOptionsResponse.self, from: Data(json.utf8)).goals
+  }
+
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], zip([40, 0, 80, 0, nil, nil, nil] as [Int?], [40, 0, 50, 45, 0, 100, 0])).enumerated().map { i, p in
       WeekSoFarDay(date: "2026-10-\(19 + i)", weekday: p.0, runMin: p.1.0, plannedMin: p.1.1)
