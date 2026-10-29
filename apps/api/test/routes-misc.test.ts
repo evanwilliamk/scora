@@ -135,3 +135,31 @@ test('chat quota: a spent day is a 429 and the model is never asked', async () =
   assert.equal(llmCalls().length, 0);
   assert.ok(!rest.requests.some((q) => q.method === 'PATCH'), 'a refused chat does not count');
 });
+
+test('chat: a clean answer counts one query and draws the chart from the activities', async () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  connected({ cdv_count: 1, cdv_count_date: today });
+  connected({ cdv_count: 1, cdv_count_date: today });
+  guard.stravaActivities(twoWeeks());
+  guard.openAi('Runs have held steady across the last two weeks.\nCHART: weekly_miles');
+  const r = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today });
+  assert.equal(r.statusCode, 200, r.body);
+  const body = r.json();
+  assert.equal(body.voice, 'Runs have held steady across the last two weeks.');
+  assert.equal(body.remaining, 1);
+  assert.ok(body.chart, 'the chart is built in code from the activities');
+  const count = rest.requests.find((q) => q.method === 'PATCH' && q.table === 'athletes')!;
+  assert.deepEqual({ n: count.body.cdv_count, d: count.body.cdv_count_date }, { n: 2, d: today });
+});
+
+test('chat: prescriptive drafts are replaced, never sent', async () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  connected({ cdv_count: 0, cdv_count_date: today });
+  connected({ cdv_count: 0, cdv_count_date: today });
+  guard.stravaActivities(twoWeeks());
+  guard.openAi('You should go for a long run today.\nCHART: none', 'You need to do a hard session.\nCHART: none');
+  const r = await post('/api/cdv', { athleteId: '42', message: 'What should I run today?', today });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(llmCalls().length, 2);
+  assert.doesNotMatch(r.json().voice, /you should|you need to|go for|do a hard/i);
+});
