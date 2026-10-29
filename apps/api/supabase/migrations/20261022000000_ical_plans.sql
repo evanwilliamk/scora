@@ -75,13 +75,24 @@ create or replace function refresh_ical_plan(p_athlete_id text, p_rows jsonb)
 returns uuid
 language plpgsql
 as $$
+declare
+  v_old uuid;
+  v_new uuid;
 begin
   perform pg_advisory_xact_lock(hashtext('scora.plan:' || p_athlete_id));
-  perform 1 from training_plans
+  select id into v_old from training_plans
   where athlete_id = p_athlete_id and external_source = 'ical' and current_status = 'active';
-  if not found then
+  if v_old is null then
     return null;
   end if;
-  return replace_external_plan(p_athlete_id, 'ical', null, p_rows);
+  v_new := replace_external_plan(p_athlete_id, 'ical', null, p_rows);
+  -- Keep the athlete's done/missed marks for sessions the refresh brings back
+  -- unchanged (same day, sport and words).
+  update scheduled_workouts n set athlete_completed = o.athlete_completed
+  from scheduled_workouts o
+  where n.training_plan_id = v_new and o.training_plan_id = v_old and o.athlete_completed is not null
+    and n.scheduled_date = o.scheduled_date and n.planned_type = o.planned_type
+    and n.planned_description is not distinct from o.planned_description;
+  return v_new;
 end;
 $$;

@@ -960,7 +960,11 @@ fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return reply.code(404).send({ error: 'No such session.' });
   }
-  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  // The app's local date, within a day of the server's (time zones), so a
+  // far-future "today" cannot mark sessions still ahead.
+  const serverDay = new Date().toISOString().slice(0, 10);
+  const asked = isoDay(clientToday);
+  const today = asked && asked >= addDays(serverDay, -1) && asked <= addDays(serverDay, 1) ? asked : serverDay;
   try {
     const ok = await planStore().markCompleted(String(athleteId), id, status === 'done', today);
     return ok ? reply.send({ id, status }) : reply.code(404).send({ error: 'No such session on your plan, or it is still ahead.' });
