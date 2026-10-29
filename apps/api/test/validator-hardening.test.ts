@@ -63,3 +63,16 @@ test('legitimate reads keep passing', () => {
 test('normalizeForCheck folds typography only', () => {
   assert.equal(normalizeForCheck('I’m  here now ９'), "I'm here now 9");
 });
+
+test('a driver number with the wrong unit or direction is not backed (review 10-29)', () => {
+  for (const s of ['HRV 52 bpm this morning.', 'Load is 412 mi.', 'HRV is 52ms, down 8% on the week.', 'Load fell 12% on the week.']) fails(s);
+  for (const s of [
+    'HRV 52 ms, up 8% on the week.',
+    'Load is 412 minutes, 12 percent higher than last week.',
+    'Load is up 12% while HRV is 52ms.',
+    'Sleep held at 7:12, and HRV rose 8%.',
+    'Load 412, up 12% on the week.',
+  ]) passes(s);
+  // A driver number stated with no unit (a score) may take any unit word.
+  assert.equal(validateVoice('Readiness is 84 points.', [{ metric: 'Readiness', value: '84' }]).ok, true);
+});

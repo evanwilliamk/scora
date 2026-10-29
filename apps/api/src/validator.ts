@@ -154,6 +154,25 @@ function wordNumbers(text: string): { word: string; value: string }[] {
   return out;
 }
 
+const UP = /\b(above|up|higher|over|rose|risen|climb(?:ed|ing|s)?|rising|more|gain(?:ed)?)\b/i;
+const DOWN = /\b(below|down|under|lower|dropped|fell|fallen|falling|less|dip(?:ped)?|slipped)\b/i;
+
+// Unit families as the voice and drivers write them.
+const UNIT: [RegExp, string][] = [
+  [/^(?:ms|milliseconds?)$/i, 'ms'], [/^bpm$/i, 'bpm'], [/^(?:min|mins|minutes?)$/i, 'min'],
+  [/^(?:mi|miles?)$/i, 'mi'], [/^(?:km|kilomet(?:er|re)s?)$/i, 'km'], [/^(?:%|percent)$/i, '%'], [/^(?:h|hrs?|hours?)$/i, 'h'],
+];
+// [number, unit family or '', matched text] for each number in the text.
+function unitPairs(text: string): [string, string, string][] {
+  const out: [string, string, string][] = [];
+  for (const m of text.matchAll(/(?<![\d.:])(\d+(?:\.\d+)?)(?![\d:])\s?(%|[a-z]+)?/gi)) {
+    const raw = m[2] ?? '';
+    const unit = UNIT.find(([re]) => re.test(raw))?.[1] ?? '';
+    out.push([String(parseFloat(m[1])), unit, m[0].trim()]);
+  }
+  return out;
+}
+
 // Check a generated voice string against the drivers it was allowed to cite.
 export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationResult {
   const voice = normalizeForCheck(rawVoice);
@@ -176,6 +195,31 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   }
   const unbackedNumbers = [...new Set(numberTokens(voice))].filter((n) => !allowed.has(n));
   for (const w of wordNumbers(voice)) if (!allowed.has(w.value)) unbackedNumbers.push(w.word);
+  // A driver number cited with a unit must carry a unit the driver has:
+  // "HRV 52 bpm" is not backed by "52ms". A number some driver states with no
+  // unit (a score, a count) may take any.
+  const driverUnits = new Map<string, Set<string>>();
+  for (const d of drivers) {
+    for (const [num, unit] of unitPairs(`${d.value} ${d.trend ?? ''}`)) {
+      driverUnits.set(num, (driverUnits.get(num) ?? new Set()).add(unit));
+    }
+  }
+  for (const [num, unit, text] of unitPairs(voice)) {
+    const units = driverUnits.get(num);
+    if (unit && units && !units.has(unit) && !units.has('')) unbackedNumbers.push(text);
+  }
+  // A signed driver cited by its number must move the way the voice says:
+  // "HRV down 8%" is not backed by "+8% wk".
+  const sentences = voice.split(/(?<=[.!?;])\s+/);
+  for (const d of drivers) {
+    const m = `${d.value} ${d.trend ?? ''}`.match(/([+-])\s?(\d+(?:\.\d+)?)\s?%/);
+    if (!m) continue;
+    const pct = new RegExp(String.raw`(?<![\d.])${m[2].replace('.', '\\.')}(?![\d])\s?%`);
+    for (const sentence of sentences.filter((x) => pct.test(x))) {
+      if (m[1] === '+' && DOWN.test(sentence) && !UP.test(sentence)) bannedHits.push(`wrong direction for ${d.metric}`);
+      if (m[1] === '-' && UP.test(sentence) && !DOWN.test(sentence)) bannedHits.push(`wrong direction for ${d.metric}`);
+    }
+  }
 
   return {
     ok: bannedHits.length === 0 && unbackedNumbers.length === 0,
