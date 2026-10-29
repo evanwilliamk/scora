@@ -49,7 +49,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [!] Sign in with Apple (auth: needs Evan). Done when every `/api/*` route takes the athlete from a verified Apple identity, not a body `athleteId`
 - [~] RLS on every table (doc 10 §6.5): users, athletes, activities, workouts, health_data and device_tokens had it off, so the anon key could read OAuth and device tokens through the REST API. Migration plus a test that fails on any table without RLS (`claude/rls-all-tables`, on `claude/integration-2026-10-28`; PGlite only, Evan applies it, Q28)
 - [!] OAuth tokens encrypted at rest (doc 10 §6.5) (Q26). Done when Strava and Oura tokens are unreadable from a plain `select` on `athletes`
-- [!] Account deletion (doc 10 §6.6, App Store 5.1.1(v)) (Q27). Done when a Settings action removes the athlete's rows and revokes Strava/Oura within 7 days, tested on PGlite
+- [!] Account deletion (doc 10 §6.6, App Store 5.1.1(v)) (Q27). Done when a Settings action removes the athlete's rows and revokes Strava/Oura within 7 days, tested on PGlite. Inventory of every table and outside store: `docs/account-deletion-inventory.md`
 - [x] Review and land `origin/feat/voice-pattern-library` (pattern engine + 7 ported v0.3 entries) (merged 2026-10-15 from `claude/voice-pattern-library`)
 - [x] Posture engine as its own module with unit tests (merged 2026-10-15 from `claude/posture-engine`; not wired into the API yet)
 - [~] Port the 5 remaining v0.3 pattern entries (12 total) (`claude/port-v03-patterns`). Stopgap only: the knowledge library replaces the "20+ entries" goal (Evan, 2026-10-13)
