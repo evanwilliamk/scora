@@ -118,3 +118,11 @@ test('source kind is constrained', async () => {
     /check constraint/i
   );
 });
+
+test('every table has row level security on (doc 10 §6.5), so the anon key reads nothing', async () => {
+  const r = await db.query<{ relname: string }>(
+    `select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity order by 1`,
+  );
+  assert.deepEqual(r.rows.map((x) => x.relname), [], 'a new table needs "enable row level security" in its migration');
+});

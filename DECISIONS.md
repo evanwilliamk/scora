@@ -470,3 +470,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: a server image endpoint (needs an image library on Railway and a second copy of the layout).
 - Why: same content, no server work, no athlete data leaving the phone except what the athlete chooses to share.
 - To reverse: remove the ShareLink in WeeklyView.swift; WeeklyShare stays usable for a server version later.
+
+### 2026-10-28: RLS on every table, no policies
+- Status: NEEDS EVAN (apply the migration, Q28)
+- Branch: claude/rls-all-tables
+- Context: six init tables (users, athletes, activities, workouts, health_data, device_tokens) had row level security off; Supabase's anon key reaches them through the REST API.
+- Choice: enable RLS with no policies. Every API client uses the service role key, which bypasses RLS, so app behavior is unchanged. A migrations test now fails on any table without RLS.
+- Alternatives: per-user policies (needed only once a client talks to Supabase directly, which none does).
+- Why: closes the anon path to OAuth and device tokens with zero app change.
+- To reverse: `alter table <name> disable row level security;` for each.
