@@ -76,3 +76,39 @@ test('a driver number with the wrong unit or direction is not backed (review 10-
   // A driver number stated with no unit (a score) may take any unit word.
   assert.equal(validateVoice('Readiness is 84 points.', [{ metric: 'Readiness', value: '84' }]).ok, true);
 });
+
+test('descriptive weekly and chat phrasing passes (review 2, 10-29)', () => {
+  const d = [
+    { metric: 'HRV', value: '52ms', trend: '+8% wk' },
+    { metric: 'Weekly volume', value: '22.4 mi', trend: '-8% wk' },
+    { metric: 'Sleep (last night)', value: '7:12' },
+    { metric: 'Load', value: '412 min', trend: '-6% wk' },
+    { metric: 'Pace', value: '8:30/mi' },
+    { metric: 'Plan today', value: 'tempo, 45 min' },
+  ];
+  for (const s of [
+    'Easy runs make up the bulk of the week.',
+    'Volume cut back 6% this week.',
+    'Sleep fell behind on two nights.',
+    'Next week you start the taper.',
+    'You were able to hold the pace at 8:30/mi.',
+    'Your heart rate did stay in zone two.',
+    "You don't run the tempo until Wednesday.",
+    'Most coaches would consider a rest day here.',
+    'Load is down 8%.',
+    'The +8% HRV reads as the body settling down.',
+    'Sleep was 7 hours 12 minutes.',
+    'Sleep ran just over one hour longer than Monday.',
+    'Rest today is on your plan.',
+    "Yesterday's tempo was skipped, and today's 45 min tempo is still on the plan.",
+  ]) {
+    const r = validateVoice(s, d);
+    assert.equal(r.ok, true, `rejected: ${s} (${[...r.bannedHits, ...r.unbackedNumbers].join(', ')})`);
+  }
+});
+
+test('a plan change observation may mention context days (review 2, 10-29)', () => {
+  const d = [{ metric: 'Plan today', value: 'easy run 40 min' }, { metric: 'Plan change', value: "Tuesday's tempo moved to Wednesday." }];
+  assert.deepEqual(validateVoice('The plan moved the tempo to Wednesday after a short Monday night.', d).bannedHits, []);
+  assert.ok(validateVoice('The plan moved the tempo to Friday after a short Monday night.', d).bannedHits.includes('plan override'));
+});

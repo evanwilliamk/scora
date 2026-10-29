@@ -40,7 +40,13 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   // Advice in other words (CLAUDE.md §1.1, §3.1): "Aim for 45 minutes",
   // "Consider a rest day", "It's a good day to run long", "Make sure to sleep".
   {
-    re: /\b(?:aim for|make sure (?:to|you)|you'?ll want to|you (?:ought|have|might want|may want|would want) to|(?:it'?s |it is )?(?:best|wise|smart) to|(?:it'?s |it is )?a (?:good|great|fine|smart) (?:day|time|morning|week) to|consider (?:an?|taking|skipping|moving|easing|keeping|resting|going|running|holding)|you (?:might|may|could) (?:go|run|ride|swim|try|take|keep|ease|skip|rest|back off|hold|stay|stick)|(?:keep|hold) (?:the|your) (?:effort|pace|intensity|heart rate|hr)\b|don'?t (?:push|go hard|run|race|overdo)|avoid (?:intensity|hard|speed|running|racing|pushing)|stay (?:in|under|below|within) (?:zone|z\s?\d|your))/i,
+    re: /\b(?:aim for|make sure (?:to|you)|you'?ll want to|you (?:ought|have|might want|may want|would want) to|(?:it'?s |it is )?(?:best|wise|smart) to|(?:it'?s |it is )?a (?:good|great|fine|smart) (?:day|time|morning) to|(?<!\bwould )consider (?:an?|taking|skipping|moving|easing|keeping|resting|going|running|holding)|you (?:might|may|could) (?:go|run|ride|swim|try|take|keep|ease|skip|rest|back off|hold|stay|stick))/i,
+    label: 'advice',
+  },
+  // Commands only at the start of a clause: "Keep the effort low." is an
+  // order; "you were able to hold the pace" and "HR did stay in zone 2" are history.
+  {
+    re: /(?:^|[.;!?]\s+|,\s+|[—–]\s*)(?:just\s+)?(?:(?:keep|hold) (?:the|your) (?:effort|pace|intensity|heart rate|hr)\b|don'?t (?:push|go hard|run|race|overdo)|avoid (?:intensity|hard|speed|running|racing|pushing)|stay (?:in|under|below|within) (?:zone|z\s?\d|your))/i,
     label: 'advice',
   },
   // "Most coaches would call this a rest day" (descriptive) stays allowed.
@@ -58,14 +64,19 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   {
     re: new RegExp(
       String.raw`(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|[—–]\s*|\s-\s+|\(\s*)(?:just\s+)?` +
-      String.raw`(?:go (?:easy|hard|out|run|for|long|slow|do|ride|on)|back off (?:today|tomorrow|now|a bit|this)|swim (?:easy|hard|long|today|tomorrow|an?|\d)|do intervals|move (?:it|the|today'?s|your|tomorrow'?s) \w+ to|take (?:it|the day|a|an|today|tomorrow)|keep (?:it|things|today|the pace|easy)|hit (?:the|your|it)|try (?:a|an|the|to|some|\d)|head (?:out|to)|jog|ease (?:into|up|off|back|in)|stay (?:easy|off|home|in|light|low|aerobic)|ride (?:easy|hard|today|tomorrow|an?|\d)|skip (?:the|it|today|tomorrow|your|this)|rest (?:today|tomorrow|up|now|this)|start (?:with|easy|slow)|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b`,
+      String.raw`(?:go (?:easy|hard|out|run|for|long|slow|do|ride|on)|back off (?:today|tomorrow|now|a bit|this)|swim (?:easy|hard|long|today|tomorrow|an?|\d)|do intervals|move (?:it|the|today'?s|your|tomorrow'?s) \w+ to|take (?:it|the day|a|an|today|tomorrow)|keep (?:it|things|today|the pace|easy)|hit (?:the|your|it)|try (?:a|an|the|to|some|\d)|head (?:out|to)|jog|ease (?:into|up|off|back|in)|stay (?:easy|off|home|in|light|low|aerobic)|ride (?:easy|hard|today|tomorrow|an?|\d)|skip (?:the|it|today|tomorrow|your|this)|rest (?:up|now)|rest (?:today|tomorrow)(?=\s*(?:[,.;!?]|$))|start (?:with|easy|slow)|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b`,
       'i',
     ),
     label: 'workout imperative',
   },
   // Plan advice in disguise: telling the athlete to recover lost minutes or to
   // trim the plan (CLAUDE.md §1.3; the weekly review states adherence only).
-  { re: /\b(make up (?:for|the|those|that|lost|missed|it|\d)|catch up on|catch up|cut back|scale back|fell behind|fall behind|next week,? you)\b/i, label: 'plan advice' },
+  // Descriptive uses stay allowed: "easy runs make up the bulk", "volume cut
+  // back 6%", "sleep fell behind", "next week you start the taper".
+  {
+    re: /\b(make up (?:for|those|lost|missed|it|the (?:lost|missed|missing|gap|difference|minutes|miles))|catch up on|catch up|you (?:could |should |might |can )?(?:cut|scale) back|you fell behind|fall behind|next week,? you (?:could|should|might|can|need|will want|'ll want))\b|(?:^|[.;!?]\s+)(?:cut|scale) back\b/i,
+    label: 'plan advice',
+  },
   { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
   { re: /\breplac(?:e|es|ed|ing) (?:your|a|the) coach\b/i, label: 'anti-coach' },
   {
@@ -78,7 +89,7 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
 // the read carries a 'Plan today' driver: the voice may name the session and
 // the body's state, never change the session.
 export const PLAN_DRIVER_METRIC = 'Plan today';
-const PLAN_OVERRIDE = /\b(skip(s|ping|ped)?\b|swap(s|ping|ped)?\b|postpon(e|es|ing|ed)\b|push(es|ed|ing)? (it|the \w+|today'?s \w+) (back|to)\b|(move|moves|moving|moved|shift|shifting) (it|the \w+|today'?s \w+) to\b|(can|could|should) wait\b|hold(ing)? off\b|sav(e|ing) (it|the \w+) for\b|cut(ting)? (it|the \w+) short\b|shorten(s|ing|ed)?\b|instead\b|(a )?better day for\b|(an )?eas(y|ier) (day|session|run|effort) (would|fits|makes|might)\b|would be better (on|in|as|for)\b|(the )?better fit\b|keep(ing)? (it|the \w+) (short|under|below)\b|lighter (day|session|option)\b|take it easy\b|dial(ing|led)? (it|things|the \w+) back\b|scal(e|ing) (it|the \w+) back\b)/i;
+const PLAN_OVERRIDE = /\b((?<!\b(?:was|were|been|got) )skip(s|ping|ped)?\b|swap(s|ping|ped)?\b|postpon(e|es|ing|ed)\b|push(es|ed|ing)? (it|the \w+|today'?s \w+) (back|to)\b|(move|moves|moving|moved|shift|shifting) (it|the \w+|today'?s \w+) to\b|(can|could|should) wait\b|hold(ing)? off\b|sav(e|ing) (it|the \w+) for\b|cut(ting)? (it|the \w+) short\b|shorten(s|ing|ed)?\b|instead\b|(a )?better day for\b|(an )?eas(y|ier) (day|session|run|effort) (would|fits|makes|might)\b|would be better (on|in|as|for)\b|(the )?better fit\b|keep(ing)? (it|the \w+) (short|under|below)\b|lighter (day|session|option)\b|take it easy\b|dial(ing|led)? (it|things|the \w+) back\b|scal(e|ing) (it|the \w+) back\b)/i;
 
 // Words that only describe a change the plan engine already made: "the plan
 // moved the tempo to Wednesday", "is now an endurance run instead".
@@ -103,7 +114,14 @@ function overrideIsObservation(voice: string, drivers: Driver[]): boolean {
     const hits = [...clause.matchAll(new RegExp(PLAN_OVERRIDE.source, 'gi'))].map((m) => m[0]);
     if (hits.length === 0) continue;
     if (!hits.every((h) => OBSERVED_CHANGE.test(h)) || ADVICE_CUE.test(clause) || !CHANGE_MARKER.test(clause)) return false;
-    const words = [...new Set((clause.match(CHANGE_WORDS) ?? []).map((w) => w.toLowerCase().replace(/s$/, '')))];
+    // Days and sessions the change itself names: each hit and the word after
+    // it ("moved the tempo to Wednesday"), not context like "after a short
+    // Monday night".
+    const near = [...clause.matchAll(new RegExp(`(?:${PLAN_OVERRIDE.source})(?:\\s+\\S+)?`, 'gi'))].map((m) => m[0]).join(' ');
+    // A hit that names nothing itself ("... an endurance run instead") is
+    // judged by the whole clause.
+    const named0 = near.match(CHANGE_WORDS) ?? clause.match(CHANGE_WORDS) ?? [];
+    const words = [...new Set(named0.map((w) => w.toLowerCase().replace(/s$/, '')))];
     if (words.length === 0) return false;
     const named = (c: string) => words.every((w) => new RegExp(`\\b${w}s?\\b`).test(c));
     if (!changes.some(named)) return false;
@@ -149,13 +167,13 @@ function wordNumbers(text: string): { word: string; value: string }[] {
   const out: { word: string; value: string }[] = [];
   const tens = new RegExp(String.raw`\b(${Object.keys(TENS).join('|')})(?:[\s-](${Object.keys(ONES).slice(0, 9).join('|')}))?\b`, 'gi');
   for (const m of text.matchAll(tens)) out.push({ word: m[0], value: String(TENS[m[1].toLowerCase()] + (m[2] ? ONES[m[2].toLowerCase()] : 0)) });
-  const withUnit = new RegExp(String.raw`\b(${Object.keys(ONES).join('|')})\s+${WORD_UNITS}\b`, 'gi');
+  const withUnit = new RegExp(String.raw`\b(${Object.keys(ONES).filter((w) => w !== 'one').join('|')})\s+${WORD_UNITS}\b`, 'gi');
   for (const m of text.matchAll(withUnit)) out.push({ word: m[0], value: String(ONES[m[1].toLowerCase()]) });
   return out;
 }
 
 const UP = /\b(above|up|higher|over|rose|risen|climb(?:ed|ing|s)?|rising|more|gain(?:ed)?)\b/i;
-const DOWN = /\b(below|down|under|lower|dropped|fell|fallen|falling|less|dip(?:ped)?|slipped)\b/i;
+const DOWN = /\b(below|(?<!\b(?:settl\w*|slow\w*|wind\w*|calm\w*) )down|under|lower|dropped|fell|fallen|falling|less|dip(?:ped)?|slipped)\b/i;
 
 // Unit families as the voice and drivers write them.
 const UNIT: [RegExp, string][] = [
@@ -165,6 +183,10 @@ const UNIT: [RegExp, string][] = [
 // [number, unit family or '', matched text] for each number in the text.
 function unitPairs(text: string): [string, string, string][] {
   const out: [string, string, string][] = [];
+  // "7:12" is 7 h 12 min (or 7 min 12 s for a pace): both parts may be said with units.
+  for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:])/g)) {
+    out.push([String(parseFloat(m[1])), 'h', m[0]], [String(parseFloat(m[1])), 'min', m[0]], [String(parseFloat(m[2])), 'min', m[0]], [String(parseFloat(m[2])), '', m[0]]);
+  }
   for (const m of text.matchAll(/(?<![\d.:])(\d+(?:\.\d+)?)(?![\d:])\s?(%|[a-z]+)?/gi)) {
     const raw = m[2] ?? '';
     const unit = UNIT.find(([re]) => re.test(raw))?.[1] ?? '';
@@ -214,6 +236,9 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   for (const d of drivers) {
     const m = `${d.value} ${d.trend ?? ''}`.match(/([+-])\s?(\d+(?:\.\d+)?)\s?%/);
     if (!m) continue;
+    // Two signed drivers of the same size: the number alone cannot say which.
+    const same = drivers.filter((o) => new RegExp(String.raw`[+-]\s?${m[2].replace('.', '\\.')}\s?%`).test(`${o.value} ${o.trend ?? ''}`));
+    if (same.length > 1) continue;
     const pct = new RegExp(String.raw`(?<![\d.])${m[2].replace('.', '\\.')}(?![\d])\s?%`);
     for (const sentence of sentences.filter((x) => pct.test(x))) {
       if (m[1] === '+' && DOWN.test(sentence) && !UP.test(sentence)) bannedHits.push(`wrong direction for ${d.metric}`);
