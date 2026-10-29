@@ -94,9 +94,11 @@ struct PlanAdaptation: Decodable, Identifiable, Equatable {
   let type: String
   let reason: String
   let triggeredAt: String
+  // Only on the history endpoint: the athlete hid it from the short list.
+  var dismissed: Bool? = nil
 
   enum CodingKeys: String, CodingKey {
-    case id, type = "adaptation_type", reason = "reason_text", triggeredAt = "triggered_at"
+    case id, type = "adaptation_type", reason = "reason_text", triggeredAt = "triggered_at", dismissed
   }
 }
 
@@ -113,6 +115,72 @@ enum PlanChanges {
 
   static func dismissing(_ id: String, from rows: [PlanAdaptation]) -> [PlanAdaptation] {
     rows.filter { $0.id != id }
+  }
+
+  // The full history (PRD §5.B.1): every row, newest first, displaced ones too.
+  static func history(_ rows: [PlanAdaptation]) -> [PlanAdaptation] {
+    rows.sorted { $0.triggeredAt > $1.triggeredAt }
+  }
+
+  // What happened, in a word, beside the server's reason.
+  static func label(_ type: String) -> String {
+    switch type {
+    case "moved": return "Moved"
+    case "downgraded": return "Changed"
+    case "skipped": return "Made a rest day"
+    case "frozen_race_week": return "Race week"
+    default: return "Changed"
+    }
+  }
+
+  // "2026-10-28T06:00:00.000Z" -> "Oct 28" (UTC day the engine made it).
+  static func day(_ triggeredAt: String) -> String {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.dateFormat = "yyyy-MM-dd"
+    guard let d = f.date(from: String(triggeredAt.prefix(10))) else { return String(triggeredAt.prefix(10)) }
+    f.dateFormat = "MMM d"
+    return f.string(from: d)
+  }
+}
+
+// Every change the plan engine made, from GET /api/plan/adaptations/history.
+struct PlanHistoryView: View {
+  let rows: [PlanAdaptation]
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 10) {
+          if rows.isEmpty {
+            Text("No plan changes yet.").font(.subheadline).foregroundColor(.gray).padding(.top, 24)
+          }
+          ForEach(rows) { c in
+            VStack(alignment: .leading, spacing: 4) {
+              HStack {
+                Text(PlanChanges.label(c.type)).font(.caption.bold()).foregroundColor(.orange)
+                Text(PlanChanges.day(c.triggeredAt)).font(.caption).foregroundColor(.gray)
+                Spacer()
+                if c.dismissed == true { Text("Dismissed").font(.caption2).foregroundColor(.gray) }
+              }
+              Text(c.reason).font(.footnote).foregroundColor(Color(white: 0.8))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+            .background(Color(white: 0.08))
+            .cornerRadius(10)
+          }
+        }
+        .padding()
+      }
+      .background(Color.black)
+      .navigationTitle("Plan changes")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+    }
+    .preferredColorScheme(.dark)
   }
 }
 
@@ -248,6 +316,9 @@ struct PlanView: View {
   @State private var workouts: [PlanWorkout] = []
   @State private var unmarked: [PlanWorkout] = []
   @State private var changes: [PlanAdaptation] = []
+  @State private var changesOn = false // the adaptations endpoint answered
+  @State private var history: [PlanAdaptation] = []
+  @State private var showHistory = false
   @State private var prediction: RacePrediction?
   @State private var note: String?
   @State private var errorText: String?
@@ -385,6 +456,11 @@ struct PlanView: View {
           .background(Color(white: 0.08))
           .cornerRadius(10)
         }
+      }
+      if changesOn {
+        Button("All plan changes") { Task { await loadHistory(); await MainActor.run { showHistory = true } } }
+          .font(.footnote).foregroundColor(.orange)
+          .sheet(isPresented: $showHistory) { PlanHistoryView(rows: history) }
       }
       if let prediction {
         VStack(alignment: .leading, spacing: 4) {
@@ -538,7 +614,18 @@ struct PlanView: View {
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
     else { return }
-    await MainActor.run { changes = PlanChanges.visible(decoded.adaptations) }
+    await MainActor.run { changes = PlanChanges.visible(decoded.adaptations); changesOn = true }
+  }
+
+  private func loadHistory() async {
+    var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations/history")
+    comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
+    guard let url = comps?.url,
+          let (data, resp) = try? await URLSession.shared.data(from: url),
+          (resp as? HTTPURLResponse)?.statusCode == 200,
+          let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
+    else { return }
+    await MainActor.run { history = PlanChanges.history(decoded.adaptations) }
   }
 
   private func dismissChange(_ c: PlanAdaptation) async {

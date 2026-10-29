@@ -479,3 +479,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: per-user policies (needed only once a client talks to Supabase directly, which none does).
 - Why: closes the anon path to OAuth and device tokens with zero app change.
 - To reverse: `alter table <name> disable row level security;` for each.
+
+### 2026-10-28: Plan change history wording
+- Status: DECIDED
+- Branch: claude/adaptation-history
+- Context: the full history list needs a one-word label beside each server reason.
+- Choice: Moved, Changed (downgrades), Made a rest day (a session displaced by a move), Race week; dismissed rows say Dismissed. Dates are the UTC day the engine acted.
+- Why: descriptive, never advice; the reason sentence stays the server's.
+- To reverse: `PlanChanges.label` in apps/ios/Scora/PlanView.swift.

@@ -333,6 +333,24 @@ final class ScoraTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(CDVChart.html(for: spec)).contains("messageHandlers.rendered"))
     }
 
+    func testPlanHistoryKeepsEveryRowNewestFirst() throws {
+        let json = """
+        {"adaptations":[
+          {"id":"a","adaptation_type":"downgraded","reason_text":"Thursday's tempo is now an endurance run.","triggered_at":"2026-10-20T06:00:00.000Z","dismissed":true},
+          {"id":"b","adaptation_type":"skipped","reason_text":"Made room for the move.","triggered_at":"2026-10-28T06:00:00.000Z","dismissed":false},
+          {"id":"c","adaptation_type":"moved","reason_text":"Tuesday's tempo moved to Wednesday.","triggered_at":"2026-10-28T05:00:00.000Z"}
+        ]}
+        """
+        let rows = try JSONDecoder().decode(PlanAdaptationsResponse.self, from: Data(json.utf8)).adaptations
+        let h = PlanChanges.history(rows)
+        XCTAssertEqual(h.map(\.id), ["b", "c", "a"])
+        XCTAssertEqual(h.last?.dismissed, true)
+        XCTAssertNil(h[1].dismissed, "the short list endpoint has no dismissed field")
+        XCTAssertEqual(PlanChanges.visible(rows).map(\.id), ["c", "a"], "the short list still hides displaced rows")
+        XCTAssertEqual(h.map { PlanChanges.label($0.type) }, ["Made a rest day", "Moved", "Changed"])
+        XCTAssertEqual(PlanChanges.day("2026-10-28T06:00:00.000Z"), "Oct 28")
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")

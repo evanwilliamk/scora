@@ -66,6 +66,9 @@ export interface AdaptStore {
   // Returns the adaptation id, or null if the engine already adapted it.
   apply(write: AdaptationWrite): Promise<string | null>;
   recent(athleteId: string, limit: number): Promise<PlanAdaptationRow[]>;
+  // Every change on the active plan, newest first, dismissed ones included and
+  // marked (PRD §5.B.1: the athlete can see the full adaptation history).
+  history(athleteId: string, limit: number): Promise<(PlanAdaptationRow & { dismissed: boolean })[]>;
   // Changes that touch `day` on the active plan: a session moved to or from
   // it, or downgraded or displaced on it.
   forDay(athleteId: string, day: string): Promise<PlanAdaptationRow[]>;
@@ -261,6 +264,20 @@ export function sqlAdaptStore(db: Db): AdaptStore {
       );
       return r.rows as PlanAdaptationRow[];
     },
+    async history(athleteId, limit) {
+      const r = await db.query(
+        `select id, adaptation_type, to_char(original_date, 'YYYY-MM-DD') as original_date,
+                to_char(new_date, 'YYYY-MM-DD') as new_date, reason_code, reason_text,
+                to_char(triggered_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as triggered_at,
+                dismissed_at is not null as dismissed
+         from plan_adaptations a
+         where a.athlete_id = $1
+           and exists (select 1 from training_plans p where p.id = a.training_plan_id and p.current_status = 'active')
+         order by a.triggered_at desc, a.id limit $2`,
+        [athleteId, limit],
+      );
+      return r.rows as (PlanAdaptationRow & { dismissed: boolean })[];
+    },
     async forDay(athleteId, day) {
       const r = await db.query(
         `select a.id, a.adaptation_type, to_char(a.original_date, 'YYYY-MM-DD') as original_date,
@@ -341,6 +358,16 @@ export function supabaseAdaptStore(sb: { from: (t: string) => any; rpc: (fn: str
       check(r, 'Load adaptations');
       // Same shape as the SQL store: ISO 8601 in UTC with milliseconds.
       return (r.data ?? []).map(({ training_plans: _p, ...a }: any) => ({ ...a, triggered_at: new Date(a.triggered_at).toISOString() })) as PlanAdaptationRow[];
+    },
+    async history(athleteId, limit) {
+      const r = await sb.from('plan_adaptations')
+        .select('id, adaptation_type, original_date, new_date, reason_code, reason_text, triggered_at, dismissed_at, training_plans!inner(current_status)')
+        .eq('athlete_id', athleteId).eq('training_plans.current_status', 'active')
+        .order('triggered_at', { ascending: false }).order('id').limit(limit);
+      check(r, 'Load adaptation history');
+      return (r.data ?? []).map(({ training_plans: _p, dismissed_at, ...a }: any) => ({
+        ...a, triggered_at: new Date(a.triggered_at).toISOString(), dismissed: dismissed_at != null,
+      })) as (PlanAdaptationRow & { dismissed: boolean })[];
     },
     async forDay(athleteId, day) {
       const r = await sb.from('plan_adaptations')

@@ -290,3 +290,18 @@ test("dismissing a move also dismisses the change it displaced (review 6)", asyn
   const live = (await db.query<{ id: string }>(`select id from plan_adaptations where athlete_id = 'dm2' and dismissed_at is null`)).rows.map((r) => r.id);
   assert.deepEqual(live, [other], 'only the paired change goes with the move');
 });
+
+test('history: every change on the active plan, dismissed ones kept and marked (PRD 5.B.1)', async () => {
+  await seedPlan('h1', templateId);
+  await adaptTomorrow('h1', '2026-10-28', 'back-off', store, DRAFTS);
+  const [a] = await store.recent('h1', 5);
+  await store.dismiss('h1', a.id);
+  const rows = await store.history('h1', 50);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, a.id);
+  assert.equal(rows[0].dismissed, true);
+  assert.match(rows[0].triggered_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  assert.deepEqual(await store.history('someone-else', 50), []);
+  await db.query(`update training_plans set current_status = 'replaced' where athlete_id = 'h1'`);
+  assert.deepEqual(await store.history('h1', 50), [], 'a replaced plan takes its changes with it');
+});
