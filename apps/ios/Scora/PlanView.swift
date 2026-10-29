@@ -581,6 +581,8 @@ struct PlanBlockView: View {
     .padding(12)
     .background(Color(white: 0.08))
     .cornerRadius(10)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel([block.headline, block.raceLine, block.phases.first(where: \.current)?.focus].compactMap { $0 }.joined(separator: ". "))
   }
 }
 
