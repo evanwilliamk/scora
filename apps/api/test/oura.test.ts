@@ -95,3 +95,14 @@ test('late naps, rests and deleted periods never stand in for a night', async ()
   assert.equal(s.sleepSeconds, 26000);
   assert.deepEqual(s.restingHrHistory, []);
 });
+
+test('the Oura authorize URL asks for a code at the callback; state carries the athlete id unsigned today (Q18)', async () => {
+  const { buildOuraAuthorizeUrl, OURA_REDIRECT_URI } = await import('../src/oura');
+  const u = new URL(buildOuraAuthorizeUrl('12345'));
+  assert.equal(u.searchParams.get('response_type'), 'code');
+  assert.equal(u.searchParams.get('redirect_uri'), OURA_REDIRECT_URI);
+  assert.match(OURA_REDIRECT_URI, /\/api\/auth\/oura\/callback$/);
+  assert.ok(u.searchParams.get('scope'));
+  // Pinned so the Q18 change (an HMAC-signed state) shows up as a deliberate test edit.
+  assert.equal(u.searchParams.get('state'), '12345');
+});
