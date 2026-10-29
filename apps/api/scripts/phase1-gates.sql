@@ -5,7 +5,8 @@
 -- Read-only. Paste into the Supabase SQL editor. The CDV counter keeps only
 -- the last day used, so "made a query" means a last use on or after the
 -- phase start. The other Phase 1 gates come from the logs
--- (scripts/voice-gate-report.ts) or are manual.
+-- (scripts/voice-gate-report.ts) or are manual. Doc 10 counts only
+-- tier = 'free'; there is no tier column yet, so every onboarded athlete counts.
 with params as (
   select (current_date - 21)::date as phase_start
 ),
