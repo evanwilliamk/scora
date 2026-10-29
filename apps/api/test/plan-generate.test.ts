@@ -123,3 +123,18 @@ test('review fixes: a template changed under the same version is refused; review
   const row = (await db.query<any>(`select status, reviewed_by from plan_templates where slug = 'test-fixture-4wk'`)).rows[0];
   assert.deepEqual(row, { status: 'reviewed', reviewed_by: 'A Coach' });
 });
+
+test('planOptions: one entry per sport and goal, levels in order, plain labels (doc 09 §2.3)', async () => {
+  const { planOptions, goalLabel } = await import('../src/plan-generate');
+  const t = (sport: string, goal_type: string, experience_level: string) => ({ sport, goal_type, experience_level });
+  assert.deepEqual(planOptions([]), []);
+  assert.deepEqual(planOptions([
+    t('run', 'marathon', 'competitive'), t('run', 'half_marathon', 'regular'), t('run', 'marathon', 'first_timer'),
+    t('run', 'marathon', 'first_timer'), t('ride', 'gravel_century', 'regular'),
+  ]), [
+    { sport: 'ride', goal_type: 'gravel_century', label: 'Gravel century', experience_levels: ['regular'] },
+    { sport: 'run', goal_type: 'half_marathon', label: 'Half marathon', experience_levels: ['regular'] },
+    { sport: 'run', goal_type: 'marathon', label: 'Marathon', experience_levels: ['first_timer', 'competitive'] },
+  ]);
+  assert.equal(goalLabel('trail_30k'), 'Trail 30k');
+});

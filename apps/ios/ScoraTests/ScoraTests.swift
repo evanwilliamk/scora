@@ -359,6 +359,25 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(PushRoute.take(), "a route is followed once")
     }
 
+    func testPlanSetupSendsWhatGenerationReads() throws {
+        let json = #"{"goals":[{"sport":"run","goal_type":"half_marathon","label":"Half marathon","experience_levels":["first_timer","regular"]}]}"#
+        let goal = try XCTUnwrap(JSONDecoder().decode(PlanOptionsResponse.self, from: Data(json.utf8)).goals.first)
+        XCTAssertEqual(goal.id, "run|half_marathon")
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .current
+        let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 21))!
+        let earliest = PlanSetup.earliestRace(from: now, calendar: cal)
+        XCTAssertEqual(PlanDay.today(earliest), "2026-11-25", "four weeks out")
+        let body = PlanSetup.body(athleteId: "a1", goal: goal, raceDate: earliest, weeklyKm: 35, level: "regular", now: now)
+        XCTAssertEqual(body["sport"] as? String, "run")
+        XCTAssertEqual(body["goal_type"] as? String, "half_marathon")
+        XCTAssertEqual(body["experience_level"] as? String, "regular")
+        XCTAssertEqual(body["current_weekly_km"] as? Int, 35)
+        XCTAssertEqual(body["goal_race_date"] as? String, "2026-11-25")
+        XCTAssertEqual(body["today"] as? String, "2026-10-28")
+        XCTAssertEqual(PlanSetup.levelText("first_timer"), "First timer or first serious block")
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")

@@ -42,7 +42,7 @@ import { numericLine } from './numeric-line';
 import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
-  GenerateError, generatePlan, generationEnabled, parseGenerateRequest, supabaseGenerateStore,
+  GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planOptions, supabaseGenerateStore,
 } from './plan-generate';
 import { TEMPLATE_DIR, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
@@ -1007,6 +1007,19 @@ fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {
 // never load here. Off unless PLAN_GENERATION=on; Plan tier gating waits for
 // the Stripe item.
 let _templates: PlanTemplate[] | null = null;
+// The goals the plan setup screen may offer (doc 09 §2.3), from the loaded
+// templates. Off unless PLAN_GENERATION=on, like generation itself.
+fastify.get('/api/plan/options', async (_request, reply) => {
+  if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
+  try {
+    _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
+    return reply.send({ goals: planOptions(_templates) });
+  } catch (e) {
+    fastify.log.error(`Plan options failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading plan options failed.' });
+  }
+});
+
 fastify.post('/api/plan/generate', async (request, reply) => {
   if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
   const body = (request.body as any) || {};

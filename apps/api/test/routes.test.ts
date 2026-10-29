@@ -115,3 +115,8 @@ test('adaptation history is off with plan adaptations, and needs an athlete', as
     delete process.env.PLAN_ADAPTATIONS;
   }
 });
+
+test('plan options are off unless PLAN_GENERATION=on', async () => {
+  delete process.env.PLAN_GENERATION;
+  assert.equal((await app.inject({ method: 'GET', url: '/api/plan/options' })).statusCode, 404);
+});

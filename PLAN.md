@@ -86,6 +86,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] DB migration: `plan_templates`, `plan_adaptations`, plan and WorkoutKit columns (`claude/plan-schema`, on `claude/manual-plan`; PGlite only, Evan applies it)
 - [~] Adaptations applied with the daily read + `GET /api/plan/adaptations`, `PLAN_ADAPTATIONS=on` (`claude/plan-adapt-job`, on `claude/plan-schema` + `claude/plan-assembler` + `claude/driver-record`)
 - [~] `POST /api/plan/generate` from reviewed templates, `PLAN_GENERATION=on` (`claude/plan-generate`, on `claude/plan-adapt-job`)
+- [~] Plan setup screen (doc 09 §2.3): `GET /api/plan/options` lists the goals the loaded templates cover (off unless `PLAN_GENERATION=on`); Your Plan shows Build a SCORA plan only when there are goals; the form posts to `/api/plan/generate` and shows the server's refusal sentence (`claude/plan-setup-screen`, on `claude/integration-2026-10-28`; not seen on the simulator, the template library is empty)
 - [~] Adaptation reasons worded by gpt-4o-mini, checked in code, `ADAPTATION_REASON_LLM=on` (`claude/adaptation-reason-llm`, on `claude/plan-adapt-job`)
 - [~] iOS: local date on the read; Your Plan sheet shows the last 3 plan changes (`claude/ios-plan-changes`, on `claude/plan-adapt-job`)
 - [~] Inline chart-expansion (CLAUDE.md §3.4): drivers in the read open 28-day charts, `INLINE_CHARTS=on` (`claude/inline-charts`, on `claude/plan-adapt-job`; seen on the simulator with the DEBUG `-demo-read` launch argument)
