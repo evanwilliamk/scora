@@ -73,9 +73,10 @@ test('runTick delivers what is due, claims it first, and releases a failed deliv
     deliver: async (id, kind) => { delivered.push(`${id}:${kind}`); return id !== 'fails'; },
     log: quiet,
   });
-  assert.deepEqual(delivered, ['ny:daily', 'ny:weekly', 'fails:daily', 'fails:weekly']);
-  assert.deepEqual(claimed, ['ny:daily:2026-10-19', 'ny:weekly:2026-10-19', 'fails:daily:2026-10-19', 'fails:weekly:2026-10-19']);
-  assert.deepEqual(released, ['fails:daily:2026-10-18', 'fails:weekly:null'], 'failed deliveries restore the previous date');
+  // Athletes go a few at a time, so only each athlete's own order is fixed.
+  assert.deepEqual(delivered.sort(), ['fails:daily', 'fails:weekly', 'ny:daily', 'ny:weekly']);
+  assert.deepEqual(claimed.sort(), ['fails:daily:2026-10-19', 'fails:weekly:2026-10-19', 'ny:daily:2026-10-19', 'ny:weekly:2026-10-19']);
+  assert.deepEqual(released.sort(), ['fails:daily:2026-10-18', 'fails:weekly:null'], 'failed deliveries restore the previous date');
   assert.deepEqual(sent, { daily: 1, weekly: 1 });
 });
 
@@ -131,6 +132,49 @@ test('minutesLate counts from the set time in the athlete zone, across midnight'
   // 04:10 UTC on Oct 20 is 00:10 on Oct 20 in New York: 40 minutes after 23:30 on the 19th.
   assert.equal(minutesLate(late, '2026-10-19', new Date(Date.UTC(2026, 9, 20, 4, 10))), 40);
   assert.equal(minutesLate({ timezone: 'Not/AZone', delivery_minute: 360 }, '2026-10-19', new Date(Date.UTC(2026, 9, 19, 10, 0))), 0, 'bad zone falls back to New York');
+});
+
+test('a failed read waits 15 minutes before the next try; a log that throws still releases', async () => {
+  const failedAt = new Map<string, number>();
+  let tries = 0;
+  let released = 0;
+  const deps = (log: any) => ({
+    listAthletes: async () => ['a'],
+    prefs: {
+      getMany: async () => new Map([['a', { athlete_id: 'a', onboarded_at: null, ...prefs({ last_weekly_sent_on: '2026-10-20' }) }]]),
+      claim: async () => true,
+      release: async () => { released++; },
+    },
+    deliver: async () => { tries++; return false; },
+    log,
+    failedAt,
+  });
+  const at = (min: number) => new Date(Date.UTC(2026, 9, 20, 10, min));
+  const throwing = { info: () => { throw new Error('transport down'); }, warn() {}, error() {} };
+  await runTick(at(0), deps(throwing));
+  assert.deepEqual([tries, released], [1, 1], 'released even though the telemetry line threw');
+  await runTick(at(1), deps(quiet));
+  await runTick(at(14), deps(quiet));
+  assert.equal(tries, 1, 'no retry inside 15 minutes');
+  await runTick(at(15), deps(quiet));
+  assert.equal(tries, 2);
+});
+
+test('runTick sends to several athletes at once', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+  await runTick(new Date(Date.UTC(2026, 9, 20, 10, 0)), {
+    listAthletes: async () => ids,
+    prefs: {
+      getMany: async () => new Map(ids.map((id) => [id, { athlete_id: id, onboarded_at: null, ...prefs({ last_weekly_sent_on: '2026-10-20' }) }])),
+      claim: async () => true,
+      release: async () => {},
+    },
+    deliver: async () => { inFlight++; peak = Math.max(peak, inFlight); await new Promise((r) => setTimeout(r, 5)); inFlight--; return true; },
+    log: quiet,
+  });
+  assert.equal(peak, 4);
 });
 
 test('runTick logs one push_delivery line per attempt with minutes late, no read text', async () => {

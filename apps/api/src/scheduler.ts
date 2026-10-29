@@ -95,7 +95,12 @@ export interface TickDeps {
   log: Logger;
   // When a delivery finished, for the on-time telemetry. Defaults to the wall clock.
   clock?: () => Date;
+  // athlete:kind:date -> when its last try failed (ms), kept across ticks.
+  failedAt?: Map<string, number>;
 }
+
+export const RETRY_AFTER_MS = 15 * 60_000;
+export const DELIVERY_CONCURRENCY = 4;
 
 // One scheduler tick: every athlete whose local delivery time has come and
 // who has not had today's read gets it; Monday also brings the weekly review.
@@ -111,12 +116,17 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
     return { daily: 0, weekly: 0 };
   }
   const sent = { daily: 0, weekly: 0 };
-  for (const athleteId of athletes) {
+  const one = async (athleteId: string) => {
     const p = prefs.get(athleteId)!;
     const due = dueDeliveries(p, now);
     for (const kind of ['daily', 'weekly'] as const) {
       if (!due[kind]) continue;
       const previous = kind === 'daily' ? p.last_daily_sent_on : p.last_weekly_sent_on;
+      const key = `${athleteId}:${kind}:${due.localDate}`;
+      const failed = deps.failedAt?.get(key);
+      // A failed read is retried every RETRY_AFTER_MS, not every tick: each
+      // try can be an LLM call.
+      if (failed !== undefined && now.getTime() - failed < RETRY_AFTER_MS) continue;
       try {
         // Claim first: a slow tick, an overlapping tick or a second server
         // cannot send the same read twice.
@@ -125,18 +135,33 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
         try {
           delivered = await deps.deliver(athleteId, kind, due.localDate);
         } finally {
-          const at = deps.clock?.() ?? new Date();
-          deps.log.info(pushDeliveryLine({
-            kind, athleteId, localDate: due.localDate, lateMin: minutesLate(p, due.localDate, at), delivered,
-          }));
-          if (!delivered) await deps.prefs.release(athleteId, kind, due.localDate, previous);
+          if (!delivered) {
+            deps.failedAt?.set(key, now.getTime());
+            await deps.prefs.release(athleteId, kind, due.localDate, previous);
+          }
+          // After the release: telemetry must never cost a read.
+          try {
+            const at = deps.clock?.() ?? new Date();
+            deps.log.info(pushDeliveryLine({
+              kind, athleteId, localDate: due.localDate, lateMin: minutesLate(p, due.localDate, at), delivered,
+            }));
+          } catch { /* a broken log transport is not a failed delivery */ }
         }
-        if (delivered) sent[kind]++;
+        if (delivered) {
+          sent[kind]++;
+          deps.failedAt?.delete(key);
+        }
       } catch (e) {
         deps.log.error(`scheduler: ${kind} for ${athleteId} threw: ${e instanceof Error ? e.message : e}`);
       }
     }
-  }
+  };
+  // A few athletes at a time: one by one, the last of many 06:00 reads would
+  // land well past the 5-minute bar (each read is an LLM call).
+  const queue = [...athletes];
+  await Promise.all(Array.from({ length: Math.min(DELIVERY_CONCURRENCY, queue.length) }, async () => {
+    for (let id = queue.shift(); id !== undefined; id = queue.shift()) await one(id);
+  }));
   if (sent.daily || sent.weekly) deps.log.info(`scheduler: sent ${sent.daily} daily, ${sent.weekly} weekly`);
   return sent;
 }
@@ -157,6 +182,7 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
         ? pushToAthlete(baseUrl, athleteId, '/api/read', 'Today’s read', localDate, log)
         : pushToAthlete(baseUrl, athleteId, '/api/weekly', 'This week', localDate, log),
     log,
+    failedAt: new Map(),
   };
   // Skip a tick while the last one is still running; never let a rejection
   // escape the cron callback (an unhandled rejection kills the process).
