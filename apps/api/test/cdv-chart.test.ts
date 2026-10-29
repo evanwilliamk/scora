@@ -131,3 +131,21 @@ test('the pace chart leaves treadmill runs out; the HR chart keeps them (review 
   assert.equal(pace.data.values.length, 2);
   assert.equal(hr.data.values.length, 3);
 });
+
+test('pace reads as m:ss on the axis and in the tooltip, never 8.5 or 7:60 (review 10-29)', () => {
+  const quick = { ...run(1, 1, 7.993), average_heartrate: 150 }; // 479.6 s for the mile
+  const spec: any = buildChartSpec('recent_pace', [quick, ...acts], now);
+  const v = spec.data.values;
+  assert.equal(v.at(-1).label, '8:00');
+  assert.equal(v.find((p: any) => p.value === 9).label, '9:00');
+  assert.deepEqual(spec.encoding.tooltip[1], { field: 'label', title: 'min/mi' });
+  // The axis expression, run with the same functions Vega gives it.
+  const expr = spec.encoding.y.axis.labelExpr as string;
+  const label = (value: number) => new Function('datum', 'floor', 'round', 'slice', `return ${expr};`)(
+    { value }, Math.floor, Math.round, (s: string, a: number, b?: number) => s.slice(a, b));
+  assert.equal(label(8.5), '8:30');
+  assert.equal(label(8.9999), '9:00');
+  assert.equal(label(10.05), '10:03');
+  // Heart rate keeps its plain axis.
+  assert.equal((buildChartSpec('recent_hr', acts, now) as any).encoding.y.axis, undefined);
+});

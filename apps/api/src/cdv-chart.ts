@@ -111,9 +111,12 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
           return typeof a.average_heartrate === 'number' ? { date, order, value: Math.round(a.average_heartrate) } : null;
         }
         if (!a.distance || !a.moving_time) return null;
-        return { date, order, value: +((a.moving_time / 60) / (a.distance / M)).toFixed(2) }; // min per mile
+        // Minutes per mile to plot, and the same pace as a reader says it
+        // ("8:30", whole seconds) for the tooltip, as the voice writes it.
+        const secs = Math.round(a.moving_time / (a.distance / M));
+        return { date, order, value: +(secs / 60).toFixed(4), label: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` };
       })
-      .filter((v): v is { date: string; order: number; value: number } => v !== null);
+      .filter((v): v is { date: string; order: number; value: number; label?: string } => v !== null);
     if (values.length < 2) return null;
     const pace = kind === 'recent_pace';
     return {
@@ -127,8 +130,10 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
         y: {
           field: 'value', type: 'quantitative', title: pace ? 'min/mi' : 'bpm',
           scale: { zero: false, ...(pace ? { reverse: true } : {}) },
+          // Pace ticks as m:ss, never 8.5 (which reads as 8:50).
+          ...(pace ? { axis: { labelExpr: "floor(round(datum.value * 60) / 60) + ':' + slice('0' + (round(datum.value * 60) % 60), -2)" } } : {}),
         },
-        tooltip: [{ field: 'date' }, { field: 'value', title: pace ? 'min/mi' : 'bpm' }],
+        tooltip: [{ field: 'date' }, pace ? { field: 'label', title: 'min/mi' } : { field: 'value', title: 'bpm' }],
       },
     };
   }
