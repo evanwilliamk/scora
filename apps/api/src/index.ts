@@ -37,7 +37,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
-import { planForRead, readNamesPlan, weeklyPlanDriver } from './plan-read';
+import { planForRead, planTodayCard, readNamesPlan, weeklyPlanDriver } from './plan-read';
 import { numericLine } from './numeric-line';
 import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
@@ -639,6 +639,13 @@ fastify.post('/api/read', async (request, reply) => {
       const rows = await planStore().workoutsBetween(String(athleteId), mondayOf(today), addDays(today, 6));
       weekPlanRows = rows;
       plan = planForRead(rows.filter((r) => r.scheduled_date >= today), today);
+      // PRD §5.A.3: a Plan Today card when a plan exists, before Connections.
+      // The read snapshot holds this same array, so a tap on it finds it.
+      const planCard = planTodayCard(rows, today);
+      if (planCard) {
+        const at = cards.findIndex((c) => c.id === 'connections');
+        cards.splice(at < 0 ? cards.length : at, 0, planCard);
+      }
     } catch (e) {
       fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
     }

@@ -6,7 +6,7 @@
 // driver-existence validator when the voice mentions them.
 
 import type { StoredWorkout } from './plan-store';
-import type { Driver } from './metrics';
+import type { Card, Driver } from './metrics';
 import { toScheduledWorkout } from './plan-parse';
 
 // When a day has more than one session, the read keys off the hardest.
@@ -98,4 +98,21 @@ export function readNamesPlan(voice: string, driver: Driver | null): boolean {
   }
   const k = kind.replace(/_/g, '[ -]?');
   return new RegExp(`\\btoday(?:'s)?\\b[^.]{0,40}\\b${k}\\b|\\b${k}\\b[^.]{0,40}\\btoday\\b`, 'i').test(voice);
+}
+
+// The dashboard's Plan Today card (PRD §5.A.3), shown only when the athlete
+// has a plan. It states what the plan holds; it never suggests anything.
+// `rows` are the active plan's sessions around today (empty: no plan).
+export function planTodayCard(rows: StoredWorkout[], today: string): Card | null {
+  if (rows.length === 0) return null;
+  const w = todaysWorkout(rows, today);
+  const base = { id: 'plan_today', title: 'Plan today', available: true, source: 'Your plan' };
+  if (!w) return { ...base, value: 'Nothing', translation: 'Nothing on your plan today.' };
+  if (w.planned_intensity === 'rest') return { ...base, value: 'Rest', translation: 'Your plan has a rest day today.' };
+  const kind = (w.planned_intensity ?? w.planned_type).replace(/_/g, ' ');
+  const translation = `On your plan today: ${planDriver(w).value.replace(/_/g, ' ')}.`;
+  // The amount is the big number, the kind sits under it; no amount, the kind is the value.
+  if (w.planned_duration_min != null) return { ...base, value: String(w.planned_duration_min), unit: 'min', trend: kind, translation };
+  if (w.planned_distance_km != null) return { ...base, value: String(Number(w.planned_distance_km)), unit: 'km', trend: kind, translation };
+  return { ...base, value: kind[0].toUpperCase() + kind.slice(1), translation };
 }

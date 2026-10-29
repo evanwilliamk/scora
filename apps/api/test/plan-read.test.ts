@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { todaysWorkout, planDriver, planForRead, readNamesPlan, weeklyPlanDriver } from '../src/plan-read';
+import { todaysWorkout, planDriver, planForRead, planTodayCard, readNamesPlan, weeklyPlanDriver } from '../src/plan-read';
 import { knowledgeForRead } from '../src/knowledge-retrieval';
 import { validateVoice } from '../src/validator';
 import type { StoredWorkout } from '../src/plan-store';
@@ -175,4 +175,20 @@ test('readNamesPlan: anchored numbers, spelled-out units, the kind tied to today
   assert.equal(readNamesPlan("Today's tempo meets an HRV of 52ms.", d), true);
   assert.equal(readNamesPlan('The tempo lands today on 7:12 of sleep.', d), true);
   assert.equal(readNamesPlan('Tempo work earlier in the week left load at 412 min. Today HRV is 52ms.', d), false);
+});
+
+test('planTodayCard: only with a plan; states the session, the rest day, or nothing', () => {
+  const row = (date: string, intensity: string | null, min: number | null, km: number | null = null) => ({
+    id: date + intensity, scheduled_date: date, planned_type: 'run', planned_intensity: intensity,
+    planned_duration_min: min, planned_distance_km: km, planned_description: null,
+  });
+  assert.equal(planTodayCard([], '2026-10-28'), null, 'no plan, no card');
+  const tempo = planTodayCard([row('2026-10-28', 'tempo', 45), row('2026-10-29', 'easy', 30)], '2026-10-28')!;
+  assert.deepEqual([tempo.id, tempo.value, tempo.unit, tempo.trend, tempo.translation], ['plan_today', '45', 'min', 'tempo', 'On your plan today: tempo, 45 min.']);
+  const long = planTodayCard([row('2026-10-28', 'long', null, 25.8)], '2026-10-28')!;
+  assert.deepEqual([long.value, long.unit, long.trend], ['25.8', 'km', 'long']);
+  assert.equal(planTodayCard([row('2026-10-28', 'steady_state', null)], '2026-10-28')!.value, 'Steady state');
+  assert.equal(planTodayCard([row('2026-10-28', 'rest', null)], '2026-10-28')!.translation, 'Your plan has a rest day today.');
+  assert.equal(planTodayCard([row('2026-10-29', 'easy', 30)], '2026-10-28')!.translation, 'Nothing on your plan today.');
+  for (const c of [tempo, long]) assert.equal(validateVoice(c.translation!, [{ metric: 'Plan today', value: c.translation!.slice(21, -1) }]).bannedHits.length, 0);
 });

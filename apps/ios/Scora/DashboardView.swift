@@ -396,6 +396,7 @@ struct DashboardView: View {
         read = DemoMode.read
         posture = "steady"
         week = DemoMode.week
+        if let demoCards = DemoMode.cards { cards = demoCards }
         if DemoMode.opensChart { chartSeries = DemoMode.read.series?["hrv"] }
         if DemoMode.opensPlan { showPlan = true }
         if DemoMode.opensWeekly { showWeekly = true }

@@ -63,6 +63,17 @@ enum DemoMode {
     ]
   }
 
+  // -demo-cards: the dashboard shows sample cards, including Plan today as
+  // the API sends it when the athlete has a plan. Sample data only.
+  static var cards: [DashboardCard]? {
+    guard ProcessInfo.processInfo.arguments.contains("-demo-cards") else { return nil }
+    return [
+      DashboardCard(id: "sleep", title: "Sleep", available: true, value: "7:12", unit: "hrs", translation: "Slept 7:12 last night, Oura score 84.", trend: "Oura 84", source: "Oura", cta: nil),
+      DashboardCard(id: "training_load", title: "Training Load", available: true, value: "412", unit: "min", translation: "412 min over 7 days, up 3% on the week before.", trend: "+3% wk", source: "Strava", cta: nil),
+      DashboardCard(id: "plan_today", title: "Plan today", available: true, value: "45", unit: "min", translation: "On your plan today: tempo, 45 min.", trend: "tempo", source: "Your plan", cta: nil),
+    ]
+  }
+
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], zip([40, 0, 80, 0, nil, nil, nil] as [Int?], [40, 0, 50, 45, 0, 100, 0])).enumerated().map { i, p in
       WeekSoFarDay(date: "2026-10-\(19 + i)", weekday: p.0, runMin: p.1.0, plannedMin: p.1.1)

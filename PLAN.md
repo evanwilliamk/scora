@@ -36,6 +36,7 @@ Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or 
 All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc conflicts resolved, in `claude/integration-2026-10-28` (tests and typecheck pass there; it supersedes `claude/integration-2026-10-22` and the older ones). Review the branches, then merge that one PR instead of each. How to run the gate reports: `docs/gate-reports.md`.
 
 - [~] Numeric line first (PRD §5.A.2, CLAUDE.md §3.3) in the read, the push and Today's Read, plus the posture badge (PRD §5.A.3) (`claude/numeric-first-read`, on `claude/integration-2026-10-18`; seen on the simulator)
+- [~] Plan Today dashboard card (PRD §5.A.3) when the athlete has a plan: the session's minutes or km with its kind, a rest day, or nothing; tap shows the plain sentence, no LLM (`claude/plan-today-card`, on `claude/integration-2026-10-28`; seen on the simulator with `-demo-read -demo-cards`)
 - [~] Week So Far: Mon to Sun run-minute bars + one line built from the same numbers (PRD §5.A.3) (`claude/week-so-far`, on `claude/numeric-first-read`; seen on the simulator)
 - [~] Week So Far shows the plan's run minutes as outlines and states them in the line (`claude/week-planned`, on `claude/integration-2026-10-22`; seen on the simulator)
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key). Done when a scheduled read arrives on Evan's phone at his delivery time
