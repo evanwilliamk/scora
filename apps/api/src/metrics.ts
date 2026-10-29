@@ -317,7 +317,9 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null)
   // Longest run of the week.
   const longest = thisWeek.reduce((m, a) => ((a.distance || 0) > (m.distance || 0) ? a : m));
   const longMiles = +((longest.distance || 0) / M).toFixed(1);
-  const longDay = WEEKDAYS[new Date(longest.start_date_local || longest.start_date).getDay()];
+  // start_date_local is the athlete's wall time marked Z: read it in UTC so
+  // the server's own time zone never shifts the day.
+  const longDay = WEEKDAYS[new Date(longest.start_date_local || longest.start_date).getUTCDay()];
   stats.push({ label: 'Long run', value: `${longMiles} mi`, trend: longDay });
   drivers.push({ metric: 'Long run', value: `${longMiles} mi`, trend: longDay });
 

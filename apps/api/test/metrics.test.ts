@@ -134,3 +134,21 @@ test('weekly volume is this-week only, not the prior week', () => {
   // this week = runs at day 2,4,6 = 10+8+22 km = 40km ≈ 24.9mi
   assert.equal(vol.value, '24.9 mi');
 });
+
+test('weekly long run names the athlete\'s weekday whatever the server time zone', () => {
+  const was = process.env.TZ;
+  process.env.TZ = 'America/Los_Angeles';
+  try {
+    const now = Date.now();
+    // 05:00 local on a known Sunday, recorded within the last week.
+    const sunday = new Date(now - 2 * 86400000);
+    sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
+    const day = sunday.toISOString().slice(0, 10);
+    const long = { type: 'Run', distance: 20000, moving_time: 6000, start_date: new Date(now - 86400000).toISOString(), start_date_local: `${day}T05:00:00Z` };
+    const short = { type: 'Run', distance: 5000, moving_time: 1500, start_date: new Date(now - 2 * 3600000).toISOString(), start_date_local: `${day}T05:00:00Z` };
+    const { drivers } = buildWeeklySummary([long, short]);
+    assert.equal(drivers.find((d) => d.metric === 'Long run')!.trend, 'Sun');
+  } finally {
+    if (was === undefined) delete process.env.TZ; else process.env.TZ = was;
+  }
+});
