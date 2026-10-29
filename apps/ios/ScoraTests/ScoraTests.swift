@@ -159,6 +159,16 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(DriverSeries.format(52, unit: "ms"), "52 ms")
     }
 
+    func testSeriesBaselineLabelDecodesWhenSent() throws {
+        let json = """
+        {"load":{"key":"load","label":"Run minutes, last 7 days","unit":"min","points":[{"date":"2026-10-18","value":110}],"baseline":98,"baselineLabel":"last week"},
+         "hrv":{"key":"hrv","label":"HRV","unit":"ms","points":[{"date":"2026-10-18","value":52}],"baseline":44}}
+        """.data(using: .utf8)!
+        let s = try JSONDecoder().decode([String: DriverSeries].self, from: json)
+        XCTAssertEqual(s["load"]?.baselineLabel, "last week")
+        XCTAssertNil(s["hrv"]?.baselineLabel, "absent means the app's own 'average before'")
+    }
+
     func testChartDaysAreLocalAndImpossibleDaysAreDropped() {
         let ny = TimeZone(identifier: "America/New_York")!
         var cal = Calendar(identifier: .gregorian)

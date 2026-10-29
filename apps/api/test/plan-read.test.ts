@@ -147,7 +147,7 @@ test('weekly plan driver: run minutes against planned run minutes over the same 
     { type: 'Run', start_date_local: '2026-10-14T08:00:00Z', moving_time: 3000 }, // before the window
   ];
   const d = weeklyPlanDriver(rows, runs, '2026-10-16', '2026-10-22');
-  assert.deepEqual(d, { metric: 'Plan this week', value: '135 of 190 planned run min' });
+  assert.deepEqual(d, { metric: 'Plan, last 7 full days', value: '135 of 190 planned run min' });
   const v = validateVoice('You ran 135 of the 190 planned run minutes this week, with the long run in place.', [d!]);
   assert.deepEqual([v.bannedHits, v.unbackedNumbers], [[], []]);
   assert.equal(weeklyPlanDriver(rows.slice(3, 5), runs, '2026-10-16', '2026-10-22'), null, 'no planned run minutes: no driver');

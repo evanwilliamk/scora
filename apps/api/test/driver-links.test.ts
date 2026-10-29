@@ -41,22 +41,42 @@ test('spans are UTF-16 offsets, so text after an emoji-free curly quote still li
   assert.equal(span(voice, l), '52ms');
 });
 
-test('load and volume: 28 local days of rolling 7-day totals, rest days count as 0', () => {
+test('load and volume: 28 rolling 7-day totals on the read\'s own window, rest days count as 0', () => {
+  const now = Date.UTC(2026, 9, 18, 20); // 20:00 UTC on the 18th
+  const at = (iso: string) => ({ start_date: iso, start_date_local: iso });
   const acts = [
-    { type: 'Run', start_date_local: '2026-10-17T07:00:00Z', moving_time: 1800, distance: 5000 },
-    { type: 'Run', start_date_local: '2026-10-17T18:00:00Z', moving_time: 1200, distance: 3000 },
-    { type: 'Run', start_date_local: '2026-10-18T07:00:00Z', moving_time: 3600, distance: 10000 },
-    { type: 'Ride', start_date_local: '2026-10-18T09:00:00Z', moving_time: 7200, distance: 50000 },
-    { type: 'Run', start_date_local: '2026-09-01T07:00:00Z', moving_time: 3600, distance: 10000 }, // outside the window
+    { type: 'Run', ...at('2026-10-17T07:00:00Z'), moving_time: 1800, distance: 5000 },
+    { type: 'Run', ...at('2026-10-17T18:00:00Z'), moving_time: 1200, distance: 3000 },
+    { type: 'Run', ...at('2026-10-18T07:00:00Z'), moving_time: 3600, distance: 10000 },
+    { type: 'Ride', ...at('2026-10-18T09:00:00Z'), moving_time: 7200, distance: 50000 },
+    { type: 'Run', ...at('2026-10-11T19:00:00Z'), moving_time: 2400, distance: 6000 }, // 7 days + 1 hour before now
+    { type: 'Run', ...at('2026-09-01T07:00:00Z'), moving_time: 3600, distance: 10000 }, // outside the window
   ];
-  const s = buildDriverSeries(acts, null, '2026-10-18');
+  const s = buildDriverSeries(acts, null, '2026-10-18', 28, now);
   assert.equal(s.load!.points.length, 28);
   assert.equal(s.load!.points[0].date, '2026-09-21');
-  // Rolling 7-day totals: the newest point is the week's load, as the read cites it.
-  assert.deepEqual(s.load!.points.slice(-3), [{ date: '2026-10-16', value: 0 }, { date: '2026-10-17', value: 50 }, { date: '2026-10-18', value: 110 }]);
+  // The newest point is the read's Load: the 168 hours before now.
+  assert.deepEqual(s.load!.points.slice(-3), [{ date: '2026-10-16', value: 40 }, { date: '2026-10-17', value: 90 }, { date: '2026-10-18', value: 110 }]);
   assert.deepEqual(s.volume!.points.slice(-1), [{ date: '2026-10-18', value: 11.2 }]);
-  assert.equal(s.load!.baseline, Math.round((50 / 27) * 10) / 10);
+  // Against last week's total, as "+x% wk" in the read.
+  assert.equal(s.load!.baseline, s.load!.points[20].value);
+  assert.equal(s.load!.baselineLabel, 'last week');
   assert.equal(s.sleep, undefined); // no Oura, no sleep chart
+});
+
+test('the newest load point equals the read\'s Load for the same activities (review 10-29)', async () => {
+  const { buildDashboard } = await import('../src/metrics');
+  const now = Date.now();
+  const ago = (h: number) => new Date(now - h * 3600000).toISOString();
+  // Last Wednesday 18:00 is inside the 168 hours; a calendar week would drop it.
+  const acts = [
+    { type: 'Run', start_date: ago(7 * 24 - 13), start_date_local: ago(7 * 24 - 13), moving_time: 3600, distance: 10000 },
+    { type: 'Run', start_date: ago(30), start_date_local: ago(30), moving_time: 1800, distance: 5000 },
+  ];
+  const today = new Date(now).toISOString().slice(0, 10);
+  const load = buildDashboard(acts, { strava: true, oura: false, healthKit: false }, null, 'Oura', today).drivers.find((d) => d.metric === 'Load')!;
+  const s = buildDriverSeries(acts, null, today, 28, now);
+  assert.equal(`${s.load!.points.at(-1)!.value} min`, load.value);
 });
 
 test('Oura nights: only recorded values, oldest first, at least two points', () => {
@@ -73,7 +93,7 @@ test('Oura nights: only recorded values, oldest first, at least two points', () 
     { date: '2026-10-16', value: 7.5 }, { date: '2026-10-17', value: 6.5 }, { date: '2026-10-18', value: 7.2 },
   ]);
   assert.deepEqual(s.hrv!.points.map((p) => p.date), ['2026-10-16', '2026-10-18']); // the gap stays a gap
-  assert.equal(s.hrv!.baseline, 44);
+  assert.equal(s.hrv!.baseline, 44); // the nights in the 7 days before the newest
   assert.equal(s.load, undefined); // no runs, no load chart
   const one = buildDriverSeries([], { sleepSeconds: 1, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null,
     nights: [{ day: '2026-10-18', sleepSeconds: 25920, hrvMs: 52, restingHr: 48 }] }, '2026-10-18');
@@ -98,4 +118,31 @@ test('HealthKit nights from the app: malformed days and implausible values are d
   assert.equal(parseHealthNights(Array.from({ length: 50 }, (_, i) => ({ day: `2026-09-${String((i % 28) + 1).padStart(2, '0')}`, hrvMs: 40 }))).length, 28);
   const s = buildDriverSeries([], { sleepSeconds: null, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null, nights }, '2026-10-18');
   assert.deepEqual(s.hrv!.points, [{ date: '2026-10-16', value: 44 }, { date: '2026-10-17', value: 51 }]);
+});
+
+test('a value links only as a whole token: "45 mi" is not in "45 min", "7:12" is not in "7:12/mi" (review 10-29)', () => {
+  const all = new Set<SeriesKey>(['volume', 'sleep', 'load']);
+  const voice = "Today's 45 min tempo is on the plan. Volume sits at 45 mi, and the last run held 7:12/mi after 7:12 of sleep.";
+  const links = linkDrivers(voice, [
+    { metric: 'Weekly volume', value: '45 mi' },
+    { metric: 'Sleep (last night)', value: '7:12' },
+  ], all);
+  const vol = links.find((l) => l.key === 'volume')!;
+  const sleep = links.find((l) => l.key === 'sleep')!;
+  assert.equal(span(voice, vol), '45 mi');
+  assert.ok(vol.start > voice.indexOf('Volume'));
+  assert.equal(voice.slice(sleep.start, sleep.end + 9), '7:12 of sleep');
+});
+
+test('body-signal baselines are the 7 nights before the newest, not the month (review 10-29)', () => {
+  const nights = [
+    { day: '2026-10-18', sleepSeconds: 25920, hrvMs: 60, restingHr: 48 },
+    { day: '2026-10-16', sleepSeconds: 25920, hrvMs: 50, restingHr: 48 },
+    { day: '2026-10-12', sleepSeconds: 25920, hrvMs: 40, restingHr: 48 },
+    { day: '2026-09-25', sleepSeconds: 25920, hrvMs: 10, restingHr: 48 }, // in the chart, not in the baseline
+  ];
+  const s = buildDriverSeries([], { sleepSeconds: null, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null, nights }, '2026-10-18');
+  assert.equal(s.hrv!.points.length, 4);
+  assert.equal(s.hrv!.baseline, 45);
+  assert.equal(s.hrv!.baselineLabel, undefined);
 });

@@ -227,8 +227,10 @@ export function buildDashboard(
       id: 'long_effort',
       title: 'Long Effort Recency',
       available: true,
-      value: String(daysSince),
-      unit: daysSince === 1 ? 'day ago' : 'days ago',
+      // "Today", never "0 days ago": the card line handed to card expansion
+      // must match the driver's own "today".
+      value: daysSince === 0 ? 'Today' : String(daysSince),
+      unit: daysSince === 0 ? '' : daysSince === 1 ? 'day ago' : 'days ago',
       trend: `${longestMiles} mi`,
       source: 'Strava',
       translation: `Longest recent run was ${longestMiles} mi, ${daysSince === 0 ? 'today' : `${daysSince} day${daysSince === 1 ? '' : 's'} ago`}.`,

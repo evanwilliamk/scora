@@ -79,7 +79,9 @@ export function weeklyPlanDriver(
     .filter((a) => isRun(a) && typeof a.start_date_local === 'string')
     .filter((a) => a.start_date_local.slice(0, 10) >= from && a.start_date_local.slice(0, 10) <= to)
     .reduce((s, a) => s + (a.moving_time || 0) / 60, 0));
-  return { metric: 'Plan this week', value: `${done} of ${planned} planned run min` };
+  // Complete days only (a Sunday-morning review must not count Sunday's run
+  // as missed), named so the voice never reads it as the same week as Load.
+  return { metric: 'Plan, last 7 full days', value: `${done} of ${planned} planned run min` };
 }
 
 // Whether a read names today's planned session (doc 10 2.1.8: plan reference

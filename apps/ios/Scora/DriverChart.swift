@@ -22,6 +22,8 @@ struct DriverSeries: Decodable, Identifiable, Equatable {
   let unit: String
   let points: [SeriesPoint]
   let baseline: Double?
+  // How the API names the baseline ("last week" for load and volume).
+  var baselineLabel: String? = nil
 
   var id: String { key }
   var latest: SeriesPoint? { points.last }
@@ -89,7 +91,7 @@ struct DriverChartView: View {
             .font(.system(size: 28, weight: .regular, design: .serif))
             .foregroundColor(.white)
           if let b = series.baseline {
-            Text("average before: \(DriverSeries.format(b, unit: series.unit))")
+            Text("\(series.baselineLabel ?? "average before"): \(DriverSeries.format(b, unit: series.unit))")
               .font(.footnote).foregroundColor(.gray)
           }
         }

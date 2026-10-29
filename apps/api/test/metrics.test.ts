@@ -189,3 +189,11 @@ test('long effort counts calendar days on the athlete\'s clock: last night is 1 
   assert.match(long.translation!, /1 day ago/);
   assert.doesNotMatch(long.translation!, /today/);
 });
+
+test('a long effort today reads "Today", never "0 days ago" (review 10-29)', () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  const thisMorning = { type: 'Run', distance: 16000, moving_time: 5400, start_date: new Date(now - 3600000).toISOString(), start_date_local: `${today}T06:00:00Z` };
+  const long = buildDashboard([thisMorning], conn, null, 'Oura', today).cards.find((c) => c.id === 'long_effort')!;
+  assert.equal(long.value, 'Today');
+  assert.equal(long.unit, '');
+});

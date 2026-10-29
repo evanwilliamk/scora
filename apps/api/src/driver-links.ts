@@ -23,8 +23,11 @@ export interface DriverSeries {
   label: string;
   unit: string;
   points: SeriesPoint[]; // oldest first
-  // Mean of every point but the newest: the line the newest is read against.
+  // What the read compares the newest point with: the 7 nights before it for
+  // body signals, last week's total for load and volume.
   baseline: number | null;
+  // How the app names the baseline; absent means "average before".
+  baselineLabel?: string;
 }
 
 // A span of the read text, in UTF-16 code units (Swift NSRange, JS indices).
@@ -55,12 +58,13 @@ const NAMES: Record<SeriesKey, RegExp> = {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// "52ms" also matches "52 ms"; "412 min" also matches "412min".
+// "52ms" also matches "52 ms"; "412 min" also matches "412min". Never part
+// of a longer token: "45 mi" is not in "45 min", "7:12" is not in "7:12/mi".
 function valuePattern(value: string): RegExp | null {
   const m = value.trim().match(/^([\d:.]+)\s*([a-z%]*)$/i);
   if (!m) return null;
   const unit = m[2] ? `\\s?${escapeRe(m[2])}` : '';
-  return new RegExp(`(?<![\\d.:])${escapeRe(m[1])}${unit}(?![\\d])`, 'i');
+  return new RegExp(`(?<![\\d.:])${escapeRe(m[1])}${unit}(?![\\w/]|[.:]\\d)`, 'gi');
 }
 
 // One link per series, first mention wins, never overlapping. The quoted
@@ -74,9 +78,11 @@ export function linkDrivers(voice: string, drivers: Driver[], available: Set<Ser
     if (!key || seen.has(key) || !available.has(key)) continue;
     for (const re of [valuePattern(d.value), NAMES[key]]) {
       if (!re) continue;
-      const m = re.exec(voice);
-      if (m && !taken(m.index, m.index + m[0].length)) {
-        links.push({ start: m.index, end: m.index + m[0].length, key });
+      // The first mention not already linked to another driver.
+      const all = re.global ? [...voice.matchAll(re)] : [re.exec(voice)].filter((x): x is RegExpExecArray => x !== null);
+      const m = all.find((x) => !taken(x.index!, x.index! + x[0].length));
+      if (m) {
+        links.push({ start: m.index!, end: m.index! + m[0].length, key });
         seen.add(key);
         break;
       }
@@ -88,14 +94,25 @@ export function linkDrivers(voice: string, drivers: Driver[], available: Set<Ser
 const DAY = 86_400_000;
 const round = (v: number, dp: number) => Math.round(v * 10 ** dp) / 10 ** dp;
 
+// Body signals: the baseline is the mean of the nights in the 7 days before
+// the newest, as the read's "wk" comparisons use (oura.ts hrvWeekAvgMs).
 const series = (key: SeriesKey, label: string, unit: string, points: SeriesPoint[]): DriverSeries => {
   const sorted = [...points].sort((a, b) => (a.date < b.date ? -1 : 1));
-  const prior = sorted.slice(0, -1).map((p) => p.value);
+  const newest = sorted[sorted.length - 1]?.date;
+  const weekFrom = newest ? new Date(Date.parse(`${newest}T00:00:00Z`) - 7 * DAY).toISOString().slice(0, 10) : '';
+  const prior = sorted.slice(0, -1).filter((p) => p.date >= weekFrom).map((p) => p.value);
   return {
     key, label, unit, points: sorted,
     baseline: prior.length > 0 ? round(prior.reduce((s, v) => s + v, 0) / prior.length, 1) : null,
   };
 };
+
+// Load and volume: the read compares this week's total with last week's.
+const totals = (key: SeriesKey, label: string, unit: string, points: SeriesPoint[]): DriverSeries => ({
+  key, label, unit, points,
+  baseline: points.length > 7 ? points[points.length - 8].value : null,
+  baselineLabel: 'last week',
+});
 
 // Series for the last `days` local days ending today. Load and volume are
 // rolling 7-day totals (rest days count as 0); Oura nights with no value are
@@ -105,31 +122,24 @@ export function buildDriverSeries(
   oura: OuraSummary | null | undefined,
   today: string,
   days = 28,
+  now = Date.now(),
 ): Partial<Record<SeriesKey, DriverSeries>> {
   const out: Partial<Record<SeriesKey, DriverSeries>> = {};
   const first = new Date(Date.parse(`${today}T00:00:00Z`) - (days - 1) * DAY).toISOString().slice(0, 10);
   const dates = Array.from({ length: days }, (_, i) => new Date(Date.parse(`${first}T00:00:00Z`) + i * DAY).toISOString().slice(0, 10));
 
-  const runs = activities.filter((a) => isRun(a) && typeof a.start_date_local === 'string');
+  const startMs = (a: any) => new Date(a.start_date || a.start_date_local).getTime();
+  const runs = activities.filter((a) => isRun(a) && Number.isFinite(startMs(a)));
   if (runs.length > 0) {
-    const minutes = new Map<string, number>();
-    const miles = new Map<string, number>();
-    // Load and volume are 7-day totals in the read, so each point is the
-    // total of the 7 days ending that day (the newest point is the cited one).
-    const lead = new Date(Date.parse(`${first}T00:00:00Z`) - 6 * DAY).toISOString().slice(0, 10);
-    for (const a of runs) {
-      const d = a.start_date_local.slice(0, 10);
-      if (d < lead || d > today) continue;
-      minutes.set(d, (minutes.get(d) ?? 0) + (a.moving_time || 0) / 60);
-      miles.set(d, (miles.get(d) ?? 0) + (a.distance || 0) / 1609.344);
-    }
-    const week = (m: Map<string, number>, date: string) => {
-      let sum = 0;
-      for (let i = 0; i < 7; i++) sum += m.get(new Date(Date.parse(`${date}T00:00:00Z`) - i * DAY).toISOString().slice(0, 10)) ?? 0;
-      return sum;
-    };
-    out.load = series('load', 'Run minutes, last 7 days', 'min', dates.map((date) => ({ date, value: Math.round(week(minutes, date)) })));
-    out.volume = series('volume', 'Miles, last 7 days', 'mi', dates.map((date) => ({ date, value: round(week(miles, date), 1) })));
+    // Each point is the same window the read's Load and Weekly volume use
+    // (metrics.ts: the 168 hours before now, by start_date), ending k days
+    // before now and labelled with the athlete's day; the newest point is the
+    // number the read cites.
+    const week = (end: number, f: (a: any) => number) =>
+      runs.reduce((sum, a) => { const t = startMs(a); return t > end - 7 * DAY && t <= end ? sum + f(a) : sum; }, 0);
+    const ends = dates.map((date, i) => ({ date, end: now - (days - 1 - i) * DAY }));
+    out.load = totals('load', 'Run minutes, last 7 days', 'min', ends.map(({ date, end }) => ({ date, value: Math.round(week(end, (a) => (a.moving_time || 0) / 60)) })));
+    out.volume = totals('volume', 'Miles, last 7 days', 'mi', ends.map(({ date, end }) => ({ date, value: round(week(end, (a) => (a.distance || 0) / 1609.34), 1) })));
   }
 
   const nights = (oura?.nights ?? []).filter((n) => n.day >= first && n.day <= today);
