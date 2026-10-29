@@ -6,20 +6,18 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeRest, type FakeRest } from './helpers/fake-rest';
+import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { validateVoice } from '../src/validator';
 
-process.env.SCORA_NO_LISTEN = '1';
-process.env.NODE_ENV = 'test';
-for (const k of ['OPENAI_API_KEY', 'STRAVA_CLIENT_SECRET']) process.env[k] = '';
-for (const k of ['PLAN_ADAPTATIONS', 'KNOWLEDGE_RETRIEVAL', 'INLINE_CHARTS', 'ADAPTATION_REASON_LLM']) delete process.env[k];
+blankEnv();
 
 let app: any;
 let rest: FakeRest;
 let guard: FetchGuard;
 before(async () => {
   rest = await fakeRest();
-  guard = installFetchGuard();
+  guard = installFetchGuard(rest.url);
   process.env.SUPABASE_URL = rest.url;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role';
   app = (await import('../src/index')).default;

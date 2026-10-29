@@ -5,15 +5,17 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeRest, type FakeRest } from './helpers/fake-rest';
+import { blankEnv } from './helpers/test-env';
+import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 
-process.env.SCORA_NO_LISTEN = '1';
-process.env.NODE_ENV = 'test';
-for (const k of ['OPENAI_API_KEY', 'STRAVA_CLIENT_SECRET']) process.env[k] = '';
+blankEnv();
 
 let app: any;
 let rest: FakeRest;
+let guard: FetchGuard;
 before(async () => {
   rest = await fakeRest();
+  guard = installFetchGuard(rest.url);
   process.env.SUPABASE_URL = rest.url;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role';
   app = (await import('../src/index')).default;
@@ -21,6 +23,7 @@ before(async () => {
 });
 after(async () => {
   await app.close();
+  guard.restore();
   await rest.close();
 });
 beforeEach(() => rest.reset());
@@ -135,7 +138,7 @@ test('adaptations: a coach plan hides SCORA\'s changes without listing them', as
     assert.ok(rest.requests.every((q) => q.table === 'training_plans'));
     assert.equal(rest.requests[0].params.get('source'), 'eq.coach');
   } finally {
-    delete process.env.PLAN_ADAPTATIONS;
+    process.env.PLAN_ADAPTATIONS = '';
   }
 });
 
@@ -158,7 +161,7 @@ test('adaptations: the list skips dismissed changes; history keeps them', async 
     assert.equal(hist.json().adaptations.length, 1);
     assert.equal(rest.requests.find((q) => q.table === 'plan_adaptations')!.params.get('dismissed_at'), null);
   } finally {
-    delete process.env.PLAN_ADAPTATIONS;
+    process.env.PLAN_ADAPTATIONS = '';
   }
 });
 
@@ -178,7 +181,7 @@ test('adaptation dismiss: only the athlete\'s own open change', async () => {
     const none = await post(`/api/plan/adaptations/${ID}/dismiss`, { athleteId: 'a2' });
     assert.equal(none.statusCode, 404);
   } finally {
-    delete process.env.PLAN_ADAPTATIONS;
+    process.env.PLAN_ADAPTATIONS = '';
   }
 });
 
@@ -202,6 +205,6 @@ test('plan options and block: empty while a coach plan is active (CLAUDE.md §5.
     assert.deepEqual(empty.json(), { block: null });
     assert.equal(rest.requests.length, 2);
   } finally {
-    delete process.env.PLAN_GENERATION;
+    process.env.PLAN_GENERATION = '';
   }
 });

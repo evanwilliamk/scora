@@ -5,19 +5,18 @@
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeRest, type FakeRest } from './helpers/fake-rest';
+import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { validateVoice } from '../src/validator';
 
-process.env.SCORA_NO_LISTEN = '1';
-process.env.NODE_ENV = 'test';
-for (const k of ['OPENAI_API_KEY', 'STRAVA_CLIENT_SECRET']) process.env[k] = '';
+blankEnv();
 
 let app: any;
 let rest: FakeRest;
 let guard: FetchGuard;
 before(async () => {
   rest = await fakeRest();
-  guard = installFetchGuard();
+  guard = installFetchGuard(rest.url);
   process.env.SUPABASE_URL = rest.url;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role';
   app = (await import('../src/index')).default;
@@ -119,8 +118,9 @@ test('weekly read: banned phrasing never reaches the athlete', async () => {
   assert.equal(r.statusCode, 200, r.body);
   const body = r.json();
   assert.equal(llmCalls().length, 2);
-  assert.doesNotMatch(body.read?.voice ?? body.voice, /you should|crush it|rest day/i);
-  assert.ok(validateVoice(body.read?.voice ?? body.voice, body.drivers ?? []).ok);
+  assert.ok(body.read.voice.length > 0);
+  assert.doesNotMatch(body.read.voice, /you should|crush it|rest day/i);
+  assert.ok(validateVoice(body.read.voice, body.drivers).ok, body.read.voice);
 });
 
 test('chat quota: a spent day is a 429 and the model is never asked', async () => {

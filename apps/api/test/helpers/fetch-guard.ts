@@ -1,6 +1,9 @@
-// Replaces global fetch for a test file: 127.0.0.1 passes through (the fake
-// Supabase REST server), Strava, Oura and OpenAI get canned answers, and
-// any other host throws. Nothing a route does can leave the machine.
+// Replaces global fetch for a test file: the fake Supabase REST server's
+// origin passes through, Strava, Oura and OpenAI get canned answers, and any
+// other host throws. http2.connect (APNs) throws too. Nothing a route does
+// can leave the machine.
+
+import http2 from 'node:http2';
 
 export interface GuardCall {
   host: string;
@@ -21,8 +24,10 @@ export interface FetchGuard {
   restore(): void;
 }
 
-export function installFetchGuard(): FetchGuard {
+export function installFetchGuard(allowOrigin: string): FetchGuard {
   const real = globalThis.fetch;
+  const realConnect = http2.connect;
+  (http2 as any).connect = (authority: any) => { throw new Error(`fetch-guard: blocked http2 to ${String(authority)}`); };
   const calls: GuardCall[] = [];
   let activities: unknown[] = [];
   let llm: (string | Answer)[] = [];
@@ -32,7 +37,7 @@ export function installFetchGuard(): FetchGuard {
   globalThis.fetch = (async (input: any, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const u = new URL(url);
-    if (u.hostname === '127.0.0.1') return real(input, init);
+    if (u.origin === allowOrigin) return real(input, init);
     let body: any = null;
     try { body = typeof init?.body === 'string' ? JSON.parse(init.body) : null; } catch { body = init?.body; }
     calls.push({ host: u.hostname, url, init, body });
@@ -54,6 +59,6 @@ export function installFetchGuard(): FetchGuard {
     stravaActivities(list) { activities = list; },
     openAi(...replies) { llm.push(...replies); },
     reset() { calls.length = 0; llm = []; activities = []; },
-    restore() { globalThis.fetch = real; },
+    restore() { globalThis.fetch = real; (http2 as any).connect = realConnect; },
   };
 }
