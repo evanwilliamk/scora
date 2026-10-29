@@ -434,3 +434,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: CLAUDE.md §9.1 holds the workflow rules; PLAN.md, DECISIONS.md, MEMORY.md and memory/ are the shared state both agents read and write. Private per-tool memory is not a source of truth.
 - Why: git is the only thing both agents and both machines share.
 - To reverse: delete §9.1, PLAN.md and DECISIONS.md.
+
+### 2026-10-28: Push scheduler ticks every minute; delivery telemetry carries the athlete id
+- Status: DECIDED
+- Branch: claude/delivery-telemetry
+- Context: doc 10 gate 1.1.1 wants the morning read within 5 minutes of the set time, but the scheduler ticked every 15 minutes and any minute can be picked in onboarding, so a 6:05 read landed at 6:15. Nothing measured delivery time either.
+- Choice: cron every minute (a tick with nothing due is two small queries), plus one `telemetry {"event":"push_delivery",...}` log line per attempt with kind, athlete uuid, local date, minutes late and delivered. The gate report script prints mornings, on time, late, failed and missing per athlete and passes at 13 of 14 on time for every athlete.
+- Alternatives: snap delivery times to 15-minute steps in onboarding (keeps the 15-minute tick, changes the picker); a `message_events` table as doc 10 names it (needs a migration Evan applies).
+- Why: no schema change, same pattern as the voice telemetry, and countable from Railway logs today. The athlete uuid is not health data and already appears in scheduler warn lines.
+- To reverse: set the cron back to `*/15 * * * *` in apps/api/src/scheduler.ts; drop the `deps.log.info(pushDeliveryLine(...))` call in runTick.

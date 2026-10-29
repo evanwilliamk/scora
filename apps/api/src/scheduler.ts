@@ -6,7 +6,8 @@ import {
   removeDeviceToken,
   sendPush,
 } from './push';
-import { dueDeliveries } from './delivery';
+import { dueDeliveries, minutesLate } from './delivery';
+import { pushDeliveryLine } from './telemetry';
 import { pushBody } from './numeric-line';
 import type { PrefsStore } from './preferences';
 
@@ -82,6 +83,8 @@ export interface TickDeps {
   prefs: Pick<PrefsStore, 'getMany' | 'claim' | 'release'>;
   deliver(athleteId: string, kind: 'daily' | 'weekly', localDate: string): Promise<boolean>;
   log: Logger;
+  // When a delivery finished, for the on-time telemetry. Defaults to the wall clock.
+  clock?: () => Date;
 }
 
 // One scheduler tick: every athlete whose local delivery time has come and
@@ -112,6 +115,10 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
         try {
           delivered = await deps.deliver(athleteId, kind, due.localDate);
         } finally {
+          const at = deps.clock?.() ?? new Date();
+          deps.log.info(pushDeliveryLine({
+            kind, athleteId, localDate: due.localDate, lateMin: minutesLate(p, due.localDate, at), delivered,
+          }));
           if (!delivered) await deps.prefs.release(athleteId, kind, due.localDate, previous);
         }
         if (delivered) sent[kind]++;
@@ -144,12 +151,14 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
   // Skip a tick while the last one is still running; never let a rejection
   // escape the cron callback (an unhandled rejection kills the process).
   let running = false;
-  cron.schedule('*/15 * * * *', () => {
+  // Every minute: a 15-minute tick put a 6:05 read at 6:15, outside doc 10's
+  // 5-minute bar. A tick with nothing due is two small queries.
+  cron.schedule('* * * * *', () => {
     if (running) return;
     running = true;
     runTick(new Date(), deps)
       .catch((e) => log.error(`scheduler: tick failed: ${e instanceof Error ? e.message : e}`))
       .finally(() => { running = false; });
   });
-  log.info('scheduler: push scheduler started (every 15 min, per-athlete delivery time)');
+  log.info('scheduler: push scheduler started (every minute, per-athlete delivery time)');
 }

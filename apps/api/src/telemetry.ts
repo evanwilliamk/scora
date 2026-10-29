@@ -28,3 +28,25 @@ export function voiceEmissionLine(e: VoiceEmission): string {
 export function trackVoice(log: { info?: (m: string) => void } | undefined, e: VoiceEmission): void {
   log?.info?.(voiceEmissionLine(e));
 }
+
+// One line per scheduled push (doc 10 1.1.1 and §5.1 delivery rate). The
+// athlete id is the opaque uuid, already in the scheduler's warn lines; no
+// read text and no health value.
+export interface PushDelivery {
+  kind: 'daily' | 'weekly';
+  athleteId: string;
+  localDate: string;
+  lateMin: number;
+  delivered: boolean;
+}
+
+export function pushDeliveryLine(d: PushDelivery): string {
+  return `telemetry ${JSON.stringify({
+    event: 'push_delivery',
+    kind: d.kind,
+    athlete: d.athleteId,
+    date: d.localDate,
+    late_min: d.lateMin,
+    delivered: d.delivered,
+  })}`;
+}

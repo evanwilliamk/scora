@@ -1,5 +1,5 @@
-// Per-athlete push timing (doc 09 §1.4). The scheduler ticks every 15
-// minutes; each athlete gets the daily read at their own local delivery time,
+// Per-athlete push timing (doc 09 §1.4). The scheduler ticks every minute
+// (doc 10 gate 1.1.1 wants the read within 5 minutes of the set time); each athlete gets the daily read at their own local delivery time,
 // once per local day, and the free tier's weekly review on Monday at the same
 // time (Sunday's read, 24h delayed, CLAUDE.md §5.1).
 
@@ -68,4 +68,13 @@ export function dueDeliveries(prefs: DeliveryPrefs, now: Date): DueResult {
     weekly: inWindow && weekday === 1 && prefs.last_weekly_sent_on !== date,
     localDate: date,
   };
+}
+
+// Minutes between the athlete's set delivery time on `localDate` and `at`,
+// for the on-time gate (doc 10 1.1.1). Crosses midnight once at most, since
+// a read more than LATE_WINDOW_MIN late is never sent.
+export function minutesLate(prefs: Pick<DeliveryPrefs, 'timezone' | 'delivery_minute'>, localDate: string, at: Date): number {
+  const tz = isValidTimezone(prefs.timezone) ? prefs.timezone : DEFAULT_TIMEZONE;
+  const { date, minute } = localClock(at, tz);
+  return minute - prefs.delivery_minute + (date > localDate ? 1440 : 0);
 }

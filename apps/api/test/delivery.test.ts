@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
-import { dueDeliveries, localClock, isValidTimezone, isValidDeliveryMinute, defaultPrefs } from '../src/delivery';
+import { dueDeliveries, localClock, isValidTimezone, isValidDeliveryMinute, defaultPrefs, minutesLate } from '../src/delivery';
 import { sqlPrefsStore } from '../src/preferences';
 import { runTick } from '../src/scheduler';
 
@@ -120,6 +120,38 @@ test('runTick survives listing, preference and delivery failures', async () => {
   });
   assert.deepEqual(r, { daily: 0, weekly: 0 });
   assert.equal(released, 1, 'a throwing delivery is released for retry');
+});
+
+test('minutesLate counts from the set time in the athlete zone, across midnight', () => {
+  const ny = { timezone: 'America/New_York', delivery_minute: 6 * 60 };
+  // 10:07 UTC on Oct 19 is 06:07 in New York (EDT).
+  assert.equal(minutesLate(ny, '2026-10-19', new Date(Date.UTC(2026, 9, 19, 10, 7))), 7);
+  assert.equal(minutesLate(ny, '2026-10-19', new Date(Date.UTC(2026, 9, 19, 9, 59))), -1);
+  const late = { timezone: 'America/New_York', delivery_minute: 23 * 60 + 30 };
+  // 04:10 UTC on Oct 20 is 00:10 on Oct 20 in New York: 40 minutes after 23:30 on the 19th.
+  assert.equal(minutesLate(late, '2026-10-19', new Date(Date.UTC(2026, 9, 20, 4, 10))), 40);
+  assert.equal(minutesLate({ timezone: 'Not/AZone', delivery_minute: 360 }, '2026-10-19', new Date(Date.UTC(2026, 9, 19, 10, 0))), 0, 'bad zone falls back to New York');
+});
+
+test('runTick logs one push_delivery line per attempt with minutes late, no read text', async () => {
+  const lines: string[] = [];
+  const log = { info: (m: string) => lines.push(m), warn() {}, error() {} };
+  await runTick(new Date(Date.UTC(2026, 9, 20, 10, 1)), {
+    listAthletes: async () => ['ok', 'fails'],
+    prefs: {
+      getMany: async (ids) => new Map(ids.map((id) => [id, { athlete_id: id, onboarded_at: null, ...prefs() }])),
+      claim: async () => true,
+      release: async () => {},
+    },
+    deliver: async (id) => id === 'ok',
+    log,
+    clock: () => new Date(Date.UTC(2026, 9, 20, 10, 3)),
+  });
+  const events = lines.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice('telemetry '.length)));
+  assert.deepEqual(events, [
+    { event: 'push_delivery', kind: 'daily', athlete: 'ok', date: '2026-10-20', late_min: 3, delivered: true },
+    { event: 'push_delivery', kind: 'daily', athlete: 'fails', date: '2026-10-20', late_min: 3, delivered: false },
+  ]);
 });
 
 // ---- preferences on PGlite ----
