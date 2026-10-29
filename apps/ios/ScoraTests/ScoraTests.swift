@@ -291,6 +291,16 @@ final class ScoraTests: XCTestCase {
         func schedule(_ workout: CustomWorkout, at date: DateComponents) async { scheduled.append((workout.displayName ?? "", date)) }
     }
 
+    func testPushOpenReadsTheScoraPayloadOnly() {
+        let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
+        XCTAssertEqual(ok?.kind, "daily")
+        XCTAssertEqual(ok?.date, "2026-10-28")
+        XCTAssertEqual(ok?.sentAt, 1_793_181_600)
+        XCTAssertNil(PushOpen(userInfo: ["aps": ["alert": "x"]]), "a push without the payload is not a scheduled read")
+        XCTAssertNil(PushOpen(userInfo: ["scora": ["kind": "hourly", "date": "2026-10-28", "sent_at": 1]]))
+        XCTAssertNil(PushOpen(userInfo: ["scora": ["kind": "weekly", "date": "today", "sent_at": 1]]))
+    }
+
     func testSendToWatchSchedulesAt6OnThePlanDay() async {
         let steps = [PlanStep(type: "warmup", durationMin: 10, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil),
                      PlanStep(type: "steady", durationMin: 30, intensity: "tempo", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]

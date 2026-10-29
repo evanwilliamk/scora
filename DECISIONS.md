@@ -443,3 +443,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: snap delivery times to 15-minute steps in onboarding (keeps the 15-minute tick, changes the picker); a `message_events` table as doc 10 names it (needs a migration Evan applies).
 - Why: no schema change, same pattern as the voice telemetry, and countable from Railway logs today. The athlete uuid is not health data and already appears in scheduler warn lines.
 - To reverse: set the cron back to `*/15 * * * *` in apps/api/src/scheduler.ts; drop the `deps.log.info(pushDeliveryLine(...))` call in runTick.
+
+### 2026-10-28: Push opens reported by the app, logged and not stored
+- Status: DECIDED
+- Branch: claude/phase0-gates
+- Context: doc 10 gate 1.1.2 (open within 4h of the push on 12 of 14 mornings) had no signal; the app did not handle a push tap at all.
+- Choice: the push payload carries `scora: {kind, date, sent_at}`; on a tap the app posts those plus the athlete id to `POST /api/events/push-open`, which logs one `push_open` telemetry line and stores nothing. Only the default tap counts (not a dismiss). The gate report also scores numeric-first mornings (1.1.7) from a `push_sent` line.
+- Alternatives: a `message_events` table as doc 10 names it (migration Evan applies); PostHog app events (needs the PostHog account).
+- Why: no schema change, no new service, same log-based gate report as the voice and delivery gates. No health data in the payload or the log.
+- To reverse: drop the route in apps/api/src/index.ts and the delegate method in apps/ios/Scora/PushManager.swift; the payload field is ignored by older builds.
