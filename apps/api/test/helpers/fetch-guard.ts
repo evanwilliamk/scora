@@ -18,6 +18,9 @@ export interface FetchGuard {
   calls: GuardCall[];
   // Strava activity list for the next activities request(s); sticky.
   stravaActivities(list: unknown[]): void;
+  // Oura answers by route name (sleep, daily_sleep, daily_readiness); sticky.
+  // Without any, Oura answers 401 (not connected).
+  oura(routes: Record<string, unknown>): void;
   // Queue OpenAI chat replies (message content), used in order.
   openAi(...replies: (string | Answer)[]): void;
   reset(): void;
@@ -31,6 +34,7 @@ export function installFetchGuard(allowOrigin: string): FetchGuard {
   const calls: GuardCall[] = [];
   let activities: unknown[] = [];
   let llm: (string | Answer)[] = [];
+  let ouraRoutes: Record<string, unknown> | null = null;
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -44,7 +48,11 @@ export function installFetchGuard(allowOrigin: string): FetchGuard {
     if (u.hostname === 'www.strava.com' && u.pathname === '/api/v3/athlete/activities') {
       return json(200, Number(u.searchParams.get('page') ?? '1') > 1 ? [] : activities);
     }
-    if (u.hostname === 'api.ouraring.com') return json(401, { detail: 'not connected in tests' });
+    if (u.hostname === 'api.ouraring.com') {
+      if (!ouraRoutes) return json(401, { detail: 'not connected in tests' });
+      const route = u.pathname.split('/').pop() ?? '';
+      return json(200, ouraRoutes[route] ?? { data: [] });
+    }
     if (u.hostname === 'api.openai.com' && u.pathname === '/v1/chat/completions') {
       const next = llm.shift();
       if (next === undefined) return json(500, { error: { message: 'no canned reply queued' } });
@@ -57,8 +65,9 @@ export function installFetchGuard(allowOrigin: string): FetchGuard {
   return {
     calls,
     stravaActivities(list) { activities = list; },
+    oura(routes) { ouraRoutes = routes; },
     openAi(...replies) { llm.push(...replies); },
-    reset() { calls.length = 0; llm = []; activities = []; },
+    reset() { calls.length = 0; llm = []; activities = []; ouraRoutes = null; },
     restore() { globalThis.fetch = real; (http2 as any).connect = realConnect; },
   };
 }

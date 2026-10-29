@@ -234,3 +234,34 @@ test('HealthKit: only the summary reaches the model, never the nightly series or
     assert.ok(!sent.includes(String(n.hrvMs)) && !sent.includes(String(n.restingHr)) && !sent.includes(String(n.sleepSeconds)), `night ${n.day} reached the prompt`);
   }
 });
+
+test('Oura connected: the read\'s date decides what counts as last night (review 10-29)', async () => {
+  const ouraRow = { body: [{ oura_access_token: 'oura-tok', oura_refresh_token: 'oura-ref', oura_expires_at: Math.floor(now / 1000) + 3600 }] };
+  const night = (d: string) => ({ day: d, type: 'long_sleep', total_sleep_duration: 25920, average_hrv: 52, lowest_heart_rate: 48 });
+  const yesterday = new Date(now - DAY).toISOString().slice(0, 10);
+
+  // A night dated today: the Sleep card reads it.
+  connected();
+  rest.answer('athletes', ouraRow);
+  guard.stravaActivities(steady());
+  guard.oura({ sleep: { data: [night(today)] }, daily_sleep: { data: [{ day: today, score: 84 }] } });
+  guard.openAi(CLEAN);
+  const fresh = await read();
+  assert.equal(fresh.statusCode, 200, fresh.body);
+  assert.equal(fresh.json().connections.oura, true);
+  assert.equal(fresh.json().cards.find((c: any) => c.id === 'sleep').available, true);
+  assert.ok(fresh.json().drivers.some((d: any) => d.value === '7:12'), 'last night\'s sleep is a driver');
+
+  // Only the night before last: nothing is called last night.
+  rest.reset();
+  guard.reset();
+  connected();
+  rest.answer('athletes', ouraRow);
+  guard.stravaActivities(steady());
+  guard.oura({ sleep: { data: [night(yesterday)] }, daily_sleep: { data: [{ day: yesterday, score: 84 }] } });
+  guard.openAi(CLEAN);
+  const stale = await read();
+  assert.equal(stale.statusCode, 200, stale.body);
+  assert.equal(stale.json().cards.find((c: any) => c.id === 'sleep').available, false);
+  assert.ok(!stale.json().drivers.some((d: any) => d.value === '7:12'), 'no stale sleep value reaches the read');
+});
