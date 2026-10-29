@@ -458,7 +458,14 @@ struct PlanView: View {
         }
       }
       if changesOn {
-        Button("All plan changes") { Task { await loadHistory(); await MainActor.run { showHistory = true } } }
+        Button("All plan changes") {
+          Task {
+            let loaded = await loadHistory()
+            await MainActor.run {
+              if loaded { showHistory = true } else { note = "Plan changes did not load. Try again in a moment." }
+            }
+          }
+        }
           .font(.footnote).foregroundColor(.orange)
           .sheet(isPresented: $showHistory) { PlanHistoryView(rows: history) }
       }
@@ -617,15 +624,17 @@ struct PlanView: View {
     await MainActor.run { changes = PlanChanges.visible(decoded.adaptations); changesOn = true }
   }
 
-  private func loadHistory() async {
+  // True once the history arrived; a failed load must not read as "no changes".
+  private func loadHistory() async -> Bool {
     var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations/history")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
     guard let url = comps?.url,
           let (data, resp) = try? await URLSession.shared.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
-    else { return }
+    else { return false }
     await MainActor.run { history = PlanChanges.history(decoded.adaptations) }
+    return true
   }
 
   private func dismissChange(_ c: PlanAdaptation) async {
