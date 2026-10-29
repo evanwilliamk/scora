@@ -92,6 +92,7 @@ struct DashboardView: View {
   @Environment(\.scenePhase) private var scenePhase
   // The local day the shown read was made for: a new day means a new read.
   @State private var loadedDay: String?
+  @State private var loadedAt: Date?
 
   @State private var read: DailyRead?
   @State private var posture: String?
@@ -203,7 +204,10 @@ struct DashboardView: View {
     // Back from overnight in the background: yesterday's read is not today's.
     .onChange(of: scenePhase) { _, phase in
       guard phase == .active else { return }
-      if loadedDay != nil, loadedDay != PlanDay.today() { Task { await loadRead() } }
+      // A new day, or a read over three hours old (a 6 AM read can predate
+      // the Watch's sleep sync), is read again.
+      let stale = loadedAt.map { Date().timeIntervalSince($0) > 3 * 3600 } ?? false
+      if loadedDay != nil, !isLoading, loadedDay != PlanDay.today() || stale { Task { await loadRead() } }
       Task { await TimeZoneSync.syncIfChanged(athleteId: tokenManager.athleteId) }
     }
   }
@@ -488,6 +492,7 @@ struct DashboardView: View {
         expansions = [:] // a new read means new numbers to interpret
         readGeneration += 1
         loadedDay = PlanDay.today()
+        loadedAt = Date()
         isLoading = false
       }
     } catch {
