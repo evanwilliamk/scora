@@ -526,3 +526,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: one `isRun` helper (Run, TrailRun, VirtualRun) everywhere; race predictions use outdoor runs only, since treadmill distance is an estimate. Alternative: leave virtual runs out entirely.
 - Why: a treadmill hour is training load; leaving it out under-reads the week and can tip posture.
 - To reverse: drop 'VirtualRun' from RUN_TYPES in apps/api/src/activity-types.ts.
+
+### 2026-10-29: Oura "last night" only when Oura has a night dated today
+- Status: DECIDED
+- Branch: claude/oura-freshness-strict (on claude/oura-last-night)
+- Context: the newest Oura night always stood in for last night, however old (ring off, phone not synced before the 6 AM read).
+- Choice: no night dated today means sleep, HRV, resting HR, sleep score and readiness are empty for that read (the cards show their no-data line); history and charts keep every night. Alternative: show the older night labelled by its day ("Sunday night").
+- Why: a read that calls a three-day-old night "last night" breaks the driver-existence promise; the labelled version is a copy change that can come later.
+- To reverse: make `fresh` in apps/api/src/oura.ts accept older days.
