@@ -67,6 +67,7 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] Morning delivery on-time gate (doc 10 1.1.1): `push_delivery` telemetry per scheduled push, a per-athlete on-time table in `scripts/voice-gate-report.ts`, scheduler ticks every minute (`claude/delivery-telemetry`, on `claude/integration-2026-10-22`)
 - [~] Phase 0 gates 1.1.2 and 1.1.7 measurable: pushes carry kind, date and send time; the app reports a tap to `POST /api/events/push-open` (logged, not stored); the gate report scores opens within 4h, numbers-first mornings and validator fail-throughs (1.1.4, `final_ok` on each voice line) (`claude/phase0-gates`, on `claude/delivery-telemetry`)
 - [~] Log audit for gate 1.1.6 (no PHI in logs) and §6.5 (no secrets): `npx tsx scripts/log-audit.ts <log>` flags lines with health values or credentials by line and category, never the value (`claude/phase0-gates`)
+- [~] Gate 2.1.8 measurable: a `read_plan` line on each daily read with a planned session (not rest) says whether the read named the plan (the word plan, or the session's minutes or km); the gate report scores 60% per athlete (`claude/plan-aware-gate`, on `claude/phase0-gates`)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys). Done when validator catches, banned-phrase hits and CDV fallbacks are counted in PostHog (doc 10 §6.1 rates)
 
 ## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags that default off, no deploy or money)

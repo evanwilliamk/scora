@@ -221,3 +221,33 @@ export function morningGateReport(logText: string): MorningReport {
     ],
   };
 }
+
+// doc 10 2.1.8: for each athlete with a plan, the read names it on at least
+// 60% of days with a planned session.
+export const PLAN_NAMED_RATE_MIN = 0.6;
+
+export function planAwareGateReport(logText: string): { byAthlete: Record<string, { days: number; named: number }>; pass: boolean | null; lines: string[] } {
+  // athlete -> date -> named on any read that day (the read can be refreshed)
+  const seen = new Map<string, Map<string, boolean>>();
+  for (const e of telemetryEvents(logText)) {
+    if (e.event !== 'read_plan' || typeof e.athlete !== 'string' || typeof e.date !== 'string') continue;
+    const a = seen.get(e.athlete) ?? new Map();
+    seen.set(e.athlete, a);
+    a.set(e.date, a.get(e.date) === true || e.named === true);
+  }
+  const byAthlete: Record<string, { days: number; named: number }> = {};
+  for (const [athlete, a] of seen) byAthlete[athlete] = { days: a.size, named: [...a.values()].filter(Boolean).length };
+  const athletes = Object.keys(byAthlete).sort();
+  if (athletes.length === 0) return { byAthlete, pass: null, lines: ['Plan named on plan days (bar: 60% per athlete): NO DATA'] };
+  const pass = athletes.every((k) => byAthlete[k].named >= PLAN_NAMED_RATE_MIN * byAthlete[k].days);
+  return {
+    byAthlete,
+    pass,
+    lines: [
+      'athlete                               plan days  plan named',
+      ...athletes.map((k) => `${k.padEnd(36)} ${String(byAthlete[k].days).padStart(10)}  ${String(byAthlete[k].named).padStart(10)}`),
+      '',
+      `Plan named on plan days (bar: 60% per athlete): ${pass ? 'PASS' : 'FAIL'}`,
+    ],
+  };
+}

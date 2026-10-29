@@ -18,7 +18,7 @@ import {
 import { consumeCdvQuota, pingDatabase, quotaDay } from './usage';
 import { generateValidatedVoice } from './voice';
 import { checkCdvWithRetry } from './cdv-check';
-import { trackVoice, pushOpenLine } from './telemetry';
+import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 
 class LlmHttpError extends Error {}
 import {
@@ -37,7 +37,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
 import { supabasePlanStore, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
-import { planForRead, weeklyPlanDriver } from './plan-read';
+import { planForRead, readNamesPlan, weeklyPlanDriver } from './plan-read';
 import { numericLine } from './numeric-line';
 import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
@@ -704,6 +704,9 @@ Write today's read using only these drivers.`;
         log: fastify.log,
       });
       voice = result.voice;
+      if (plan.driver && plan.workout?.planned_intensity !== 'rest') {
+        fastify.log.info(readPlanLine({ athleteId, localDate: today, named: readNamesPlan(voice, plan.driver) }));
+      }
     } catch (e) {
       fastify.log.error({ err: e }, 'OpenAI error (read)');
       return reply.code(500).send({

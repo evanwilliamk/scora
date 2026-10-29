@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deliveryGateReport, morningGateReport, voiceGateReport } from '../src/gate-report';
-import { pushDeliveryLine, pushOpenLine, pushSentLine, voiceEmissionLine } from '../src/telemetry';
+import { deliveryGateReport, morningGateReport, planAwareGateReport, voiceGateReport } from '../src/gate-report';
+import { pushDeliveryLine, pushOpenLine, pushSentLine, readPlanLine, voiceEmissionLine } from '../src/telemetry';
 
 test('counts emissions per surface from plain and JSON-wrapped log lines', () => {
   const plain = voiceEmissionLine({ surface: 'daily', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0 });
@@ -117,4 +117,20 @@ test('morning gates: a push no phone accepted is not an unopened morning; under 
   assert.equal(r.openPass, null);
   assert.equal(r.numericPass, true);
   assert.match(r.lines.join('\n'), /Opened within 4h .*NOT ENOUGH MORNINGS/);
+});
+
+test('plan-aware gate: a day counts as named if any read that day named the plan', () => {
+  const lines = [
+    readPlanLine({ athleteId: 'a', localDate: '2026-11-01', named: true }),
+    readPlanLine({ athleteId: 'a', localDate: '2026-11-02', named: false }),
+    readPlanLine({ athleteId: 'a', localDate: '2026-11-02', named: true }), // a refresh named it
+    readPlanLine({ athleteId: 'a', localDate: '2026-11-03', named: false }),
+    readPlanLine({ athleteId: 'b', localDate: '2026-11-01', named: false }),
+    readPlanLine({ athleteId: 'b', localDate: '2026-11-02', named: true }),
+  ];
+  const r = planAwareGateReport(lines.join('\n'));
+  assert.deepEqual(r.byAthlete, { a: { days: 3, named: 2 }, b: { days: 2, named: 1 } });
+  assert.equal(r.pass, false, 'b names the plan on 50% of days');
+  assert.equal(planAwareGateReport(lines.slice(0, 4).join('\n')).pass, true);
+  assert.equal(planAwareGateReport('').pass, null);
 });

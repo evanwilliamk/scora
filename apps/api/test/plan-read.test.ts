@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { todaysWorkout, planDriver, planForRead, weeklyPlanDriver } from '../src/plan-read';
+import { todaysWorkout, planDriver, planForRead, readNamesPlan, weeklyPlanDriver } from '../src/plan-read';
 import { knowledgeForRead } from '../src/knowledge-retrieval';
 import { validateVoice } from '../src/validator';
 import type { StoredWorkout } from '../src/plan-store';
@@ -154,4 +154,14 @@ test('weekly plan driver: a run with no duration means no driver (review 5)', ()
     { scheduled_date: '2026-10-18', planned_type: 'run', planned_intensity: 'long', planned_duration_min: null },
   ];
   assert.equal(weeklyPlanDriver(rows, [], '2026-10-16', '2026-10-22'), null);
+});
+
+test('readNamesPlan: the word plan, or the session minutes or km as stated', () => {
+  const d = { metric: 'Plan today', value: 'tempo, 45 min, 10.5 km' };
+  assert.equal(readNamesPlan('Your plan has a tempo today and the body is settled.', d), true);
+  assert.equal(readNamesPlan("Today's 45 min tempo meets a settled body.", d), true);
+  assert.equal(readNamesPlan('The 10.5 km session sits well with 7:12 of sleep.', d), true);
+  assert.equal(readNamesPlan('Tempo work earlier in the week left load at 412 min.', d), false, 'the session word alone is not enough');
+  assert.equal(readNamesPlan('Planning aside, HRV is at 52ms.', d), false);
+  assert.equal(readNamesPlan('Your plan reads cleanly.', null), false);
 });

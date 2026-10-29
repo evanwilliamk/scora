@@ -80,3 +80,12 @@ export function weeklyPlanDriver(
     .reduce((s, a) => s + (a.moving_time || 0) / 60, 0));
   return { metric: 'Plan this week', value: `${done} of ${planned} planned run min` };
 }
+
+// Whether a read names today's planned session (doc 10 2.1.8: plan reference
+// in at least 60% of reads on a day with a session). Named = the word plan,
+// or the session's own minutes or kilometres as the driver states them.
+export function readNamesPlan(voice: string, driver: Driver | null): boolean {
+  if (!driver) return false;
+  if (/\bplan(?:s|ned|'s)?\b/i.test(voice)) return true;
+  return driver.value.split(', ').slice(1).some((part) => voice.includes(part));
+}

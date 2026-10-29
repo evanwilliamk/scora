@@ -80,3 +80,9 @@ export function pushOpenLine(d: { kind: 'daily' | 'weekly'; athleteId: string; l
     after_min: d.afterMin,
   })}`;
 }
+
+// One line per daily read on a day with a planned session (not rest): whether
+// the read named the plan (doc 10 2.1.8).
+export function readPlanLine(d: { athleteId: string; localDate: string; named: boolean }): string {
+  return `telemetry ${JSON.stringify({ event: 'read_plan', athlete: d.athleteId, date: d.localDate, named: d.named })}`;
+}
