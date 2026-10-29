@@ -92,6 +92,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] Dismiss a plan change (doc 07 §5): route + x on Your Plan (`claude/dismiss-adaptation`, on `claude/integration-2026-10-22`)
 - [~] Missed workouts: Past sessions on Your Plan with Done / Missed; a miss is recorded, never moved (`claude/missed-workouts`, on `claude/integration-2026-10-22`; seen on the simulator)
 - [~] Plan tier gates 3.1.10 (adherence, from the athlete's done/missed marks) and 3.1.11 (adaptations per athlete per week) as a read-only SQL report, `apps/api/scripts/plan-gates.sql`, paste into the Supabase SQL editor (`claude/plan-gates`, on `claude/integration-2026-10-22`; run on PGlite in tests)
+- [~] Plan bars audit (doc 10 §6.2): `apps/api/scripts/plan-invariants.sql` lists any engine adaptation that changed a long run, touched race week, moved more than 10% of a week's minutes, or put a moved hard session next to another (`claude/plan-invariants-audit`, on `claude/integration-2026-10-28`)
 - [ ] WorkoutKit scheduling on a paired Apple Watch (Evan). Done when a sent session appears in the Watch's Workout app on its day and runs with the plan's steps
 - [!] Calorie engine needs body weight; Strava only sends it with `profile:read_all` (Q21). Done when an athlete with a known weight gets estimates with the method shown
 - [~] Rest posture with no move window: the session drops to easy at the same duration, named reason; long runs stay (Q19 option B, `claude/rest-no-window-downgrade`, on `claude/integration-2026-10-18`)
