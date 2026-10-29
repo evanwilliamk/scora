@@ -534,6 +534,7 @@ struct PlanView: View {
     // 404: already dismissed (another device) or gone; either way it leaves the list.
     if status == 200 || status == 404 {
       await MainActor.run { changes = PlanChanges.dismissing(c.id, from: changes) }
+      await loadChanges() // the list shows three; refill from the server
     }
   }
 
