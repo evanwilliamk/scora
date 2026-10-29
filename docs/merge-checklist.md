@@ -1,6 +1,12 @@
 # After merging `claude/integration-2026-10-28`
 
-What the code on this branch needs before it does anything new in production. Every feature below ships off; merging changes nothing for athletes until a flag is set. Nothing here was run against Supabase or Railway.
+What the code on this branch needs in production. Nothing here was run against Supabase or Railway.
+
+On without a flag once merged and deployed (with a new app build where it is iOS):
+- The push scheduler ticks every minute, retries a failed read every 15 minutes, sends to 4 athletes at a time, and logs `push_delivery` and `push_sent` lines.
+- Pushes carry a `scora` payload; a tap opens Today's Read (or This Week) and is reported to `POST /api/events/push-open`.
+- Plan Today card when the athlete has any plan; Share on This Week and under chat charts; past sessions, Watch send records.
+- Daily reads log a `read_plan` line on plan days; voice lines carry `final_ok`.
 
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
 

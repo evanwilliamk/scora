@@ -121,7 +121,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     if (!tokenResponse.ok) {
       const errText = await tokenResponse.text();
       fastify.log.error({ err: errText }, 'Strava token error');
-      return reply.code(400).send({ error: 'Token exchange failed', detail: errText });
+      return reply.code(400).send({ error: 'Token exchange failed' });
     }
 
     const tokenData: any = await tokenResponse.json();
@@ -139,7 +139,6 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
       fastify.log.error({ err: e }, 'Failed to persist Strava tokens');
       return reply.code(500).send({
         error: 'Token storage failed',
-        detail: e instanceof Error ? e.message : String(e),
         athleteId,
       });
     }
@@ -185,7 +184,6 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     fastify.log.error({ err: error }, 'Strava exception');
     return reply.code(500).send({
       error: 'Auth failed',
-      detail: error instanceof Error ? error.message : String(error),
     });
   }
 });
@@ -266,9 +264,9 @@ fastify.post('/api/cdv', async (request, reply) => {
     try {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
+      fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       return reply.code(401).send({
         error: 'Strava not connected or refresh failed — please reconnect Strava.',
-        detail: e instanceof Error ? e.message : String(e),
       });
     }
 
@@ -463,7 +461,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     } catch (e) {
       const err = e instanceof LlmHttpError ? e.message : String(e);
       fastify.log.error({ err }, 'OpenAI error');
-      return reply.code(500).send({ error: 'LLM failed', detail: err });
+      return reply.code(500).send({ error: 'LLM failed' });
     }
 
     // Validators on the reply (CLAUDE.md §3.2): every number in the voice and
@@ -497,7 +495,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     });
   } catch (error) {
     fastify.log.error({ err: error }, 'CDV exception');
-    return reply.code(500).send({ error: 'CDV failed', detail: error instanceof Error ? error.message : String(error) });
+    return reply.code(500).send({ error: 'CDV failed' });
   }
 });
 
@@ -514,9 +512,9 @@ fastify.post('/api/read', async (request, reply) => {
     try {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
+      fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       return reply.code(401).send({
         error: 'Strava not connected or refresh failed — please reconnect Strava.',
-        detail: e instanceof Error ? e.message : String(e),
       });
     }
 
@@ -724,7 +722,6 @@ Write today's read using only these drivers.`;
       fastify.log.error({ err: e }, 'OpenAI error (read)');
       return reply.code(500).send({
         error: 'Read generation failed',
-        detail: e instanceof Error ? e.message : String(e),
       });
     }
 
@@ -766,7 +763,6 @@ Write today's read using only these drivers.`;
     fastify.log.error({ err: error }, 'Read exception');
     return reply.code(500).send({
       error: 'Read failed',
-      detail: error instanceof Error ? error.message : String(error),
     });
   }
 });
@@ -1204,9 +1200,9 @@ fastify.post('/api/weekly', async (request, reply) => {
     try {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
+      fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       return reply.code(401).send({
         error: 'Strava not connected or refresh failed — please reconnect Strava.',
-        detail: e instanceof Error ? e.message : String(e),
       });
     }
 
@@ -1290,7 +1286,6 @@ Write this week's review using only these drivers.`;
       fastify.log.error({ err: e }, 'OpenAI error (weekly)');
       return reply.code(500).send({
         error: 'Weekly read generation failed',
-        detail: e instanceof Error ? e.message : String(e),
       });
     }
 
@@ -1304,7 +1299,6 @@ Write this week's review using only these drivers.`;
     fastify.log.error({ err: error }, 'Weekly exception');
     return reply.code(500).send({
       error: 'Weekly read failed',
-      detail: error instanceof Error ? error.message : String(error),
     });
   }
 });
@@ -1322,7 +1316,6 @@ fastify.post('/api/register-device', async (request, reply) => {
     fastify.log.error({ err: e }, 'register-device failed');
     return reply.code(500).send({
       error: 'Failed to register device',
-      detail: e instanceof Error ? e.message : String(e),
     });
   }
 });
@@ -1379,7 +1372,6 @@ fastify.post('/api/push/test', async (request, reply) => {
     fastify.log.error({ err: e }, 'push test failed');
     return reply.code(500).send({
       error: 'Push test failed',
-      detail: e instanceof Error ? e.message : String(e),
     });
   }
 });
