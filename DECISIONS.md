@@ -452,6 +452,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: a `message_events` table as doc 10 names it (migration Evan applies); PostHog app events (needs the PostHog account).
 - Why: no schema change, no new service, same log-based gate report as the voice and delivery gates. No health data in the payload or the log.
 - To reverse: drop the route in apps/api/src/index.ts and the delegate method in apps/ios/Scora/PushManager.swift; the payload field is ignored by older builds.
+
 ### 2026-10-28: Plan adherence counts an unmarked session as not done
 - Status: DECIDED
 - Branch: claude/plan-gates
