@@ -126,3 +126,15 @@ test('every table has row level security on (doc 10 §6.5), so the anon key read
   );
   assert.deepEqual(r.rows.map((x) => x.relname), [], 'a new table needs "enable row level security" in its migration');
 });
+
+test('every table that holds athlete data is in the deletion inventory (Q27)', async () => {
+  const r = await db.query<{ table_name: string }>(
+    `select distinct table_name from information_schema.columns
+     where table_schema = 'public' and column_name in ('athlete_id', 'strava_id', 'user_id') order by 1`,
+  );
+  const inventory = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'account-deletion-inventory.md'), 'utf8');
+  const listed = new Set([...inventory.matchAll(/^\| `([a-z_]+)` \|/gm)].map((m) => m[1]));
+  const missing = r.rows.map((x) => x.table_name).filter((t) => !listed.has(t));
+  assert.deepEqual(missing, [], 'add the new table to docs/account-deletion-inventory.md and to account deletion');
+  assert.ok(listed.has('athletes') && listed.has('device_tokens'));
+});
