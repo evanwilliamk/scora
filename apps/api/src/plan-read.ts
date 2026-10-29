@@ -8,6 +8,7 @@
 import type { StoredWorkout } from './plan-store';
 import type { Card, Driver } from './metrics';
 import { toScheduledWorkout } from './plan-parse';
+import { isRun } from './activity-types';
 
 // When a day has more than one session, the read keys off the hardest.
 const WEIGHT: Record<string, number> = {
@@ -75,7 +76,7 @@ export function weeklyPlanDriver(
   const planned = runRows.reduce((s, r) => s + (r.planned_duration_min ?? 0), 0);
   if (planned <= 0) return null;
   const done = Math.round(activities
-    .filter((a) => a.type === 'Run' && typeof a.start_date_local === 'string')
+    .filter((a) => isRun(a) && typeof a.start_date_local === 'string')
     .filter((a) => a.start_date_local.slice(0, 10) >= from && a.start_date_local.slice(0, 10) <= to)
     .reduce((s, a) => s + (a.moving_time || 0) / 60, 0));
   return { metric: 'Plan this week', value: `${done} of ${planned} planned run min` };

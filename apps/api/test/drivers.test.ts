@@ -219,3 +219,18 @@ test('a fired posture brings its evidence as citable drivers; steady brings none
 
   assert.deepEqual(postureForRead(steadyWeeks(), null, { now }).evidence, []);
 });
+
+test('days since long effort counts calendar days on the athlete\'s clock (review 10-29)', () => {
+  // A 100-minute run at 18:00 local yesterday; now is 08:00 local, 14 hours later.
+  const lastNight = { type: 'Run', start_date: new Date(now - 14 * 3600000).toISOString(), start_date_local: '2026-10-16T18:00:00Z', distance: 17000, moving_time: 6000, average_heartrate: 145 };
+  const { drivers } = computeDriverRecord([...steadyWeeks().filter((a) => Date.parse(a.start_date) < now - 2 * day), lastNight], null, { now, localToday: '2026-10-17' });
+  assert.equal(drivers.days_since_long_effort, 1);
+});
+
+test('virtual runs count toward load (review 10-29)', () => {
+  const asVirtual = steadyWeeks().map((a) => ({ ...a, type: 'VirtualRun', sport_type: 'VirtualRun' }));
+  const real = computeDriverRecord(steadyWeeks(), null, { now }).drivers;
+  const virtual = computeDriverRecord(asVirtual, null, { now }).drivers;
+  assert.equal(virtual.load_7d, real.load_7d);
+  assert.ok((virtual.load_7d ?? 0) > 0);
+});

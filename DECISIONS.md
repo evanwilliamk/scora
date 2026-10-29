@@ -518,3 +518,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: plain `error` only, the cause logged server-side (the three Strava 401s gained a warn line). Alternative: keep `detail` behind NODE_ENV=development.
 - Why: matches the newer routes, and error text from vendors can carry ids or tokens.
 - To reverse: revert the commit on claude/no-error-detail.
+
+### 2026-10-29: Treadmill and Zwift runs count as runs, except for race predictions
+- Status: DECIDED
+- Branch: claude/metrics-fixes
+- Context: every filter was `type === 'Run'`, so Strava's `VirtualRun` (treadmill, Zwift) vanished from load, volume, long effort and ACWR.
+- Choice: one `isRun` helper (Run, TrailRun, VirtualRun) everywhere; race predictions use outdoor runs only, since treadmill distance is an estimate. Alternative: leave virtual runs out entirely.
+- Why: a treadmill hour is training load; leaving it out under-reads the week and can tip posture.
+- To reverse: drop 'VirtualRun' from RUN_TYPES in apps/api/src/activity-types.ts.

@@ -7,6 +7,7 @@
 // the voice can only cite drivers that actually exist.
 
 import type { OuraSummary } from './oura';
+import { isRun } from './activity-types';
 
 const M = 1609.34; // metres per mile
 
@@ -48,10 +49,9 @@ const totalMovingMin = (arr: any[]) =>
 
 const paceMinPerMi = (a: any): string | null => {
   if (!a.distance || !a.moving_time) return null;
-  const secPerMi = a.moving_time / (a.distance / M);
-  const min = Math.floor(secPerMi / 60);
-  const sec = Math.round(secPerMi % 60);
-  return `${min}:${sec.toString().padStart(2, '0')}`;
+  // Round the whole pace first, so 479.6 s reads 8:00, never 7:60.
+  const secPerMi = Math.round(a.moving_time / (a.distance / M));
+  return `${Math.floor(secPerMi / 60)}:${(secPerMi % 60).toString().padStart(2, '0')}`;
 };
 
 const pct = (curr: number, prev: number): string => {
@@ -74,11 +74,13 @@ export function buildDashboard(
   activities: any[],
   connections: { strava: boolean; oura: boolean; healthKit: boolean },
   oura?: OuraSummary | null,
-  recoverySource: string = 'Oura'
+  recoverySource: string = 'Oura',
+  // The athlete's local date, for calendar-day counts ("2 days ago").
+  localToday: string = new Date().toISOString().slice(0, 10)
 ): DashboardData {
   const now = Date.now();
   const day = 86400000;
-  const runs = activities.filter((a) => a.type === 'Run');
+  const runs = activities.filter(isRun);
 
   const thisWeek = runs.filter((a) => inWindow(a, now - 7 * day, now));
   const lastWeek = runs.filter((a) => inWindow(a, now - 14 * day, now - 7 * day));
@@ -120,22 +122,24 @@ export function buildDashboard(
 
   // --- Training Load: 7-day moving minutes vs the week before ---
   if (thisWeek.length > 0 || lastWeek.length > 0) {
-    const trend = pct(thisWeekMin, lastWeekMin);
+    // No runs last week: no week-over-week trend, never "n/a wk".
+    const wk = (t: string) => (t === 'n/a' ? undefined : `${t} wk`);
+    const trend = wk(pct(thisWeekMin, lastWeekMin));
     cards.push({
       id: 'training_load',
       title: 'Training Load',
       available: true,
       value: String(thisWeekMin),
       unit: 'min',
-      trend: `${trend} wk`,
+      trend,
       source: 'Strava',
       translation: `${thisWeekMin} min across ${thisWeek.length} run${thisWeek.length === 1 ? '' : 's'} this week.`,
     });
-    drivers.push({ metric: 'Load', value: `${thisWeekMin} min`, trend: `${trend} wk` });
+    drivers.push({ metric: 'Load', value: `${thisWeekMin} min`, trend });
     drivers.push({
       metric: 'Weekly volume',
       value: `${thisWeekMiles} mi`,
-      trend: `${pct(thisWeekMiles, lastWeekMiles)} wk`,
+      trend: wk(pct(thisWeekMiles, lastWeekMiles)),
     });
   } else {
     cards.push({
@@ -214,9 +218,11 @@ export function buildDashboard(
   if (last30.length > 0) {
     const longest = last30.reduce((m, a) => ((a.distance || 0) > (m.distance || 0) ? a : m));
     const longestMiles = +((longest.distance || 0) / M).toFixed(1);
-    const daysSince = Math.floor(
-      (now - new Date(longest.start_date || longest.start_date_local).getTime()) / day
-    );
+    // Calendar days on the athlete's clock: last night's run is 1 day ago at 08:00.
+    const ranOn = typeof longest.start_date_local === 'string'
+      ? longest.start_date_local.slice(0, 10)
+      : new Date(longest.start_date).toISOString().slice(0, 10);
+    const daysSince = Math.max(0, Math.round((Date.parse(`${localToday}T00:00:00Z`) - Date.parse(`${ranOn}T00:00:00Z`)) / day));
     cards.push({
       id: 'long_effort',
       title: 'Long Effort Recency',
@@ -282,7 +288,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null): WeeklySummary {
   const now = Date.now();
   const day = 86400000;
-  const runs = activities.filter((a) => a.type === 'Run');
+  const runs = activities.filter(isRun);
 
   const thisWeek = runs.filter((a) => inWindow(a, now - 7 * day, now));
   const lastWeek = runs.filter((a) => inWindow(a, now - 14 * day, now - 7 * day));
@@ -299,8 +305,9 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null)
   const lastMiles = +totalMiles(lastWeek).toFixed(1);
   const min = totalMovingMin(thisWeek);
   const lastMin = totalMovingMin(lastWeek);
-  const volTrend = `${pct(miles, lastMiles)} wk`;
-  const loadTrend = `${pct(min, lastMin)} wk`;
+  const wk = (t: string) => (t === 'n/a' ? undefined : `${t} wk`);
+  const volTrend = wk(pct(miles, lastMiles));
+  const loadTrend = wk(pct(min, lastMin));
 
   stats.push({ label: 'Volume', value: `${miles} mi`, trend: volTrend });
   stats.push({ label: 'Load', value: `${min} min`, trend: loadTrend });
@@ -309,7 +316,7 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null)
 
   // Distinct days trained.
   const days = new Set(
-    thisWeek.map((a) => new Date(a.start_date_local || a.start_date).toDateString())
+    thisWeek.map((a) => String(a.start_date_local || a.start_date).slice(0, 10))
   ).size;
   stats.push({ label: 'Days run', value: `${days}/7` });
   drivers.push({ metric: 'Days trained', value: `${days} of 7` });

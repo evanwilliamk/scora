@@ -3,6 +3,8 @@
 // LLM: every figure in it is one of the values shown, and it states, never
 // advises.
 
+import { isRun } from './activity-types';
+
 export interface WeekDay {
   date: string; // local YYYY-MM-DD
   weekday: string; // 'Mon' ... 'Sun'
@@ -48,7 +50,7 @@ export function weekSoFar(activities: any[], today: string, planned?: Map<string
   const t = Date.parse(`${today}T00:00:00Z`);
   const dow = (new Date(t).getUTCDay() + 6) % 7; // 0 = Monday
   const monday = t - dow * DAY;
-  const runs = activities.filter((a) => a.type === 'Run' && typeof a.start_date_local === 'string');
+  const runs = activities.filter((a) => isRun(a) && typeof a.start_date_local === 'string');
   const minutesOn = (date: string) =>
     runs.filter((a) => a.start_date_local.slice(0, 10) === date).reduce((s, a) => s + (a.moving_time || 0) / 60, 0);
 

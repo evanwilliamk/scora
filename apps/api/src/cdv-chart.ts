@@ -6,6 +6,8 @@
 // Specs carry data inline and contain no url/href keys (the iOS WebView rejects
 // those).
 
+import { isRun } from './activity-types';
+
 const M = 1609.34;
 const DAY = 86400000;
 
@@ -63,7 +65,7 @@ const base = (title: string) => ({
 
 export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.now()): Record<string, unknown> | null {
   const runs = activities
-    .filter((a) => a.type === 'Run' && Number.isFinite(startMs(a)) && startMs(a) <= now)
+    .filter((a) => isRun(a) && Number.isFinite(startMs(a)) && startMs(a) <= now)
     .sort((a, b) => startMs(b) - startMs(a)); // newest first
 
   if (kind === 'weekly_miles') {

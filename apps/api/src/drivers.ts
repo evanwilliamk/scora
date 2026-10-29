@@ -9,6 +9,7 @@ import { computePosture } from '../../../packages/posture/src/index';
 import type { PostureDrivers, PostureResult, UserBaselines } from '../../../packages/posture/src/index';
 import type { OuraSummary } from './oura';
 import type { Driver } from './metrics';
+import { isRun } from './activity-types';
 
 const DAY = 86400000;
 
@@ -115,7 +116,7 @@ export function computeDriverRecord(
   opts: DriverRecordOptions = {}
 ): DriverRecordResult {
   const now = opts.now ?? Date.now();
-  const runs = activities.filter((a) => a.type === 'Run' && Number.isFinite(startMs(a)));
+  const runs = activities.filter((a) => isRun(a) && Number.isFinite(startMs(a)));
   const within = (n: number) => runs.filter((a) => {
     const t = startMs(a);
     return t > now - n * DAY && t <= now;
@@ -144,8 +145,17 @@ export function computeDriverRecord(
       ? consecutiveHardDays(last28, opts.localToday ?? localTodayFor(runs, now), hrThreshold)
       : null;
 
-    const long = runs.filter((a) => (a.moving_time || 0) >= LONG_EFFORT_MIN_SECONDS && daysAgo(a, now) >= 0);
-    d.days_since_long_effort = long.length > 0 ? Math.min(...long.map((a) => daysAgo(a, now))) : null;
+    // Calendar days on the athlete's clock: last night's long run is 1, not 0.
+    const today = opts.localToday ?? localTodayFor(runs, now);
+    const calendarDaysAgo = (a: any): number | null => {
+      const ranOn = localDay(a);
+      return ranOn ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${ranOn}T00:00:00Z`)) / DAY) : null;
+    };
+    const long = runs
+      .filter((a) => (a.moving_time || 0) >= LONG_EFFORT_MIN_SECONDS && daysAgo(a, now) >= 0)
+      .map(calendarDaysAgo)
+      .filter((n): n is number => n !== null && n >= 0);
+    d.days_since_long_effort = long.length > 0 ? Math.min(...long) : null;
   } else {
     d.load_7d = null;
     d.load_28d = null;

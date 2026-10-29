@@ -64,3 +64,11 @@ test('activities are paged until a short page, so the newest runs are not droppe
   assert.deepEqual(urls.map((u) => new URL(u).searchParams.get('page')), ['1', '2', '3']);
   await assert.rejects(fetchActivitiesSince('t', 1000, (async () => ({ ok: false, status: 401 })) as any), /Strava 401/);
 });
+
+test('treadmill runs never feed a race prediction (distance is an estimate)', () => {
+  const treadmill = training.map((a) => ({ ...a, type: 'VirtualRun', sport_type: 'VirtualRun' }));
+  assert.equal(predictRace(training, 'half_marathon', TODAY).ok, true);
+  const p = predictRace(treadmill, 'half_marathon', TODAY);
+  assert.equal(p.ok, false);
+  assert.equal(!p.ok && p.reason, 'not_enough_runs');
+});

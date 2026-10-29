@@ -7,6 +7,7 @@
 
 import type { Driver } from './metrics';
 import type { OuraSummary } from './oura';
+import { isRun } from './activity-types';
 
 export const inlineChartsEnabled = () => process.env.INLINE_CHARTS === 'on';
 
@@ -109,7 +110,7 @@ export function buildDriverSeries(
   const first = new Date(Date.parse(`${today}T00:00:00Z`) - (days - 1) * DAY).toISOString().slice(0, 10);
   const dates = Array.from({ length: days }, (_, i) => new Date(Date.parse(`${first}T00:00:00Z`) + i * DAY).toISOString().slice(0, 10));
 
-  const runs = activities.filter((a) => a.type === 'Run' && typeof a.start_date_local === 'string');
+  const runs = activities.filter((a) => isRun(a) && typeof a.start_date_local === 'string');
   if (runs.length > 0) {
     const minutes = new Map<string, number>();
     const miles = new Map<string, number>();

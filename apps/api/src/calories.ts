@@ -7,6 +7,8 @@
 // v1 leaves heart rate out: HR-based equations (Keytel 2005) need age and
 // sex, which SCORA does not have.
 
+import { isRun } from './activity-types';
+
 export const caloriesEnabled = () => process.env.CALORIE_ENGINE === 'on';
 export const CALORIE_ENGINE_VERSION = 'calories-v1.0.0';
 
@@ -56,7 +58,7 @@ export function estimateCalories(a: any, weightKg: number | null | undefined): C
   const base = { activity_id: a.id, date, sport: a.type };
   const climb = Number(a.total_elevation_gain) || 0;
 
-  if (a.type === 'Run' && distance > 0) {
+  if (isRun(a) && distance > 0) {
     return {
       ...base,
       kcal: Math.round(runningKcal(weightKg, distance, moving, climb)),

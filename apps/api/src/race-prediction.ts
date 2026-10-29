@@ -7,6 +7,8 @@
 // from the best recent efforts, races first. Plan progression and body-state
 // trend (also in §5.B.6) are not in yet. Off unless RACE_PREDICTIONS=on.
 
+import { isOutdoorRun } from './activity-types';
+
 export const predictionsEnabled = () => process.env.RACE_PREDICTIONS === 'on';
 
 export const RACE_DISTANCES_M: Record<string, number> = {
@@ -50,7 +52,7 @@ export function predictRace(activities: any[], race: string, today: string): Pre
 
   const runs = activities.filter((a) => {
     const d = typeof a.start_date_local === 'string' ? a.start_date_local.slice(0, 10) : null;
-    return a.type === 'Run' && d && d >= from && d <= today && a.distance > 0 && a.moving_time > 0;
+    return isOutdoorRun(a) && d && d >= from && d <= today && a.distance > 0 && a.moving_time > 0;
   });
   const longest = Math.max(0, ...runs.map((a) => a.distance));
   const needLong = Math.min(distance * PREDICTION.longRunShare, PREDICTION.longRunCapM);

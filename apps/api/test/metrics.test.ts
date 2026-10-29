@@ -152,3 +152,40 @@ test('weekly long run names the athlete\'s weekday whatever the server time zone
     if (was === undefined) delete process.env.TZ; else process.env.TZ = was;
   }
 });
+
+
+test('pace rounds the whole value: 479.6 s/mi reads 8:00, never 7:60 (review 10-29)', () => {
+  // 1 mile in 479.6 s, with HR so it is the hardest session.
+  const fast = { ...run(1, 1609.34, 479.6, 175) };
+  const { cards } = buildDashboard([fast, run(3, 8000, 2600, 140)], conn);
+  const intensity = cards.find((c) => c.id === 'recent_intensity')!;
+  assert.doesNotMatch(JSON.stringify(intensity), /:60/);
+  assert.match(JSON.stringify(intensity), /8:00/);
+});
+
+test('virtual runs count as training load (review 10-29)', () => {
+  const treadmill = { ...run(1, 16000, 6000, 150), type: 'VirtualRun', sport_type: 'VirtualRun' };
+  const { drivers } = buildDashboard([treadmill], conn);
+  assert.equal(drivers.find((d) => d.metric === 'Load')!.value, '100 min');
+  const weekly = buildWeeklySummary([treadmill]);
+  assert.equal(weekly.hasData, true);
+});
+
+test('no runs last week: Load and volume carry no trend, never "n/a wk" (review 10-29)', () => {
+  const { drivers, cards } = buildDashboard([run(1, 8000, 2400)], conn);
+  for (const m of ['Load', 'Weekly volume']) assert.equal(drivers.find((d) => d.metric === m)!.trend, undefined, m);
+  assert.equal(cards.find((c) => c.id === 'training_load')!.trend, undefined);
+  const weekly = buildWeeklySummary([run(1, 8000, 2400)]);
+  assert.ok(weekly.drivers.every((d) => !String(d.trend ?? '').includes('n/a')));
+});
+
+test('long effort counts calendar days on the athlete\'s clock: last night is 1 day ago (review 10-29)', () => {
+  // Ran 18:00 yesterday local; it is 08:00 today: 14 hours, but 1 calendar day.
+  const today = '2026-10-29';
+  const lastNight = { type: 'Run', distance: 16000, moving_time: 5400, start_date: new Date(now - 14 * 3600000).toISOString(), start_date_local: '2026-10-28T18:00:00Z' };
+  const { cards } = buildDashboard([lastNight], conn, null, 'Oura', today);
+  const long = cards.find((c) => c.id === 'long_effort')!;
+  assert.equal(long.value, '1');
+  assert.match(long.translation!, /1 day ago/);
+  assert.doesNotMatch(long.translation!, /today/);
+});

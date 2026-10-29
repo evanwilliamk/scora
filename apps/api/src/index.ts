@@ -52,6 +52,7 @@ import type { SeriesKey } from './driver-links';
 import { predictRace, predictionsEnabled } from './race-prediction';
 import { CALORIE_ENGINE_VERSION, caloriesEnabled, estimateCalories } from './calories';
 import { createClient } from '@supabase/supabase-js';
+import { isRun } from './activity-types';
 
 dotenv.config();
 
@@ -284,13 +285,12 @@ fastify.post('/api/cdv', async (request, reply) => {
     const daysAgo = (d: number) => new Date(now - d * 86400000);
     const paceMinPerMi = (a: any) => {
       if (!a.distance || !a.moving_time) return null;
-      const secPerMi = a.moving_time / (a.distance / M);
-      const min = Math.floor(secPerMi / 60);
-      const sec = Math.round(secPerMi % 60);
-      return `${min}:${sec.toString().padStart(2, '0')}`;
+      // Round the whole pace first, so 479.6 s reads 8:00, never 7:60.
+      const secPerMi = Math.round(a.moving_time / (a.distance / M));
+      return `${Math.floor(secPerMi / 60)}:${(secPerMi % 60).toString().padStart(2, '0')}`;
     };
 
-    const runs = activities.filter(a => a.type === 'Run');
+    const runs = activities.filter(isRun);
     const inWindow = (a: any, from: Date, to: Date) => {
       const d = new Date(a.start_date);
       return d > from && d <= to;
@@ -562,16 +562,20 @@ fastify.post('/api/read', async (request, reply) => {
       healthKitUsed = true;
     }
 
+    // The athlete's local date for calendar-day counts: the app's, else the
+    // newest activity's offset.
+    const localToday = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
     const { cards, drivers, connections } = buildDashboard(
       activities,
       { strava: true, oura: ouraConnected, healthKit: healthKitUsed },
       recovery,
-      recoverySource
+      recoverySource,
+      localToday
     );
 
     // Posture is decided by rules from the driver record, not by the LLM.
     // No race source is wired yet, so race_in_next_7d stays null.
-    const posture = postureForRead(activities, recovery);
+    const posture = postureForRead(activities, recovery, { localToday });
     const postureOut = {
       posture: posture.result.posture,
       rule: posture.result.rule,
