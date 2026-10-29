@@ -99,9 +99,15 @@ enum CDVChart {
       legend: {labelColor: "#999", titleColor: "#999"},
       title: {color: "#fff"},
       view: {stroke: null},
+      mark: {color: "#FF9500"},
       range: {category: ["#FF9500", "#8E8E93", "#FFFFFF"]}
     }, spec.config || {});
-    vegaEmbed("#chart", spec, {actions: false, renderer: "svg"});
+    vegaEmbed("#chart", spec, {actions: false, renderer: "svg"}).then(function () {
+      // Tells the app the chart is drawn, so it can snapshot it for sharing.
+      setTimeout(function () {
+        try { window.webkit.messageHandlers.rendered.postMessage(1); } catch (e) {}
+      }, 50);
+    });
     </script>
     </body></html>
     """
@@ -109,13 +115,18 @@ enum CDVChart {
 }
 
 // WebView host for a CDV chart. Static: no links, no navigation after load.
+// Once the chart is drawn the page posts "rendered" and the view hands a
+// snapshot to `onRendered` (for the share card).
 struct CDVChartView: UIViewRepresentable {
   let html: String
+  var onRendered: ((UIImage) -> Void)? = nil
 
-  func makeCoordinator() -> Coordinator { Coordinator() }
+  func makeCoordinator() -> Coordinator { Coordinator(onRendered: onRendered) }
 
   func makeUIView(context: Context) -> WKWebView {
-    let web = WKWebView()
+    let config = WKWebViewConfiguration()
+    config.userContentController.add(context.coordinator, name: "rendered")
+    let web = WKWebView(frame: .zero, configuration: config)
     web.isOpaque = false
     web.backgroundColor = .clear
     web.scrollView.isScrollEnabled = false
@@ -126,11 +137,66 @@ struct CDVChartView: UIViewRepresentable {
 
   func updateUIView(_ web: WKWebView, context: Context) {}
 
-  final class Coordinator: NSObject, WKNavigationDelegate {
+  static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
+    web.configuration.userContentController.removeScriptMessageHandler(forName: "rendered")
+  }
+
+  final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    let onRendered: ((UIImage) -> Void)?
+    private var done = false
+
+    init(onRendered: ((UIImage) -> Void)?) { self.onRendered = onRendered }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
       decisionHandler(action.navigationType == .other ? .allow : .cancel)
     }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+      guard !done, let onRendered, let web = message.webView else { return }
+      done = true
+      web.takeSnapshot(with: nil) { image, _ in
+        if let image { onRendered(image) }
+      }
+    }
+  }
+}
+
+// A CDV answer and its chart as one image for the share sheet (CLAUDE.md §7).
+enum CDVShare {
+  @MainActor
+  static func render(text: String, chart: UIImage, scale: CGFloat = 3) -> UIImage? {
+    let renderer = ImageRenderer(content: CDVShareCard(text: text, chart: chart))
+    renderer.scale = scale
+    renderer.proposedSize = ProposedViewSize(width: WeeklyShare.width, height: nil)
+    return renderer.uiImage
+  }
+}
+
+struct CDVShareCard: View {
+  let text: String
+  let chart: UIImage
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text(text)
+        .font(.system(size: 17))
+        .foregroundColor(.white)
+        .fixedSize(horizontal: false, vertical: true)
+      Image(uiImage: chart)
+        .resizable()
+        .scaledToFit()
+        .background(Color(white: 0.1))
+        .cornerRadius(10)
+      Text("SCORA")
+        .font(.caption.bold())
+        .tracking(2)
+        .foregroundColor(.orange)
+    }
+    .padding(24)
+    .frame(width: WeeklyShare.width, alignment: .leading)
+    .background(Color.black)
+    .environment(\.colorScheme, .dark)
   }
 }
 
@@ -145,6 +211,8 @@ struct ChatMessage: Identifiable {
   let text: String
   let drivers: [Driver]
   var chartHTML: String? = nil
+  // The answer and its drawn chart as one image, once the chart has rendered.
+  var shareImage: UIImage? = nil
 }
 
 extension ChatMessage {
@@ -183,6 +251,9 @@ struct ChatView: View {
           .font(.subheadline)
           .foregroundColor(.orange)
       }
+      #if DEBUG
+      .task { if messages.isEmpty, let demo = DemoMode.chat { messages = demo } }
+      #endif
       .padding()
       .background(Color.black)
       
@@ -263,10 +334,23 @@ struct ChatView: View {
           .cornerRadius(16)
 
         if let html = msg.chartHTML {
-          CDVChartView(html: html)
+          CDVChartView(html: html) { chart in
+            DispatchQueue.main.async {
+              guard let i = messages.firstIndex(where: { $0.id == msg.id }) else { return }
+              messages[i].shareImage = CDVShare.render(text: msg.text, chart: chart)
+            }
+          }
             .frame(height: 220)
             .background(Color(white: 0.1))
             .cornerRadius(12)
+          if let card = msg.shareImage {
+            let image = Image(uiImage: card)
+            ShareLink(item: image, preview: SharePreview("SCORA chart", image: image)) {
+              Label("Share", systemImage: "square.and.arrow.up")
+                .font(.caption.bold())
+                .foregroundColor(.gray)
+            }
+          }
         }
         
         ForEach(msg.drivers) { d in

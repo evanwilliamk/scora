@@ -399,6 +399,7 @@ struct DashboardView: View {
         if DemoMode.opensChart { chartSeries = DemoMode.read.series?["hrv"] }
         if DemoMode.opensPlan { showPlan = true }
         if DemoMode.opensWeekly { showWeekly = true }
+        if DemoMode.opensChat { showChat = true }
       }
       return
     }

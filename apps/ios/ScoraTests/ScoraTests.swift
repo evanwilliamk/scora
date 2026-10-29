@@ -315,6 +315,18 @@ final class ScoraTests: XCTestCase {
         XCTAssertGreaterThan(image?.size.height ?? 0, 120)
     }
 
+    @MainActor
+    func testCDVShareCardHoldsTextAndChart() throws {
+        let chart = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 180)).image { ctx in
+            UIColor.orange.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 300, height: 180))
+        }
+        let card = try XCTUnwrap(CDVShare.render(text: "HRV averaged 48ms over the month.", chart: chart, scale: 2))
+        XCTAssertEqual(card.size.width, WeeklyShare.width)
+        XCTAssertGreaterThan(card.size.height, 200, "text, chart and wordmark stack")
+        let spec = JSONValue.object(["mark": .string("line"), "data": .object(["values": .array([])])])
+        XCTAssertTrue(try XCTUnwrap(CDVChart.html(for: spec)).contains("messageHandlers.rendered"))
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")

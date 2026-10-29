@@ -41,6 +41,28 @@ enum DemoMode {
     ])
   }
 
+  // -demo-chat: chat opens with a sample answer and its chart (drawn by
+  // Vega-Lite from the CDN), so the share button can be seen. Sample data only.
+  static var opensChat: Bool { ProcessInfo.processInfo.arguments.contains("-demo-chat") }
+  static var chat: [ChatMessage]? {
+    guard opensChat else { return nil }
+    let values: [JSONValue] = [41, 44, 43, 47, 45, 46, 48, 52].enumerated().map { i, v in
+      .object(["week": .number(Double(i + 1)), "hrv": .number(Double(v))])
+    }
+    let spec = JSONValue.object([
+      "mark": .object(["type": .string("line"), "point": .bool(true)]),
+      "data": .object(["values": .array(values)]),
+      "encoding": .object([
+        "x": .object(["field": .string("week"), "type": .string("ordinal"), "title": .string("Week")]),
+        "y": .object(["field": .string("hrv"), "type": .string("quantitative"), "title": .string("HRV (ms)"), "scale": .object(["zero": .bool(false)])]),
+      ]),
+    ])
+    return [
+      ChatMessage(isUser: true, text: "How has my HRV moved over two months?", drivers: []),
+      ChatMessage(isUser: false, text: "HRV rose from 41ms to 52ms over eight weeks, with one dip in week 3.", drivers: [], chartHTML: CDVChart.html(for: spec)),
+    ]
+  }
+
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], zip([40, 0, 80, 0, nil, nil, nil] as [Int?], [40, 0, 50, 45, 0, 100, 0])).enumerated().map { i, p in
       WeekSoFarDay(date: "2026-10-\(19 + i)", weekday: p.0, runMin: p.1.0, plannedMin: p.1.1)
