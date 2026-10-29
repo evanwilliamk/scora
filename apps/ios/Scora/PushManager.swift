@@ -74,6 +74,9 @@ final class PushManager {
   // open made offline or before sign-in still counts (doc 10 1.1.2).
   private let pendingKey = "scora.pendingPushOpens"
   private let pendingQueue = DispatchQueue(label: "scora.pushOpens")
+  // Reports with a request out; touched only on pendingQueue. A second flush
+  // (launch, then the tap) skips them, so one open is logged once.
+  private var inFlight: [PushOpen] = []
 
   private func loadPending() -> [PushOpen] {
     guard let data = UserDefaults.standard.data(forKey: pendingKey) else { return [] }
@@ -91,6 +94,12 @@ final class PushManager {
     }
   }
 
+  // Signing out drops waiting reports, so they are never sent under the next
+  // athlete's id.
+  func clearPendingOpens() {
+    pendingQueue.async { self.savePending([]) }
+  }
+
   // Sends every waiting report; called on launch, after sign-in and after a tap.
   func flushOpens() {
     pendingQueue.async {
@@ -101,7 +110,8 @@ final class PushManager {
         let athleteId = UserDefaults.standard.string(forKey: self.athleteIdKey), !athleteId.isEmpty,
         let url = URL(string: "\(self.apiBase)/api/events/push-open")
       else { return }
-      for open in items {
+      for open in items where !self.inFlight.contains(open) {
+        self.inFlight.append(open)
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -110,9 +120,13 @@ final class PushManager {
         )
         URLSession.shared.dataTask(with: req) { _, resp, _ in
           let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-          // Delivered, or refused for good (400): either way it leaves the list.
-          guard (200..<300).contains(status) || status == 400 else { return }
-          self.pendingQueue.async { self.savePending(self.loadPending().filter { $0 != open }) }
+          self.pendingQueue.async {
+            self.inFlight.removeAll { $0 == open }
+            // Delivered, or refused for good (400): either way it leaves the list.
+            if (200..<300).contains(status) || status == 400 {
+              self.savePending(self.loadPending().filter { $0 != open })
+            }
+          }
         }.resume()
       }
     }
