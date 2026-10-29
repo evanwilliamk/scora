@@ -108,6 +108,8 @@ export function verifyTwilioSignature(authToken: string, url: string, params: Re
 // 'why' and 'more' replies (doc 08 §5 and §6): LLM expansions of the morning
 // read, sent through generateValidatedVoice with the read's own drivers, so
 // they pass the same driver-existence and banned-phrase checks (or fall back).
+// Callers must pass the read's full driver list, including 'Plan today' when
+// there is one, so the plan-override check runs too.
 export interface ExpansionPrompt {
   systemPrompt: string;
   userPrompt: string;
@@ -122,21 +124,30 @@ const EXPANSION_RULES = `RULES:
 - Calm, plain English. No exclamation points, no emoji, no hype. Never call yourself a coach.
 - Plain text only, for a WhatsApp message.`;
 
+// The posture in words, so the model reads a state, not a label it might
+// echo as an order ("rest" becoming "rest today").
+const POSTURE_WORDS: Record<string, string> = {
+  primed: 'primed: the body reads ready', steady: 'steady: nothing pulling either way',
+  moderate: 'moderate: some load showing', 'back-off': 'back-off: signs of strain',
+  rest: 'rest posture: the body reads depleted', taper: 'taper: load coming down before a race',
+};
+const postureLine = (p: string) => POSTURE_WORDS[p] ?? p;
+
 const driverBlock = (drivers: { metric: string; value: string; trend?: string }[]) =>
   drivers.map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`).join('\n') || '- none';
 
 export function whyPrompt(read: string, posture: string, drivers: { metric: string; value: string; trend?: string }[]): ExpansionPrompt {
   return {
     systemPrompt: `You are SCORA, an interpretation layer for endurance athletes. The athlete replied "why" to this morning's read. Answer in 1 or 2 sentences: lead with the driver value that most shaped today's read and say why it matters.\n\n${EXPANSION_RULES}`,
-    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${posture}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
+    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${postureLine(posture)}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
     maxTokens: 100,
   };
 }
 
 export function morePrompt(read: string, posture: string, drivers: { metric: string; value: string; trend?: string }[]): ExpansionPrompt {
   return {
-    systemPrompt: `You are SCORA, an interpretation layer for endurance athletes. The athlete replied "more" to this morning's read. Write 3 or 4 sentences that connect today's posture to the shape of the week, using the drivers.\n\n${EXPANSION_RULES}`,
-    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${posture}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
+    systemPrompt: `You are SCORA, an interpretation layer for endurance athletes. The athlete replied "more" to this morning's read. Write 3 or 4 sentences that connect today's posture to what the week so far shows, using the drivers. Describe what has happened; say nothing about what comes next.\n\n${EXPANSION_RULES}`,
+    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${postureLine(posture)}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
     maxTokens: 200,
   };
 }
