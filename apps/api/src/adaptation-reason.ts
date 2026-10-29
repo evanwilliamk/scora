@@ -7,7 +7,7 @@
 
 import type { AdaptationDecision } from '../../../packages/plan-engine/src/index';
 import type { Driver } from './metrics';
-import { validateVoice } from './validator';
+import { normalizeForCheck, validateVoice } from './validator';
 
 export const reasonLlmEnabled = () => process.env.ADAPTATION_REASON_LLM === 'on';
 
@@ -67,7 +67,8 @@ const DOWN = /\b(below|down|under|lower|dropped|fell|fallen|less)\b/i;
 // Problems with a candidate line, empty when it may be stored.
 export function reasonIssues(text: string, d: Decided, evidence: Driver[]): string[] {
   const issues: string[] = [];
-  const t = text.trim();
+  // Checks read typography-folded text (curly quotes, odd spaces, digits).
+  const t = normalizeForCheck(text).trim();
   if (!t) return ['empty'];
   if (t.length > 220) issues.push('too long');
   if ((t.match(/[.?]\s/g) ?? []).length > 1) issues.push('more than two sentences');

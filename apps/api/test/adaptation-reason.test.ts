@@ -102,3 +102,8 @@ test('the OpenAI wrapper sends gpt-4o-mini a short completion and reads the firs
   const failing = openAiReasonLlm('k', (async () => ({ ok: false, status: 500, text: async () => 'down' })) as any);
   await assert.rejects(failing('s', 'u'), /OpenAI 500/);
 });
+
+test('reason checks see through curly apostrophes and odd spaces (review 10-29)', () => {
+  const t = 'You’ll  want to rest on Wednesday.';
+  assert.notDeepEqual(reasonIssues(t, moved, evidence), []);
+});
