@@ -64,13 +64,10 @@ test("APNs refusals come back with Apple's reason, never thrown", async () => {
 });
 
 test('an unreachable host is a failed result, not a throw', async () => {
-  const closed = http2.createServer();
-  await new Promise<void>((r) => closed.listen(0, '127.0.0.1', () => r()));
-  const port = (closed.address() as AddressInfo).port;
-  await new Promise<void>((r) => closed.close(() => r()));
-  // The module read its host at import; a fresh import with a dead host.
-  process.env.APNS_TEST_HOST = `http://127.0.0.1:${port}`;
-  const fresh = await import(`../src/push?dead=${port}`);
+  // Port 1 on loopback: nothing listens there, and no other test can take it.
+  process.env.APNS_TEST_HOST = 'http://127.0.0.1:1';
+  // The module read its host at import; a fresh import picks up the dead host.
+  const fresh = await import('../src/push?dead');
   const r = await fresh.sendPush('x', { title: 't', body: 'b' });
   assert.equal(r.ok, false);
   assert.equal(r.status, 0);
