@@ -7,7 +7,7 @@ import {
   sendPush,
 } from './push';
 import { dueDeliveries, minutesLate } from './delivery';
-import { pushDeliveryLine } from './telemetry';
+import { pushDeliveryLine, pushSentLine } from './telemetry';
 import { pushBody } from './numeric-line';
 import type { PrefsStore } from './preferences';
 
@@ -34,6 +34,7 @@ function trimBody(text: string, max = 178): string {
 // once a read was generated and handed to APNs, so the day is marked done even
 // if a device rejects it (a retry would only spend another LLM call).
 export interface PushIo {
+  now?: () => Date;
   fetch: typeof fetch;
   getDeviceTokens: typeof getDeviceTokens;
   sendPush: typeof sendPush;
@@ -65,16 +66,25 @@ export async function pushToAthlete(
   const numbers: string = typeof body?.read?.numbers === 'string' ? body.read.numbers : '';
   if (!voice) return false;
 
+  const kind = path === '/api/read' ? 'daily' : 'weekly';
+  const sentAt = Math.floor((io.now?.() ?? new Date()).getTime() / 1000);
   const tokens = await getDeviceTokens(athleteId);
+  let accepted = 0;
   for (const token of tokens) {
     // Numbers first (PRD §5.A.2); the weekly read has none and sends the voice.
-    const r = await sendPush(token, { title, body: numbers ? pushBody(numbers, voice) : trimBody(voice) });
+    const r = await sendPush(
+      token,
+      { title, body: numbers ? pushBody(numbers, voice) : trimBody(voice) },
+      { kind, date: localDate, sent_at: sentAt },
+    );
+    if (r.ok) accepted++;
     if (r.reason === 'BadDeviceToken' || r.reason === 'Unregistered') {
       await removeDeviceToken(token);
     } else if (!r.ok) {
       log.warn(`scheduler: push to ${athleteId} failed (${r.status} ${r.reason ?? ''})`);
     }
   }
+  log.info(pushSentLine({ kind, athleteId, localDate, numericFirst: Boolean(numbers), devices: tokens.length, accepted }));
   return true;
 }
 

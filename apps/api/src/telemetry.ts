@@ -50,3 +50,29 @@ export function pushDeliveryLine(d: PushDelivery): string {
     delivered: d.delivered,
   })}`;
 }
+
+// One line per generated push: whether the daily message led with the numbers
+// line (doc 10 1.1.7) and how many devices APNs accepted.
+export function pushSentLine(d: { kind: 'daily' | 'weekly'; athleteId: string; localDate: string; numericFirst: boolean; devices: number; accepted: number }): string {
+  return `telemetry ${JSON.stringify({
+    event: 'push_sent',
+    kind: d.kind,
+    athlete: d.athleteId,
+    date: d.localDate,
+    numeric_first: d.numericFirst,
+    devices: d.devices,
+    accepted: d.accepted,
+  })}`;
+}
+
+// The athlete opened the app from a scheduled push (doc 10 1.1.2), with the
+// minutes since it was sent.
+export function pushOpenLine(d: { kind: 'daily' | 'weekly'; athleteId: string; localDate: string; afterMin: number }): string {
+  return `telemetry ${JSON.stringify({
+    event: 'push_open',
+    kind: d.kind,
+    athlete: d.athleteId,
+    date: d.localDate,
+    after_min: d.afterMin,
+  })}`;
+}

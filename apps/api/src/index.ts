@@ -18,7 +18,7 @@ import {
 import { consumeCdvQuota, pingDatabase, quotaDay } from './usage';
 import { generateValidatedVoice } from './voice';
 import { checkCdvWithRetry } from './cdv-check';
-import { trackVoice } from './telemetry';
+import { trackVoice, pushOpenLine } from './telemetry';
 
 class LlmHttpError extends Error {}
 import {
@@ -1237,6 +1237,21 @@ fastify.post('/api/register-device', async (request, reply) => {
       detail: e instanceof Error ? e.message : String(e),
     });
   }
+});
+
+// The app was opened from a scheduled push (doc 10 1.1.2: opened within 4h of
+// delivery). Logged only, nothing stored. The app echoes the push's kind,
+// local date and send time (unix seconds).
+fastify.post('/api/events/push-open', async (request, reply) => {
+  const { athleteId, kind, date, sentAt } = (request.body as any) || {};
+  if (typeof athleteId !== 'string' || !athleteId || (kind !== 'daily' && kind !== 'weekly')
+      || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || typeof sentAt !== 'number' || !Number.isFinite(sentAt)) {
+    return reply.code(400).send({ error: 'Missing: athleteId, kind (daily or weekly), date, sentAt' });
+  }
+  const afterMin = Math.max(0, Math.round((Date.now() - sentAt * 1000) / 60000));
+  fastify.log.info(pushOpenLine({ kind, athleteId, localDate: date, afterMin }));
+  return reply.code(204).send();
 });
 
 // Manual test push — send a sample alert to all of an athlete's devices.

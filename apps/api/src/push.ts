@@ -59,9 +59,12 @@ export interface PushResult {
 
 // Send one alert push to a device token. Resolves with the APNs status; never
 // throws for a rejected push (returns ok:false) so callers can prune tokens.
+// `extra` rides along under `scora` (kind, date, send time) so the app can
+// report the open (doc 10 1.1.2).
 export function sendPush(
   deviceToken: string,
-  alert: { title: string; body: string }
+  alert: { title: string; body: string },
+  extra?: Record<string, string | number>
 ): Promise<PushResult> {
   return new Promise((resolve) => {
     if (!apnsConfigured()) {
@@ -74,6 +77,7 @@ export function sendPush(
 
     const body = JSON.stringify({
       aps: { alert, sound: 'default' },
+      ...(extra ? { scora: extra } : {}),
     });
 
     const req = client.request({

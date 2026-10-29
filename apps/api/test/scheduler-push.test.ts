@@ -50,3 +50,22 @@ test('a failed or empty read pushes nothing and is not marked done', async () =>
     assert.equal(calls.sent.length, 0);
   }
 });
+
+test('each push carries kind, date and send time, and one push_sent line counts accepted devices', async () => {
+  const lines: string[] = [];
+  const log = { info: (m: string) => lines.push(m), warn: () => {}, error: () => {} };
+  const { stub, calls } = io(
+    { status: 200, body: { read: { voice: 'Body is settled.', numbers: 'Sleep 7:12' } } },
+    { good: { ok: true, status: 200 }, flaky: { ok: false, status: 503 } },
+  );
+  stub.now = () => new Date(Date.UTC(2026, 9, 22, 10, 0));
+  const data: unknown[] = [];
+  const send = stub.sendPush;
+  stub.sendPush = async (token, alert, d) => { data.push(d); return send(token, alert, d); };
+  await pushToAthlete('http://x', 'a1', '/api/read', 'Today', '2026-10-22', log, stub);
+  assert.equal(calls.sent.length, 2);
+  const sentAt = Date.UTC(2026, 9, 22, 10, 0) / 1000;
+  assert.deepEqual(data, [{ kind: 'daily', date: '2026-10-22', sent_at: sentAt }, { kind: 'daily', date: '2026-10-22', sent_at: sentAt }]);
+  const events = lines.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice(10)));
+  assert.deepEqual(events, [{ event: 'push_sent', kind: 'daily', athlete: 'a1', date: '2026-10-22', numeric_first: true, devices: 2, accepted: 1 }]);
+});

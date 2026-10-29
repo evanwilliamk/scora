@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deliveryGateReport, voiceGateReport } from '../src/gate-report';
-import { pushDeliveryLine, voiceEmissionLine } from '../src/telemetry';
+import { deliveryGateReport, morningGateReport, voiceGateReport } from '../src/gate-report';
+import { pushDeliveryLine, pushOpenLine, pushSentLine, voiceEmissionLine } from '../src/telemetry';
 
 test('counts emissions per surface from plain and JSON-wrapped log lines', () => {
   const plain = voiceEmissionLine({ surface: 'daily', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0 });
@@ -60,4 +60,24 @@ test('delivery gate: no lines is no data, not a pass', () => {
   const r = deliveryGateReport('telemetry {"event":"voice_emission","surface":"daily"}');
   assert.equal(r.pass, null);
   assert.match(r.lines[0], /NO DATA/);
+});
+
+test('morning gates: opens within 4h and numbers first, per athlete', () => {
+  const lines: string[] = [];
+  for (let d = 1; d <= 14; d++) {
+    const date = `2026-11-${String(d).padStart(2, '0')}`;
+    lines.push(pushSentLine({ kind: 'daily', athleteId: 'evan', localDate: date, numericFirst: d !== 5, devices: 1, accepted: 1 }));
+    if (d <= 11) lines.push(pushOpenLine({ kind: 'daily', athleteId: 'evan', localDate: date, afterMin: 30 }));
+  }
+  lines.push(pushOpenLine({ kind: 'daily', athleteId: 'evan', localDate: '2026-11-12', afterMin: 241 })); // too late
+  lines.push(pushOpenLine({ kind: 'weekly', athleteId: 'evan', localDate: '2026-11-13', afterMin: 5 })); // weekly does not count
+  let r = morningGateReport(lines.join('\n'));
+  assert.deepEqual(r.byAthlete.evan, { sent: 14, opened: 11, numericFirst: 13 });
+  assert.equal(r.openPass, false);
+  assert.equal(r.numericPass, false);
+  lines.push(pushOpenLine({ kind: 'daily', athleteId: 'evan', localDate: '2026-11-14', afterMin: 240 }));
+  r = morningGateReport(lines.join('\n'));
+  assert.equal(r.byAthlete.evan.opened, 12);
+  assert.equal(r.openPass, true);
+  assert.equal(morningGateReport('').openPass, null);
 });

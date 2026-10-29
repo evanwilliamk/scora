@@ -131,3 +131,65 @@ export function deliveryGateReport(logText: string): DeliveryReport {
     ],
   };
 }
+
+// doc 10 1.1.2: the app is opened from the push within 4 hours on at least 12
+// of 14 mornings. doc 10 1.1.7: every morning message leads with the numbers.
+export const OPEN_WITHIN_MIN = 240;
+export const OPEN_RATE_MIN = 12 / 14;
+
+export interface MorningReport {
+  byAthlete: Record<string, { sent: number; opened: number; numericFirst: number }>;
+  openPass: boolean | null;
+  numericPass: boolean | null;
+  lines: string[];
+}
+
+export function morningGateReport(logText: string): MorningReport {
+  const sent = new Map<string, Map<string, boolean>>(); // athlete -> date -> numeric first
+  const opened = new Map<string, Set<string>>(); // athlete -> dates opened in time
+  for (const e of telemetryEvents(logText)) {
+    if (e.kind !== 'daily' || typeof e.athlete !== 'string' || typeof e.date !== 'string') continue;
+    if (e.event === 'push_sent') {
+      const a = sent.get(e.athlete) ?? new Map();
+      sent.set(e.athlete, a);
+      a.set(e.date, e.numeric_first === true);
+    } else if (e.event === 'push_open' && typeof e.after_min === 'number' && e.after_min <= OPEN_WITHIN_MIN) {
+      const a = opened.get(e.athlete) ?? new Set();
+      opened.set(e.athlete, a);
+      a.add(e.date);
+    }
+  }
+  const byAthlete: MorningReport['byAthlete'] = {};
+  for (const [athlete, days] of sent) {
+    const o = opened.get(athlete) ?? new Set();
+    byAthlete[athlete] = {
+      sent: days.size,
+      opened: [...days.keys()].filter((d) => o.has(d)).length,
+      numericFirst: [...days.values()].filter(Boolean).length,
+    };
+  }
+  const athletes = Object.keys(byAthlete).sort();
+  if (athletes.length === 0) {
+    return { byAthlete, openPass: null, numericPass: null, lines: [
+      'Opened within 4h (bar: 12 of 14 mornings): NO DATA',
+      'Numeric-first morning messages (bar: 100%): NO DATA',
+    ] };
+  }
+  const openPass = athletes.every((k) => byAthlete[k].opened / byAthlete[k].sent >= OPEN_RATE_MIN);
+  const numericPass = athletes.every((k) => byAthlete[k].numericFirst === byAthlete[k].sent);
+  return {
+    byAthlete,
+    openPass,
+    numericPass,
+    lines: [
+      'athlete                               sent  opened 4h  numbers first',
+      ...athletes.map((k) => {
+        const d = byAthlete[k];
+        return `${k.padEnd(36)} ${String(d.sent).padStart(5)}  ${String(d.opened).padStart(9)}  ${String(d.numericFirst).padStart(13)}`;
+      }),
+      '',
+      `Opened within 4h (bar: 12 of 14 mornings, every athlete): ${openPass ? 'PASS' : 'FAIL'}`,
+      `Numeric-first morning messages (bar: 100%): ${numericPass ? 'PASS' : 'FAIL'}`,
+    ],
+  };
+}

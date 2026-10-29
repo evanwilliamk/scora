@@ -79,3 +79,12 @@ test('calorie estimates are off by default', async () => {
   delete process.env.CALORIE_ENGINE;
   assert.equal((await app.inject({ method: 'GET', url: '/api/calories?athleteId=a' })).statusCode, 404);
 });
+
+test('push-open logs a telemetry line and stores nothing; bad input is a 400', async () => {
+  const sentAt = Math.floor(Date.now() / 1000) - 600;
+  const ok = await post('/api/events/push-open', { athleteId: 'a', kind: 'daily', date: '2026-10-28', sentAt });
+  assert.equal(ok.statusCode, 204);
+  for (const bad of [{}, { athleteId: 'a', kind: 'hourly', date: '2026-10-28', sentAt }, { athleteId: 'a', kind: 'daily', date: 'today', sentAt }, { athleteId: 'a', kind: 'daily', date: '2026-10-28', sentAt: '1' }]) {
+    assert.equal((await post('/api/events/push-open', bad)).statusCode, 400);
+  }
+});
