@@ -320,11 +320,17 @@ fastify.post('/api/cdv', async (request, reply) => {
 
     // --- Weekday pattern detection (last 6 weeks) ---
     const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // Weekdays and "today" are the athlete's, never the server's (UTC on
+    // Railway): start_date_local is local wall time marked Z, so its date part
+    // is the athlete's day, and the app sends its local date.
+    const localDay = (a: any): string => String(a.start_date_local || a.start_date || '').slice(0, 10);
+    const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
+    const todayLocal = isoDay(body.today) ?? athleteLocalToday(activities);
     const sixWeeks = runs.filter(a => inWindow(a, daysAgo(42), new Date(now)));
     // Group runs by weekday
     const byDay: Record<number, any[]> = {};
     for (const a of sixWeeks) {
-      const dow = new Date(a.start_date_local || a.start_date).getDay();
+      const dow = weekdayOf(localDay(a));
       (byDay[dow] ||= []).push(a);
     }
     // Count distinct weeks in window to judge "how many of the last N weeks"
@@ -350,11 +356,10 @@ fastify.post('/api/cdv', async (request, reply) => {
       .sort((a, b) => b.occurrences - a.occurrences);
 
     // --- Today's usual signal ---
-    const todayDow = new Date(now).getDay();
+    const todayDow = weekdayOf(todayLocal);
     const todayName = WEEKDAYS[todayDow];
     const todayPattern = weekdayPatterns.find(p => p.dow === todayDow) || null;
-    const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
-    const ranToday = runs.some(a => new Date(a.start_date_local || a.start_date) >= startOfToday);
+    const ranToday = runs.some(a => localDay(a) === todayLocal);
     const todaySignal = todayPattern
       ? {
           today: todayName,

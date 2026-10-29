@@ -167,3 +167,29 @@ test('chat: prescriptive drafts are replaced, never sent', async () => {
   assert.equal(llmCalls().length, 2);
   assert.doesNotMatch(r.json().voice, /you should|you need to|go for|do a hard/i);
 });
+
+test('chat: weekday patterns and "today" are the athlete\'s day, not the server\'s', async () => {
+  // A US evening: the athlete's date is a day behind UTC.
+  const athleteToday = new Date(now - DAY).toISOString().slice(0, 10);
+  const back = (weeks: number) => new Date(Date.parse(`${athleteToday}T00:00:00Z`) - weeks * 7 * DAY).toISOString().slice(0, 10);
+  // Same weekday for four weeks, 07:00 local (start_date_local is wall time marked Z), today included.
+  const sameDay = [0, 1, 2, 3].map((w) => ({
+    type: 'Run', sport_type: 'Run', name: `Run ${w}`,
+    start_date: new Date(now - 20 * 3600_000 - w * 7 * DAY).toISOString(),
+    start_date_local: `${back(w)}T07:00:00Z`,
+    distance: 8000, moving_time: 2400, elapsed_time: 2400, average_heartrate: 140,
+  }));
+  connected({ cdv_count: 0, cdv_count_date: athleteToday });
+  connected({ cdv_count: 0, cdv_count_date: athleteToday });
+  guard.stravaActivities(sameDay);
+  guard.openAi('Runs have held steady.\nCHART: none');
+  const r = await post('/api/cdv', { athleteId: '42', message: 'Anything usual about today?', today: athleteToday });
+  assert.equal(r.statusCode, 200, r.body);
+  const user = llmCalls()[0].body.messages[1].content as string;
+  const data = JSON.parse(user.slice(user.indexOf('{'), user.lastIndexOf('}') + 1));
+  const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(`${athleteToday}T00:00:00Z`).getUTCDay()];
+  assert.equal(data.todaySignal.today, weekday);
+  assert.equal(data.todaySignal.loggedToday, true, 'this morning\'s run counts as today');
+  assert.ok(data.todaySignal.usualSession, 'four weeks on this weekday is a pattern');
+  assert.deepEqual(data.weekdayPatterns.map((p: any) => p.weekday), [weekday]);
+});
