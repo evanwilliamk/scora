@@ -182,6 +182,22 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(APIErrorText.message(from: Data(#"{"statusCode":500,"message":"boom"}"#.utf8), fallback: "fallback"), "fallback")
     }
 
+    func testPlanChangeDayIsTheLocalDay() {
+        let la = TimeZone(identifier: "America/Los_Angeles")!
+        // 03:00 UTC on the 29th is 8 pm on the 28th in Los Angeles.
+        XCTAssertEqual(PlanChanges.day("2026-10-29T03:00:00.000Z", zone: la), "Oct 28")
+        XCTAssertEqual(PlanChanges.day("2026-10-29T03:00:00Z", zone: la), "Oct 28")
+    }
+
+    func testTimeZoneSyncOnlyAfterAZoneWasSent() {
+        TimeZoneSync.forget()
+        XCTAssertFalse(TimeZoneSync.needsSync(current: "Europe/London"), "nothing sent yet: onboarding sends it")
+        TimeZoneSync.remember("America/New_York")
+        XCTAssertTrue(TimeZoneSync.needsSync(current: "Europe/London"))
+        XCTAssertFalse(TimeZoneSync.needsSync(current: "America/New_York"))
+        TimeZoneSync.forget()
+    }
+
     func testSeriesBaselineLabelDecodesWhenSent() throws {
         let json = """
         {"load":{"key":"load","label":"Run minutes, last 7 days","unit":"min","points":[{"date":"2026-10-18","value":110}],"baseline":98,"baselineLabel":"last week"},
@@ -381,7 +397,7 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(h[1].dismissed, "the short list endpoint has no dismissed field")
         XCTAssertEqual(PlanChanges.visible(rows).map(\.id), ["c", "a"], "the short list still hides displaced rows")
         XCTAssertEqual(h.map { PlanChanges.label($0.type) }, ["Made a rest day", "Moved", "Changed"])
-        XCTAssertEqual(PlanChanges.day("2026-10-28T06:00:00.000Z"), "Oct 28")
+        XCTAssertEqual(PlanChanges.day("2026-10-28T06:00:00.000Z", zone: TimeZone(identifier: "UTC")!), "Oct 28")
     }
 
     func testPushTapRoutesDailyToTodaysReadAndWeeklyToThisWeek() {

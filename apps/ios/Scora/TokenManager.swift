@@ -45,6 +45,8 @@ class TokenManager: ObservableObject {
   }
   
   func logout() {
+    PushManager.shared.unregister(athleteId: athleteId)
+    TimeZoneSync.forget()
     CalendarFeed.save(nil, for: athleteId) // the next athlete on this phone never refreshes this calendar
     UserDefaults.standard.removeObject(forKey: tokenKey)
     UserDefaults.standard.removeObject(forKey: athleteIdKey)

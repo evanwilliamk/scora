@@ -193,6 +193,7 @@ struct OnboardingView: View {
   }
 
   private func saveDelivery() async {
+    TimeZoneSync.remember(TimeZone.current.identifier)
     guard let url = URL(string: "\(apiBase)/api/preferences") else { return }
     await MainActor.run { isSaving = true; errorText = nil }
     var req = URLRequest(url: url)
@@ -213,6 +214,33 @@ struct OnboardingView: View {
     await MainActor.run {
       isSaving = false
       if ok { advance() } else { errorText = "Could not save the time. The read still arrives at 6:00 until it is set." }
+    }
+  }
+}
+
+// The morning push follows the athlete's time zone: onboarding sends it once,
+// and a trip changes it. When the app comes forward in a different zone, the
+// new one is sent so delivery stays at the chosen local time.
+enum TimeZoneSync {
+  private static let key = "scora.sentTimezone"
+  private static let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
+  static func remember(_ id: String) { UserDefaults.standard.set(id, forKey: key) }
+  static func forget() { UserDefaults.standard.removeObject(forKey: key) }
+  // True when a zone was sent before and the phone is now in another one.
+  static func needsSync(current: String = TimeZone.current.identifier) -> Bool {
+    guard let sent = UserDefaults.standard.string(forKey: key) else { return false }
+    return sent != current
+  }
+  static func syncIfChanged(athleteId: String) async {
+    let current = TimeZone.current.identifier
+    guard needsSync(current: current), !athleteId.isEmpty,
+          let url = URL(string: "\(apiBase)/api/preferences") else { return }
+    var req = URLRequest(url: url)
+    req.httpMethod = "PUT"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": athleteId, "timezone": current])
+    if let (_, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 {
+      remember(current)
     }
   }
 }

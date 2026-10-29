@@ -150,6 +150,17 @@ final class PushManager {
     }
   }
 
+  // Sign-out: this athlete's pushes stop reaching this phone.
+  func unregister(athleteId: String) {
+    guard let token = deviceToken, !athleteId.isEmpty,
+          let url = URL(string: "\(apiBase)/api/unregister-device") else { return }
+    var req = URLRequest(url: url)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": athleteId, "deviceToken": token])
+    URLSession.shared.dataTask(with: req).resume()
+  }
+
   private func sync() {
     guard
       let token = deviceToken,

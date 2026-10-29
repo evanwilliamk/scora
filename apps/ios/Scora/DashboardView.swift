@@ -201,7 +201,9 @@ struct DashboardView: View {
     }
     // Back from overnight in the background: yesterday's read is not today's.
     .onChange(of: scenePhase) { _, phase in
-      if phase == .active, loadedDay != nil, loadedDay != PlanDay.today() { Task { await loadRead() } }
+      guard phase == .active else { return }
+      if loadedDay != nil, loadedDay != PlanDay.today() { Task { await loadRead() } }
+      Task { await TimeZoneSync.syncIfChanged(athleteId: tokenManager.athleteId) }
     }
   }
 

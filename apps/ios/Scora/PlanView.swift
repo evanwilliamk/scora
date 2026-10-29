@@ -133,8 +133,19 @@ enum PlanChanges {
     }
   }
 
-  // "2026-10-28T06:00:00.000Z" -> "Oct 28" (UTC day the engine made it).
-  static func day(_ triggeredAt: String) -> String {
+  // "2026-10-28T06:00:00.000Z" -> "Oct 28", the athlete's local day (a change
+  // made at 8 pm Pacific is that day, not tomorrow's UTC date).
+  static func day(_ triggeredAt: String, zone: TimeZone = .current) -> String {
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let plain = ISO8601DateFormatter()
+    if let instant = iso.date(from: triggeredAt) ?? plain.date(from: triggeredAt) {
+      let out = DateFormatter()
+      out.locale = Locale(identifier: "en_US_POSIX")
+      out.timeZone = zone
+      out.dateFormat = "MMM d"
+      return out.string(from: instant)
+    }
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
     f.timeZone = TimeZone(identifier: "UTC")

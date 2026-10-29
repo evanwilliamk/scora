@@ -542,3 +542,10 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: checks run on NFKC-folded text; new advice, override, coach and surrender patterns; number words checked when they are tens compounds or carry a unit, so "two nights" stays fine. Alternative: an LLM judge pass (costs money, not deterministic).
 - Why: the validator is the guarantee (CLAUDE.md §3.2, §8.5). Stricter rules can raise the fallback rate; watch the `voice` telemetry lines after deploy.
 - To reverse: revert the commit on claude/validator-hardening, or drop single patterns in apps/api/src/validator.ts.
+
+### 2026-10-29: The morning push follows the athlete's time zone when they travel
+- Status: DECIDED
+- Branch: claude/ios-review-fixes
+- Context: onboarding sent the time zone once, so after a trip the push arrived at the old zone's chosen time while the app read the new local day.
+- Choice: when the app comes forward in a different zone than the one last sent, it sends the new zone; delivery stays at the chosen local time. Alternative: keep the home zone until the athlete changes it in settings.
+- To reverse: drop the TimeZoneSync call in DashboardView's scenePhase handler.

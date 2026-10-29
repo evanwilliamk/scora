@@ -146,6 +146,17 @@ export async function registerDeviceToken(athleteId: string, token: string): Pro
   if (error) throw new Error(`Failed to store device token: ${error.message}`);
 }
 
+// Sign-out on a phone: that athlete's pushes stop reaching it. Only the
+// athlete's own row for this token is removed.
+export async function unregisterDeviceToken(athleteId: string, token: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from('device_tokens')
+    .delete()
+    .eq('athlete_id', String(athleteId))
+    .eq('token', token);
+  if (error) throw new Error(`Failed to remove device token: ${error.message}`);
+}
+
 export async function getDeviceTokens(athleteId: string): Promise<string[]> {
   const { data, error } = await getSupabase()
     .from('device_tokens')

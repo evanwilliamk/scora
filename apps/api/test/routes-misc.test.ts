@@ -218,3 +218,14 @@ test('chat: a weekday counts once per week, however many runs fell on it (review
   assert.equal(p.avgMiles, 6.2, 'two 5 km runs make one 10 km day');
   assert.equal(p.avgMin, 50);
 });
+
+test('unregister-device removes only this athlete\'s row for this token', async () => {
+  const r = await post('/api/unregister-device', { athleteId: 'a1', deviceToken: 'abc123' });
+  assert.equal(r.statusCode, 200, r.body);
+  const q = rest.requests[0];
+  assert.equal(q.method, 'DELETE');
+  assert.equal(q.table, 'device_tokens');
+  assert.equal(q.params.get('athlete_id'), 'eq.a1');
+  assert.equal(q.params.get('token'), 'eq.abc123');
+  assert.equal((await post('/api/unregister-device', { athleteId: 'a1' })).statusCode, 400);
+});

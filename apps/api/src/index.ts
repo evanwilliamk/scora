@@ -22,7 +22,7 @@ import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 
 class LlmHttpError extends Error {}
 import {
-  registerDeviceToken,
+  registerDeviceToken, unregisterDeviceToken,
   getDeviceTokens,
   removeDeviceToken,
   sendPush,
@@ -1329,6 +1329,20 @@ fastify.post('/api/register-device', async (request, reply) => {
     return reply.code(500).send({
       error: 'Failed to register device',
     });
+  }
+});
+
+fastify.post('/api/unregister-device', async (request, reply) => {
+  const { athleteId, deviceToken } = (request.body as any) || {};
+  if (!athleteId || !deviceToken) {
+    return reply.code(400).send({ error: 'Missing: athleteId, deviceToken' });
+  }
+  try {
+    await unregisterDeviceToken(String(athleteId), String(deviceToken));
+    return reply.send({ ok: true });
+  } catch (e) {
+    fastify.log.error({ err: e }, 'unregister-device failed');
+    return reply.code(500).send({ error: 'Failed to remove device' });
   }
 });
 
