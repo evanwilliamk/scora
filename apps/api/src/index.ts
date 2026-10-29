@@ -952,6 +952,24 @@ fastify.get('/api/plan', async (request, reply) => {
   }
 });
 
+// The app scheduled a session on the athlete's Watch (doc 10 3.1.9: share of
+// sessions pushed). Records the time only; the Watch copy is the app's.
+fastify.post('/api/plan/workouts/:id/watch-sent', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const { athleteId } = (request.body as any) || {};
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return reply.code(404).send({ error: 'No such session.' });
+  }
+  try {
+    const ok = await planStore().markWatchSent(String(athleteId), id);
+    return ok ? reply.send({ id }) : reply.code(404).send({ error: 'No such session on your plan.' });
+  } catch (e) {
+    fastify.log.error(`Recording Watch send failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Recording the Watch send failed.' });
+  }
+});
+
 // The athlete marks a past or today's session done or missed. A miss is only
 // recorded: the plan engine never moves a missed session (CLAUDE.md §6.2).
 fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {

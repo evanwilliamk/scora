@@ -30,7 +30,7 @@ async function gates() {
 test('no SCORA plans: no data', async () => {
   const rows = await gates();
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].verdict, '3.1.10 NO DATA; 3.1.11 NO DATA');
+  assert.equal(rows[0].verdict, '3.1.10 NO DATA; 3.1.11 NO DATA; 3.1.9 NO DATA');
 });
 
 test('adherence and adaptation frequency per athlete and overall', async () => {
@@ -88,5 +88,18 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
     ['ALL', 6, 4, 3],
   ]);
   // 4 of 6 done is 66.7%; 3 adaptations over 3 athletes and 4 weeks.
-  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 66.7% FAIL; 3.1.11 0.25 adaptations per athlete per week PASS');
+  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 66.7% FAIL; 3.1.11 0.25 adaptations per athlete per week PASS; 3.1.9 NO DATA');
+
+  // 3.1.9 counts sessions with steps (the only ones the app can send), from
+  // each athlete's first send on. a: steps on days 5, 4, 3 and 1 ago; sent 4
+  // and 3; day 5 is before the first send. b never sent, so b is left out.
+  await session('a', a, 1, 'easy', null);
+  await db.query(`update scheduled_workouts set workout_structure_json = '[]' where athlete_id = 'a' and scheduled_date in (current_date - 5, current_date - 4, current_date - 3, current_date - 1)`);
+  await db.query(`update scheduled_workouts set workout_structure_json = '[]' where athlete_id = 'b'`);
+  await db.query(`update scheduled_workouts set workout_kit_pushed_at = now() where athlete_id = 'a' and scheduled_date in (current_date - 3, current_date - 4)`);
+  const after = await gates();
+  assert.deepEqual(after.map((r) => [r.athlete_id, Number(r.watch_sent), Number(r.sendable)]), [['a', 2, 3], ['b', 0, 0], ['d', 0, 0], ['ALL', 2, 3]]);
+  assert.match(after.at(-1).verdict, /; 3\.1\.9 66\.7% sent to the Watch FAIL$/);
+  await db.query(`update scheduled_workouts set workout_kit_pushed_at = now() where athlete_id = 'a' and scheduled_date = current_date - 1`);
+  assert.match((await gates()).at(-1).verdict, /; 3\.1\.9 100\.0% sent to the Watch PASS$/);
 });
