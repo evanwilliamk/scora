@@ -8,6 +8,12 @@ struct WeeklyStat: Decodable, Identifiable {
   let value: String
   let trend: String?
 
+  init(label: String, value: String, trend: String?) {
+    self.label = label
+    self.value = value
+    self.trend = trend
+  }
+
   enum CodingKeys: String, CodingKey { case label, value, trend }
 }
 
@@ -26,6 +32,7 @@ struct WeeklyView: View {
   @State private var stats: [WeeklyStat] = []
   @State private var isLoading = false
   @State private var errorText: String?
+  @State private var shareImage: Image?
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -41,6 +48,14 @@ struct WeeklyView: View {
           .font(.headline.bold())
           .foregroundColor(.white)
         Spacer()
+        // PRD §5.A.5: the Sunday card can be forwarded (doc 10 2.1.6).
+        if let shareImage {
+          ShareLink(item: shareImage, preview: SharePreview("SCORA Sunday review", image: shareImage)) {
+            Image(systemName: "square.and.arrow.up")
+              .foregroundColor(.white)
+          }
+          .accessibilityLabel("Share this week's review")
+        }
       }
       .padding()
       .background(Color.black)
@@ -71,6 +86,14 @@ struct WeeklyView: View {
     .background(Color.black)
     .preferredColorScheme(.dark)
     .task {
+      #if DEBUG
+      if let demo = DemoMode.weekly {
+        read = demo.read
+        stats = demo.stats
+        shareImage = WeeklyShare.render(voice: demo.read.voice, stats: demo.stats).map(Image.init(uiImage:))
+        return
+      }
+      #endif
       if read == nil { await loadWeekly() }
     }
   }
@@ -137,10 +160,70 @@ struct WeeklyView: View {
       await MainActor.run {
         read = decoded.read
         stats = decoded.stats
+        shareImage = WeeklyShare.render(voice: decoded.read.voice, stats: decoded.stats).map(Image.init(uiImage:))
         isLoading = false
       }
     } catch {
       await MainActor.run { errorText = error.localizedDescription; isLoading = false }
     }
+  }
+}
+
+// MARK: - Share card
+
+// The Sunday review as an image for the share sheet: the read and its numbers,
+// nothing else about the athlete. Rendered on the phone (PRD §5.A.5 has it
+// server-side; see DECISIONS.md 2026-10-28).
+enum WeeklyShare {
+  static let width: CGFloat = 360
+
+  @MainActor
+  static func render(voice: String, stats: [WeeklyStat], scale: CGFloat = 3) -> UIImage? {
+    let renderer = ImageRenderer(content: WeeklyShareCard(voice: voice, stats: Array(stats.prefix(4))))
+    renderer.scale = scale
+    renderer.proposedSize = ProposedViewSize(width: width, height: nil)
+    return renderer.uiImage
+  }
+}
+
+struct WeeklyShareCard: View {
+  let voice: String
+  let stats: [WeeklyStat]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text("SUNDAY REVIEW")
+        .font(.caption.bold())
+        .foregroundColor(.gray)
+      Text(voice)
+        .font(.system(size: 19, weight: .regular, design: .serif))
+        .foregroundColor(.white)
+        .fixedSize(horizontal: false, vertical: true)
+      if !stats.isEmpty {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+          ForEach(stats) { stat in
+            VStack(alignment: .leading, spacing: 4) {
+              Text(stat.label).font(.caption2.bold()).foregroundColor(.gray)
+              Text(stat.value).font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
+              if let trend = stat.trend, !trend.isEmpty {
+                Text(trend).font(.caption2).foregroundColor(.orange)
+              }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(10)
+            .background(Color(white: 0.11))
+            .cornerRadius(10)
+          }
+        }
+      }
+      Text("SCORA")
+        .font(.caption.bold())
+        .tracking(2)
+        .foregroundColor(.orange)
+    }
+    .padding(24)
+    .frame(width: WeeklyShare.width, alignment: .leading)
+    .background(Color.black)
+    .environment(\.colorScheme, .dark)
   }
 }

@@ -461,3 +461,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: leave unmarked out of the denominator (flatters adherence when athletes stop marking); store activity dates to match them (needs a migration and a sync job).
 - Why: a gate should not pass because nobody marks sessions. The unmarked column is shown so the cause is visible.
 - To reverse: in apps/api/scripts/plan-gates.sql, divide by `done + missed` instead of `scheduled`.
+
+### 2026-10-28: Sunday review share card rendered on the phone
+- Status: DECIDED
+- Branch: claude/weekly-share
+- Context: PRD §5.A.5 says the forwardable card image is generated server-side, and nothing existed yet.
+- Choice: SwiftUI ImageRenderer on the phone makes a 360pt card (at 3x) of the read and up to 4 stats with a SCORA wordmark, shared through ShareLink. Nothing is uploaded.
+- Alternatives: a server image endpoint (needs an image library on Railway and a second copy of the layout).
+- Why: same content, no server work, no athlete data leaving the phone except what the athlete chooses to share.
+- To reverse: remove the ShareLink in WeeklyView.swift; WeeklyShare stays usable for a server version later.
