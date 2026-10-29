@@ -104,3 +104,14 @@ test('watch-sent rejects a missing athlete and a malformed id before storage', a
   assert.equal((await post('/api/plan/workouts/0b7c1d2e-1111-2222-3333-444455556666/watch-sent', {})).statusCode, 400);
   assert.equal((await post('/api/plan/workouts/not-an-id/watch-sent', { athleteId: 'a' })).statusCode, 404);
 });
+
+test('adaptation history is off with plan adaptations, and needs an athlete', async () => {
+  delete process.env.PLAN_ADAPTATIONS;
+  assert.equal((await app.inject({ method: 'GET', url: '/api/plan/adaptations/history?athleteId=a' })).statusCode, 404);
+  process.env.PLAN_ADAPTATIONS = 'on';
+  try {
+    assert.equal((await app.inject({ method: 'GET', url: '/api/plan/adaptations/history' })).statusCode, 400);
+  } finally {
+    delete process.env.PLAN_ADAPTATIONS;
+  }
+});

@@ -1127,6 +1127,22 @@ fastify.get('/api/plan/adaptations', async (request, reply) => {
   }
 });
 
+// Every change the engine made to the active plan, dismissed ones included
+// (PRD §5.B.1). Same flag and coach rule as the list above.
+fastify.get('/api/plan/adaptations/history', async (request, reply) => {
+  if (!adaptationsEnabled()) return reply.code(404).send({ error: 'Not found' });
+  const { athleteId } = request.query as { athleteId?: string };
+  if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
+  try {
+    const store = adaptStore();
+    if (await store.hasActiveCoachPlan(athleteId)) return reply.send({ adaptations: [] });
+    return reply.send({ adaptations: await store.history(athleteId, 200) });
+  } catch (e) {
+    fastify.log.error(`Adaptation history load failed: ${e instanceof Error ? e.message : e}`);
+    return reply.code(500).send({ error: 'Loading plan changes failed.' });
+  }
+});
+
 // Weekly read — the Sunday review. Reflects on the past 7 days (vs the prior 7)
 // and names the week's shape in the voice. Same rules as the daily read:
 // non-prescriptive, numeric-first, only cites drivers that exist.

@@ -95,6 +95,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] WorkoutKit export: a plan session's structure becomes a CustomWorkout, Watch total equal to the plan (`claude/workoutkit-export`, on `claude/plan-adapt-job`; converter + tests only)
 - [~] CDV daily quota resets at the athlete's local midnight, not UTC (`claude/cdv-local-day`, on `claude/plan-adapt-job`)
 - [~] WorkoutKit scheduling, code half: Send to Watch on SCORA plan sessions, WorkoutScheduler behind a protocol, tested with a fake (`claude/workoutkit-schedule`, on `claude/integration-2026-10-22`)
+- [~] Full plan change history (PRD §5.B.1): `GET /api/plan/adaptations/history` (active plan, dismissed included and marked) and an All plan changes list on Your Plan (`claude/adaptation-history`, on `claude/integration-2026-10-28`; not seen on the simulator, no demo data for changes)
 - [~] Dismiss a plan change (doc 07 §5): route + x on Your Plan (`claude/dismiss-adaptation`, on `claude/integration-2026-10-22`)
 - [~] Missed workouts: Past sessions on Your Plan with Done / Missed; a miss is recorded, never moved (`claude/missed-workouts`, on `claude/integration-2026-10-22`; seen on the simulator)
 - [~] Plan tier gates 3.1.10 (adherence, from the athlete's done/missed marks) and 3.1.11 (adaptations per athlete per week) as a read-only SQL report, `apps/api/scripts/plan-gates.sql`, paste into the Supabase SQL editor (`claude/plan-gates`, on `claude/integration-2026-10-22`; run on PGlite in tests)

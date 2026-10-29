@@ -45,6 +45,15 @@ test('recent changes: newest first with a stable tie-break, capped', async () =>
   ]);
 });
 
+test('history: active plan, dismissed included and flagged, newest first', async () => {
+  const sb = fakeSupabase([{ data: [{ id: 'x', triggered_at: '2026-10-28T06:00:00+00:00', dismissed_at: '2026-10-28T07:00:00+00:00', training_plans: { current_status: 'active' } }] }]);
+  const [row] = await supabaseAdaptStore(sb).history('a1', 200);
+  assert.deepEqual(row, { id: 'x', triggered_at: '2026-10-28T06:00:00.000Z', dismissed: true });
+  const calls = sb.queries[0].calls;
+  assert.equal(calls.some((c) => c[0] === 'is'), false, 'no dismissed filter');
+  assert.deepEqual(calls.filter((c) => c[0] === 'eq').map((c) => c.slice(1)), [['athlete_id', 'a1'], ['training_plans.current_status', 'active']]);
+});
+
 test('the fake rejects builder methods supabase-js does not have', () => {
   const sb = fakeSupabase();
   assert.throws(() => (sb.from('x') as any).eqq('a', 1), /no builder method "eqq"/);
