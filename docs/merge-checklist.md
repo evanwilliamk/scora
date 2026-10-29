@@ -10,6 +10,10 @@ On without a flag once merged and deployed (with a new app build where it is iOS
 - Error replies carry only `error`, no `detail` (causes are in the Railway log; the app never read `detail`).
 - Chat, weekly and read ask Strava by date (8 weeks, 15 days, 35 days, paged) instead of the 50 most recent activities: still one Strava call per request unless an athlete logged over 200 activities in the window.
 - Chat weekday patterns and "today" follow the athlete's local date.
+- The voice validator is stricter (typography folded, paraphrased advice, unit and direction of driver numbers): watch the `voice` log lines' fallback rate for a few days after deploy.
+- Oura "last night" counts only a night dated today; before the ring syncs, the Sleep card shows its no-data line.
+- Treadmill and Zwift runs count toward load and volume (not race predictions).
+- New route `POST /api/unregister-device` (sign-out); a new app build sends it, and resends the time zone after travel.
 
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
 
