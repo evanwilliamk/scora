@@ -510,3 +510,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: CLAUDE.md §3.3 gives Plan and Coach tiers a workout line in the morning message; there is no tier column yet (Q30).
 - Choice: show it when today's session has steps, which only a SCORA plan (Plan tier) produces. Pasted and imported plans (Free tier) get no line; the voice reads them instead. The push keeps the line whole and shortens the voice to fit 178 characters.
 - To reverse: drop `planTodayLine` in the read route; the app and push ignore a missing field.
+
+### 2026-10-29: API error replies drop the internal `detail` text
+- Status: DECIDED
+- Branch: claude/no-error-detail
+- Context: 14 older routes sent `detail: e.message` to the caller (OpenAI error bodies, Supabase and Strava messages); the routes take a bare athleteId, so anyone could read them. The app never reads `detail`.
+- Choice: plain `error` only, the cause logged server-side (the three Strava 401s gained a warn line). Alternative: keep `detail` behind NODE_ENV=development.
+- Why: matches the newer routes, and error text from vendors can carry ids or tokens.
+- To reverse: revert the commit on claude/no-error-detail.

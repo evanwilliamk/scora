@@ -132,3 +132,15 @@ test('plan block is off unless PLAN_GENERATION=on, and needs an athlete and a da
     delete process.env.PLAN_GENERATION;
   }
 });
+
+test('error replies carry a plain message, never the internal error text', async () => {
+  // No Supabase env: token lookup and device storage both fail inside.
+  for (const url of ['/api/read', '/api/weekly', '/api/cdv']) {
+    const r = await post(url, { athleteId: 'a1', message: 'How was my week?' });
+    assert.equal(r.statusCode, 401, url);
+    assert.deepEqual(Object.keys(r.json()), ['error'], url);
+  }
+  const dev = await post('/api/register-device', { athleteId: 'a1', deviceToken: 'abc' });
+  assert.equal(dev.statusCode, 500);
+  assert.deepEqual(dev.json(), { error: 'Failed to register device' });
+});
