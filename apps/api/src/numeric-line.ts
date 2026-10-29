@@ -23,15 +23,19 @@ export function numericLine(drivers: Driver[]): string {
 // APNs body: the numbers on the first line, the read below, trimmed to what
 // a notification shows (~178 characters).
 // The Plan tier's "Today:" line (CLAUDE.md §3.3) goes last. The voice gives
-// way to it, but keeps at least VOICE_ROOM characters (numbers included), so
-// a very long session line is trimmed rather than pushing the read out.
+// way to it but keeps about VOICE_ROOM characters of its own, so a very long
+// session line is trimmed rather than pushing the read out. A line that would
+// be trimmed to a stub is left off.
 const VOICE_ROOM = 60;
+const MIN_LINE = 20;
 const clip = (s: string, n: number) => (s.length <= n ? s : s.slice(0, Math.max(0, n - 1)).trimEnd() + '…');
 
 export function pushBody(numbers: string, voice: string, max = 178, today = ''): string {
   const read = voice.replace(/\s+/g, ' ').trim();
   const text = numbers ? `${numbers}\n${read}` : read;
-  const line = today ? clip(today, max - 1 - Math.min(text.length, VOICE_ROOM)) : '';
-  const tail = line ? `\n${line}` : '';
-  return clip(text, max - tail.length) + tail;
+  const kept = (numbers ? numbers.length + 1 : 0) + Math.min(read.length, VOICE_ROOM);
+  const room = max - (text ? 1 : 0) - kept;
+  const line = today && room >= MIN_LINE ? clip(today, room) : '';
+  if (!line) return clip(text, max);
+  return text ? `${clip(text, max - line.length - 1)}\n${line}` : line;
 }

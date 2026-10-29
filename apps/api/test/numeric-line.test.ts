@@ -47,9 +47,24 @@ test('pushBody: a long Today line is trimmed so the read keeps room (review)', (
   assert.ok(body.length <= 178, `length ${body.length}`);
   const [nums, voice, line] = body.split('\n');
   assert.equal(nums, 'Sleep 7:12 · Load 412');
-  assert.ok(nums.length + 1 + voice.length >= 60);
+  assert.equal(voice, 'Body is settled and HRV is climbing for the second night.', 'a short voice is kept whole');
   assert.ok(line.startsWith('Today: ') && line.endsWith('…'));
   // A short read is never padded: the Today line takes the room it leaves.
   const short = pushBody('', 'Settled.', 178, 'Today: ' + 'q'.repeat(150));
   assert.equal(short, 'Settled.\nToday: ' + 'q'.repeat(150));
+});
+
+test('pushBody: the voice keeps its room however long the numbers line is (review 2)', () => {
+  const numbers = 'Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · RHR 48 · Load 412 (+12% wk)';
+  const body = pushBody(numbers, 'Body is settled and HRV is climbing for the second night in a row.', 178, 'Today: ' + 'z'.repeat(200));
+  assert.ok(body.length <= 178);
+  const [, voice, line] = body.split('\n');
+  assert.ok(voice.length >= 58, `voice kept ${voice.length}`);
+  assert.ok(line.startsWith('Today: '));
+  // No room for a useful line: it is left off, never a stub.
+  const tight = pushBody(numbers, 'v'.repeat(300), 140, 'Today: 45-minute tempo.');
+  assert.equal(tight.split('\n').length, 2);
+  assert.ok(tight.length <= 140);
+  // Nothing to read: the line alone, no leading newline.
+  assert.equal(pushBody('', '', 178, 'Today: 45-minute tempo.'), 'Today: 45-minute tempo.');
 });
