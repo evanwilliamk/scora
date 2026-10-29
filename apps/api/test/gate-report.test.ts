@@ -13,11 +13,11 @@ test('counts emissions per surface from plain and JSON-wrapped log lines', () =>
   assert.deepEqual(r.bySurface.daily, { emissions: 2, caught: 1, fallbacks: 1, bannedEmissions: 1 });
   assert.deepEqual(r.bySurface.cdv, { emissions: 1, caught: 0, fallbacks: 0, bannedEmissions: 0 });
   assert.equal(r.total.emissions, 3);
-  assert.match(r.lines.at(-1)!, /Banned-phrase hit rate 33\.3% .*FAIL/);
+  assert.match(r.lines.join('\n'), /Banned-phrase hit rate 33\.3% .*FAIL/);
 });
 
 test('no telemetry lines: no data, not a pass', () => {
-  assert.match(voiceGateReport('nothing here').lines.at(-1)!, /NO DATA/);
+  assert.match(voiceGateReport('nothing here').lines.join('\n'), /Banned-phrase hit rate n\/a .*NO DATA/);
 });
 
 test('a pino line wrapped again by a log export still parses (review 4)', () => {
@@ -80,4 +80,14 @@ test('morning gates: opens within 4h and numbers first, per athlete', () => {
   assert.equal(r.byAthlete.evan.opened, 12);
   assert.equal(r.openPass, true);
   assert.equal(morningGateReport('').openPass, null);
+});
+
+test('fail-throughs count only emissions that carry final_ok', () => {
+  const line = (finalOk?: boolean) => voiceEmissionLine({ surface: 'daily', attempts: 2, fallback: true, bannedHits: [], unbackedCount: 1, finalOk });
+  let r = voiceGateReport([line(true), line(undefined)].join('\n'));
+  assert.deepEqual([r.failThroughs, r.checked], [0, 1]);
+  assert.match(r.lines.at(-1)!, /fail-throughs 0 of 1 .*PASS/);
+  r = voiceGateReport([line(true), line(false)].join('\n'));
+  assert.match(r.lines.at(-1)!, /fail-throughs 1 of 2 .*FAIL/);
+  assert.match(voiceGateReport('').lines.at(-1)!, /NO DATA/);
 });

@@ -79,3 +79,14 @@ test('model and token limit pass through', async () => {
   assert.equal(calls[0].model, 'gpt-4o-mini');
   assert.equal(calls[0].max_tokens, 150);
 });
+
+test('the telemetry line records whether the emitted text passed (gate 1.1.4)', async () => {
+  const lines: string[] = [];
+  const log = { warn() {}, error() {}, info: (m: string) => lines.push(m) };
+  stubOpenAI(['You should do an easy run today.', 'Crush it today!']);
+  await generateValidatedVoice({ ...params, surface: 'daily', log });
+  stubOpenAI(['Load is 412 min. HRV sits at 52ms.']);
+  await generateValidatedVoice({ ...params, surface: 'daily', log });
+  const events = lines.map((l) => JSON.parse(l.slice('telemetry '.length)));
+  assert.deepEqual(events.map((e) => [e.fallback, e.final_ok]), [[true, true], [false, true]]);
+});

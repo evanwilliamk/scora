@@ -15,6 +15,6 @@ const delivery = deliveryGateReport(text);
 const morning = morningGateReport(text);
 console.log([...report.lines, '', ...delivery.lines, '', ...morning.lines].join('\n'));
 // 0 pass, 1 a bar failed, 3 no telemetry lines found (not a pass).
-const voiceFail = report.total.emissions > 0 && report.bannedRate >= 0.005;
+const voiceFail = (report.total.emissions > 0 && report.bannedRate >= 0.005) || report.failThroughs > 0;
 const noData = report.total.emissions === 0 && delivery.pass === null;
 process.exit(noData ? 3 : voiceFail || delivery.pass === false || morning.openPass === false || morning.numericPass === false ? 1 : 0);

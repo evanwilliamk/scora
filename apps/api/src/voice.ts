@@ -82,7 +82,10 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
   const seen: string[] = [];
   let unbacked = 0;
   const done = (r: GenerateResult): GenerateResult => {
-    if (surface) trackVoice(log, { surface, attempts: r.attempts, fallback: r.usedFallback, bannedHits: seen, unbackedCount: unbacked });
+    // A model draft is only returned once it passed; the fallback is checked
+    // here too, so a fail-through would show in the gate report.
+    const finalOk = r.usedFallback ? validateVoice(r.voice, drivers).ok : r.validation.ok;
+    if (surface) trackVoice(log, { surface, attempts: r.attempts, fallback: r.usedFallback, bannedHits: seen, unbackedCount: unbacked, finalOk });
     return r;
   };
   const note = (v: ValidationResult) => { seen.push(...v.bannedHits); unbacked += v.unbackedNumbers.length; };

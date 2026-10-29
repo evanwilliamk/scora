@@ -65,7 +65,7 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] Calendar import refresh: the phone re-imports a saved link when Your Plan opens (12 h), plus a Refresh button (`claude/ical-refresh`, on `claude/integration-2026-10-22`)
 - [~] Validator and banned-phrase telemetry as structured log lines, ready to forward to PostHog (`claude/validator-telemetry`, on `claude/integration-2026-10-22`)
 - [~] Morning delivery on-time gate (doc 10 1.1.1): `push_delivery` telemetry per scheduled push, a per-athlete on-time table in `scripts/voice-gate-report.ts`, scheduler ticks every minute (`claude/delivery-telemetry`, on `claude/integration-2026-10-22`)
-- [~] Phase 0 gates 1.1.2 and 1.1.7 measurable: pushes carry kind, date and send time; the app reports a tap to `POST /api/events/push-open` (logged, not stored); the gate report scores opens within 4h and numbers-first mornings (`claude/phase0-gates`, on `claude/delivery-telemetry`)
+- [~] Phase 0 gates 1.1.2 and 1.1.7 measurable: pushes carry kind, date and send time; the app reports a tap to `POST /api/events/push-open` (logged, not stored); the gate report scores opens within 4h, numbers-first mornings and validator fail-throughs (1.1.4, `final_ok` on each voice line) (`claude/phase0-gates`, on `claude/delivery-telemetry`)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys). Done when validator catches, banned-phrase hits and CDV fallbacks are counted in PostHog (doc 10 §6.1 rates)
 
 ## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags that default off, no deploy or money)

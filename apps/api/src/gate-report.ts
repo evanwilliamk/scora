@@ -13,6 +13,8 @@ export interface GateReport {
   bySurface: Record<string, SurfaceStats>;
   total: SurfaceStats;
   bannedRate: number;
+  failThroughs: number; // emitted text that did not pass (final_ok false)
+  checked: number; // emissions carrying final_ok
   lines: string[];
 }
 
@@ -41,8 +43,14 @@ export function telemetryEvents(logText: string): any[] {
 export function voiceGateReport(logText: string): GateReport {
   const bySurface: Record<string, SurfaceStats> = {};
   const total: SurfaceStats = { emissions: 0, caught: 0, fallbacks: 0, bannedEmissions: 0 };
+  let failThroughs = 0;
+  let checked = 0;
   for (const e of telemetryEvents(logText)) {
     if (e.event !== 'voice_emission') continue;
+    if (typeof e.final_ok === 'boolean') {
+      checked++;
+      if (!e.final_ok) failThroughs++;
+    }
     const s = (bySurface[e.surface] ??= { emissions: 0, caught: 0, fallbacks: 0, bannedEmissions: 0 });
     for (const t of [s, total]) {
       t.emissions++;
@@ -60,8 +68,9 @@ export function voiceGateReport(logText: string): GateReport {
     `${'all'.padEnd(18)} ${String(total.emissions).padStart(9)}  ${pct(total.caught, total.emissions).padStart(6)}  ${pct(total.fallbacks, total.emissions).padStart(8)}  ${pct(total.bannedEmissions, total.emissions).padStart(6)}`,
     '',
     `Banned-phrase hit rate ${pct(total.bannedEmissions, total.emissions)} (bar: under 0.5%): ${total.emissions === 0 ? 'NO DATA' : bannedRate < BANNED_RATE_MAX ? 'PASS' : 'FAIL'}`,
+    `Validator fail-throughs ${failThroughs} of ${checked} checked emissions (bar: 0): ${checked === 0 ? 'NO DATA' : failThroughs === 0 ? 'PASS' : 'FAIL'}`,
   ];
-  return { bySurface, total, bannedRate, lines };
+  return { bySurface, total, bannedRate, failThroughs, checked, lines };
 }
 
 // doc 10 1.1.1: the morning read lands within 5 minutes of the set time on
