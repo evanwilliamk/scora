@@ -193,3 +193,28 @@ test('chat: weekday patterns and "today" are the athlete\'s day, not the server\
   assert.ok(data.todaySignal.usualSession, 'four weeks on this weekday is a pattern');
   assert.deepEqual(data.weekdayPatterns.map((p: any) => p.weekday), [weekday]);
 });
+
+test('chat: a weekday counts once per week, however many runs fell on it (review 10-29)', async () => {
+  const athleteToday = new Date(now).toISOString().slice(0, 10);
+  const back = (days: number) => new Date(Date.parse(`${athleteToday}T00:00:00Z`) - days * DAY).toISOString().slice(0, 10);
+  // Two runs (5 km each) on the same weekday, 1, 2 and 3 weeks back.
+  const doubles = [7, 14, 21].flatMap((d) => [6, 18].map((h) => ({
+    type: 'Run', sport_type: 'Run', name: `Run ${d}-${h}`,
+    start_date: new Date(Date.parse(`${back(d)}T${String(h).padStart(2, '0')}:00:00Z`)).toISOString(),
+    start_date_local: `${back(d)}T${String(h).padStart(2, '0')}:00:00Z`,
+    distance: 5000, moving_time: 1500, elapsed_time: 1500, average_heartrate: 140,
+  })));
+  connected({ cdv_count: 0, cdv_count_date: athleteToday });
+  connected({ cdv_count: 0, cdv_count_date: athleteToday });
+  guard.stravaActivities(doubles);
+  guard.openAi('Runs have held steady.\nCHART: none');
+  const r = await post('/api/cdv', { athleteId: '42', message: 'Do I have a usual day?', today: athleteToday });
+  assert.equal(r.statusCode, 200, r.body);
+  const user = llmCalls()[0].body.messages[1].content as string;
+  const data = JSON.parse(user.slice(user.indexOf('{'), user.lastIndexOf('}') + 1));
+  assert.equal(data.weekdayPatterns.length, 1);
+  const p = data.weekdayPatterns[0];
+  assert.equal(p.weeksSeen, '3/6', 'three weeks, not six runs');
+  assert.equal(p.avgMiles, 6.2, 'two 5 km runs make one 10 km day');
+  assert.equal(p.avgMin, 50);
+});

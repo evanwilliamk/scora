@@ -302,9 +302,9 @@ fastify.post('/api/cdv', async (request, reply) => {
     const miles = (arr: any[]) => arr.reduce((s, a) => s + (a.distance || 0) / M, 0);
     const thisWeekMiles = miles(thisWeek);
     const lastWeekMiles = miles(lastWeek);
-    const weekDelta = lastWeekMiles > 0
-      ? `${(((thisWeekMiles - lastWeekMiles) / lastWeekMiles) * 100).toFixed(0)}%`
-      : 'n/a';
+    // Signed like the dashboard, never "-0%".
+    const weekDeltaPct = lastWeekMiles > 0 ? Math.round(((thisWeekMiles - lastWeekMiles) / lastWeekMiles) * 100) : null;
+    const weekDelta = weekDeltaPct === null ? 'n/a' : `${weekDeltaPct > 0 ? '+' : ''}${weekDeltaPct === 0 ? 0 : weekDeltaPct}%`;
 
     // Per-run detail for the last 10 runs (this is what makes answers vary)
     const recentRuns = runs.slice(0, 10).map(a => ({
@@ -326,30 +326,36 @@ fastify.post('/api/cdv', async (request, reply) => {
     const localDay = (a: any): string => String(a.start_date_local || a.start_date || '').slice(0, 10);
     const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
     const todayLocal = isoDay(body.today) ?? athleteLocalToday(activities);
-    const sixWeeks = runs.filter(a => inWindow(a, daysAgo(42), new Date(now)));
-    // Group runs by weekday
-    const byDay: Record<number, any[]> = {};
+    // The last six weeks by the athlete's dates: exactly six of each weekday.
+    const windowStart = new Date(Date.parse(`${todayLocal}T00:00:00Z`) - 42 * 86400000).toISOString().slice(0, 10);
+    const sixWeeks = runs.filter(a => { const d = localDay(a); return d > windowStart && d <= todayLocal; });
+    // Group by weekday, then by date: a weekday counts once per week, however
+    // many runs fell on it ("Thursdays in 4 of the last 6 weeks").
+    const byDay: Record<number, Map<string, any[]>> = {};
     for (const a of sixWeeks) {
-      const dow = weekdayOf(localDay(a));
-      (byDay[dow] ||= []).push(a);
+      const date = localDay(a);
+      const dates = (byDay[weekdayOf(date)] ||= new Map());
+      dates.set(date, [...(dates.get(date) ?? []), a]);
     }
-    // Count distinct weeks in window to judge "how many of the last N weeks"
     const weeksInWindow = 6;
     const weekdayPatterns = Object.entries(byDay)
-      .map(([dow, arr]) => {
+      .map(([dow, dates]) => {
         const d = Number(dow);
-        const avgMiles = +(miles(arr) / arr.length).toFixed(1);
-        const avgMin = Math.round(arr.reduce((s, a) => s + (a.moving_time || 0), 0) / arr.length / 60);
-        const avgElev = Math.round(arr.reduce((s, a) => s + (a.total_elevation_gain || 0) * 3.281, 0) / arr.length);
+        const arr = [...dates.values()].flat();
+        const weeks = dates.size;
+        // Per day run, so two runs on one Thursday add up to that Thursday.
+        const avgMiles = +(miles(arr) / weeks).toFixed(1);
+        const avgMin = Math.round(arr.reduce((s, a) => s + (a.moving_time || 0), 0) / weeks / 60);
+        const avgElev = Math.round(arr.reduce((s, a) => s + (a.total_elevation_gain || 0) * 3.281, 0) / weeks);
         return {
           weekday: WEEKDAYS[d],
           dow: d,
-          occurrences: arr.length,
-          weeksSeen: `${arr.length}/${weeksInWindow}`,
+          occurrences: weeks,
+          weeksSeen: `${weeks}/${weeksInWindow}`,
           avgMiles,
           avgMin,
           avgElevFt: avgElev,
-          consistent: arr.length >= 3, // ran this weekday 3+ of last 6 weeks
+          consistent: weeks >= 3, // ran this weekday in 3+ of the last 6 weeks
         };
       })
       .filter(p => p.consistent)
