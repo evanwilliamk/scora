@@ -112,3 +112,12 @@ test('a plan change observation may mention context days (review 2, 10-29)', () 
   assert.deepEqual(validateVoice('The plan moved the tempo to Wednesday after a short Monday night.', d).bannedHits, []);
   assert.ok(validateVoice('The plan moved the tempo to Friday after a short Monday night.', d).bannedHits.includes('plan override'));
 });
+
+test('narrowed patterns still catch these prescriptions (review 3, 10-29)', () => {
+  for (const s of [
+    'Sleep is short, so keep the effort low.', 'Load is up 12% and keep the effort low.', 'Sleep was short so don\'t push.',
+    'Rest today because sleep was short.', 'Rest tomorrow if HRV stays low.', 'Make up the tempo Saturday.', 'Make up that run Saturday.',
+    "It's a good week to back off.", 'I would consider an easy day.', 'Next week you add a run.', 'Cut back on Thursday.',
+    'Next week you should add a run.', 'Keep the effort low today.', 'Hold the pace at 8:30 tomorrow.', 'You could make up for it Saturday.',
+  ]) fails(s);
+});

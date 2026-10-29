@@ -40,13 +40,13 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   // Advice in other words (CLAUDE.md §1.1, §3.1): "Aim for 45 minutes",
   // "Consider a rest day", "It's a good day to run long", "Make sure to sleep".
   {
-    re: /\b(?:aim for|make sure (?:to|you)|you'?ll want to|you (?:ought|have|might want|may want|would want) to|(?:it'?s |it is )?(?:best|wise|smart) to|(?:it'?s |it is )?a (?:good|great|fine|smart) (?:day|time|morning) to|(?<!\bwould )consider (?:an?|taking|skipping|moving|easing|keeping|resting|going|running|holding)|you (?:might|may|could) (?:go|run|ride|swim|try|take|keep|ease|skip|rest|back off|hold|stay|stick))/i,
+    re: /\b(?:aim for|make sure (?:to|you)|you'?ll want to|you (?:ought|have|might want|may want|would want) to|(?:it'?s |it is )?(?:best|wise|smart) to|(?:it'?s |it is )?a (?:good|great|fine|smart) (?:day|time|morning|week) to|(?<!\b(?:coaches|coach|most|many|some|people|runners) would )consider (?:an?|taking|skipping|moving|easing|keeping|resting|going|running|holding)|you (?:might|may|could) (?:go|run|ride|swim|try|take|keep|ease|skip|rest|back off|hold|stay|stick))/i,
     label: 'advice',
   },
   // Commands only at the start of a clause: "Keep the effort low." is an
   // order; "you were able to hold the pace" and "HR did stay in zone 2" are history.
   {
-    re: /(?:^|[.;!?]\s+|,\s+|[—–]\s*)(?:just\s+)?(?:(?:keep|hold) (?:the|your) (?:effort|pace|intensity|heart rate|hr)\b|don'?t (?:push|go hard|run|race|overdo)|avoid (?:intensity|hard|speed|running|racing|pushing)|stay (?:in|under|below|within) (?:zone|z\s?\d|your))/i,
+    re: /(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|\s(?:so|and|then)\s+|[—–]\s*)(?:just\s+)?(?:(?:keep|hold) (?:the|your) (?:effort|pace|intensity|heart rate|hr)\b|don'?t (?:push|go hard|run|race|overdo)|avoid (?:intensity|hard|speed|running|racing|pushing)|stay (?:in|under|below|within) (?:zone|z\s?\d|your))/i,
     label: 'advice',
   },
   // "Most coaches would call this a rest day" (descriptive) stays allowed.
@@ -64,7 +64,7 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   {
     re: new RegExp(
       String.raw`(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|[—–]\s*|\s-\s+|\(\s*)(?:just\s+)?` +
-      String.raw`(?:go (?:easy|hard|out|run|for|long|slow|do|ride|on)|back off (?:today|tomorrow|now|a bit|this)|swim (?:easy|hard|long|today|tomorrow|an?|\d)|do intervals|move (?:it|the|today'?s|your|tomorrow'?s) \w+ to|take (?:it|the day|a|an|today|tomorrow)|keep (?:it|things|today|the pace|easy)|hit (?:the|your|it)|try (?:a|an|the|to|some|\d)|head (?:out|to)|jog|ease (?:into|up|off|back|in)|stay (?:easy|off|home|in|light|low|aerobic)|ride (?:easy|hard|today|tomorrow|an?|\d)|skip (?:the|it|today|tomorrow|your|this)|rest (?:up|now)|rest (?:today|tomorrow)(?=\s*(?:[,.;!?]|$))|start (?:with|easy|slow)|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b`,
+      String.raw`(?:go (?:easy|hard|out|run|for|long|slow|do|ride|on)|back off (?:today|tomorrow|now|a bit|this)|swim (?:easy|hard|long|today|tomorrow|an?|\d)|do intervals|move (?:it|the|today'?s|your|tomorrow'?s) \w+ to|take (?:it|the day|a|an|today|tomorrow)|keep (?:it|things|today|the pace|easy)|hit (?:the|your|it)|try (?:a|an|the|to|some|\d)|head (?:out|to)|jog|ease (?:into|up|off|back|in)|stay (?:easy|off|home|in|light|low|aerobic)|ride (?:easy|hard|today|tomorrow|an?|\d)|skip (?:the|it|today|tomorrow|your|this)|rest (?:up|now)|rest (?:today|tomorrow)(?!\s+(?:is|was|sits|stays|on|in|falls|comes)\b)|start (?:with|easy|slow)|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b`,
       'i',
     ),
     label: 'workout imperative',
@@ -74,7 +74,7 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   // Descriptive uses stay allowed: "easy runs make up the bulk", "volume cut
   // back 6%", "sleep fell behind", "next week you start the taper".
   {
-    re: /\b(make up (?:for|those|lost|missed|it|the (?:lost|missed|missing|gap|difference|minutes|miles))|catch up on|catch up|you (?:could |should |might |can )?(?:cut|scale) back|you fell behind|fall behind|next week,? you (?:could|should|might|can|need|will want|'ll want))\b|(?:^|[.;!?]\s+)(?:cut|scale) back\b/i,
+    re: /\b(make up (?:for|those|lost|missed|it|(?:the|that|this) (?:lost|missed|missing|gap|difference|minutes|miles|run|tempo|session|workout|long run|\w+ run))|catch up on|catch up|you (?:could |should |might |can )?(?:cut|scale) back|you fell behind|fall behind|next week,? you (?:could|should|might|can|need|will want|'ll want|add|run|do|try|take|keep|go))\b|(?:^|[.;!?]\s+)(?:cut|scale) back\b/i,
     label: 'plan advice',
   },
   { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
