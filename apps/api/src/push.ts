@@ -16,10 +16,14 @@ const KEY_ID = process.env.APNS_KEY_ID || '';
 const TEAM_ID = process.env.APNS_TEAM_ID || '';
 const BUNDLE_ID = process.env.APNS_BUNDLE_ID || '';
 const KEY_PEM = (process.env.APNS_KEY || '').replace(/\\n/g, '\n');
+// APNS_TEST_HOST points the sender at a local HTTP/2 server in tests only;
+// it is ignored outside NODE_ENV=test.
 const APNS_HOST =
-  (process.env.APNS_ENV || 'sandbox') === 'production'
-    ? 'https://api.push.apple.com'
-    : 'https://api.sandbox.push.apple.com';
+  process.env.NODE_ENV === 'test' && process.env.APNS_TEST_HOST
+    ? process.env.APNS_TEST_HOST
+    : (process.env.APNS_ENV || 'sandbox') === 'production'
+      ? 'https://api.push.apple.com'
+      : 'https://api.sandbox.push.apple.com';
 
 export function apnsConfigured(): boolean {
   return Boolean(KEY_ID && TEAM_ID && BUNDLE_ID && KEY_PEM);

@@ -40,6 +40,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] Week So Far shows the plan's run minutes as outlines and states them in the line (`claude/week-planned`, on `claude/integration-2026-10-22`; seen on the simulator)
 - [!] APNs env vars on Railway (needs Apple Developer enrollment + .p8 key). Done when a scheduled read arrives on Evan's phone at his delivery time
 - [~] Tests: APNs provider JWT verified against a throwaway key; scheduled push delivery (body format, dead-token pruning) (`claude/tests-push-prefs`, on `claude/integration-2026-10-22`)
+- [~] Tests: `sendPush` against a local HTTP/2 stand-in for APNs (path, headers, `scora` payload, refusal reasons); host override honored only under NODE_ENV=test (`claude/tests-send-push`, on `claude/integration-2026-10-28`)
 - [!] Sign in with Apple (auth: needs Evan). Done when every `/api/*` route takes the athlete from a verified Apple identity, not a body `athleteId`
 - [!] OAuth tokens encrypted at rest (doc 10 §6.5) (Q26). Done when Strava and Oura tokens are unreadable from a plain `select` on `athletes`
 - [!] Account deletion (doc 10 §6.6, App Store 5.1.1(v)) (Q27). Done when a Settings action removes the athlete's rows and revokes Strava/Oura within 7 days, tested on PGlite
