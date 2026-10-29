@@ -24,6 +24,23 @@ enum DemoMode {
     return [a, b]
   }
 
+  // -demo-weekly: This Week opens on its own with a sample Sunday review, so
+  // the share button and card can be seen. Sample data only.
+  static var opensWeekly: Bool { ProcessInfo.processInfo.arguments.contains("-demo-weekly") }
+  static var weekly: (read: DailyRead, stats: [WeeklyStat])? {
+    guard opensWeekly else { return nil }
+    let read = DailyRead(
+      voice: "Load came to 412 min across five runs, close to last week. The long run held at 95 min, and HRV finished the week at 52ms, above where it started.",
+      links: nil, series: nil
+    )
+    return (read, [
+      WeeklyStat(label: "LOAD", value: "412 min", trend: "+3% wk"),
+      WeeklyStat(label: "RUNS", value: "5", trend: nil),
+      WeeklyStat(label: "LONG RUN", value: "95 min", trend: nil),
+      WeeklyStat(label: "HRV", value: "52ms", trend: "+8% wk"),
+    ])
+  }
+
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], zip([40, 0, 80, 0, nil, nil, nil] as [Int?], [40, 0, 50, 45, 0, 100, 0])).enumerated().map { i, p in
       WeekSoFarDay(date: "2026-10-\(19 + i)", weekday: p.0, runMin: p.1.0, plannedMin: p.1.1)

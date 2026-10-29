@@ -306,6 +306,15 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(try! JSONDecoder().decode([PushOpen].self, from: data), [fresh])
     }
 
+    @MainActor
+    func testWeeklyShareCardRendersAtCardWidth() {
+        let stats = [WeeklyStat(label: "LOAD", value: "412 min", trend: "+3% wk"), WeeklyStat(label: "RUNS", value: "5", trend: nil)]
+        let image = WeeklyShare.render(voice: "Load came to 412 min across five runs, close to last week.", stats: stats, scale: 2)
+        XCTAssertNotNil(image)
+        XCTAssertEqual(image?.size.width, WeeklyShare.width)
+        XCTAssertGreaterThan(image?.size.height ?? 0, 120)
+    }
+
     func testPushOpenReadsTheScoraPayloadOnly() {
         let ok = PushOpen(userInfo: ["aps": ["alert": "x"], "scora": ["kind": "daily", "date": "2026-10-28", "sent_at": NSNumber(value: 1_793_181_600)]])
         XCTAssertEqual(ok?.kind, "daily")

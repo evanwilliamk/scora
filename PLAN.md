@@ -70,6 +70,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] Gate 2.1.8 measurable: a `read_plan` line on each daily read with a planned session (not rest) says whether the read named the plan (the word plan, or the session's minutes or km); the gate report scores 60% per athlete (`claude/plan-aware-gate`, on `claude/phase0-gates`)
 - [~] Phase 1 gates 2.1.1 (10 onboarded) and 2.1.9 (half used CDV) as a read-only SQL report, `apps/api/scripts/phase1-gates.sql` (`claude/plan-gates`)
 - [~] Push-open reports wait on the phone until the API has them (offline, before sign-in), resent on launch and sign-in, dropped after 7 days (`claude/push-open-retry`, on `claude/integration-2026-10-28`)
+- [~] Share the Sunday review (PRD §5.A.5, CLAUDE.md §7, doc 10 2.1.6): share button on This Week opens the iOS share sheet with a card image of the read and its stats, rendered on the phone (`claude/weekly-share`, on `claude/integration-2026-10-28`; seen on the simulator with `-demo-read -demo-weekly`)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys). Done when validator catches, banned-phrase hits and CDV fallbacks are counted in PostHog (doc 10 §6.1 rates)
 
 ## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags that default off, no deploy or money)
