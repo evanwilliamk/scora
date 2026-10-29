@@ -61,3 +61,16 @@ test('delivery gate: no lines is no data, not a pass', () => {
   assert.equal(r.pass, null);
   assert.match(r.lines[0], /NO DATA/);
 });
+
+test('delivery gate: the last 14 mornings count; fewer is not enough to pass', () => {
+  const lines: string[] = [];
+  // Days 1 and 2 late, then 14 on-time mornings: the late ones fall outside the window.
+  for (let d = 1; d <= 16; d++) lines.push(daily('a', `2026-11-${String(d).padStart(2, '0')}`, d <= 2 ? 30 : 0));
+  let r = deliveryGateReport(lines.join('\n'));
+  assert.deepEqual(r.byAthlete.a, { mornings: 14, onTime: 14, late: 0, failed: 0, missing: 0 });
+  assert.equal(r.pass, true);
+  // Three good mornings and one late one: on track, not yet a pass.
+  r = deliveryGateReport([daily('b', '2026-11-01', 0), daily('b', '2026-11-02', 9), daily('b', '2026-11-03', 0), daily('b', '2026-11-04', 0)].join('\n'));
+  assert.equal(r.pass, null);
+  assert.match(r.lines.join('\n'), /NOT ENOUGH MORNINGS/);
+});

@@ -69,8 +69,11 @@ export function voiceGateReport(logText: string): GateReport {
 export const ON_TIME_MAX_LATE_MIN = 5;
 export const ON_TIME_RATE_MIN = 13 / 14;
 
+// Gates are judged on an athlete's last 14 mornings; fewer is not enough data.
+export const GATE_WINDOW_DAYS = 14;
+
 export interface AthleteDelivery {
-  mornings: number; // local days from the first to the last logged daily
+  mornings: number; // local days in the window (the last 14 up to the last logged daily)
   onTime: number;
   late: number; // delivered, but more than 5 minutes late
   failed: number; // a line with delivered false and no later success that day
@@ -80,7 +83,7 @@ export interface AthleteDelivery {
 export interface DeliveryReport {
   byAthlete: Record<string, AthleteDelivery>;
   lines: string[];
-  pass: boolean | null; // null: no daily lines
+  pass: boolean | null; // null: no daily lines, or under 14 mornings and on track
 }
 
 function dayIndex(date: string): number {
@@ -100,9 +103,11 @@ export function deliveryGateReport(logText: string): DeliveryReport {
     if (!prev || (!prev.delivered && e.delivered)) a.set(e.date, { delivered: e.delivered === true, lateMin: e.late_min });
   }
   const byAthlete: Record<string, AthleteDelivery> = {};
-  for (const [athlete, a] of days) {
-    const idx = [...a.keys()].map(dayIndex);
-    const mornings = Math.max(...idx) - Math.min(...idx) + 1;
+  for (const [athlete, all] of days) {
+    const last = Math.max(...[...all.keys()].map(dayIndex));
+    const first = Math.max(Math.min(...[...all.keys()].map(dayIndex)), last - GATE_WINDOW_DAYS + 1);
+    const a = new Map([...all].filter(([k]) => dayIndex(k) >= first));
+    const mornings = last - first + 1;
     const d: AthleteDelivery = { mornings, onTime: 0, late: 0, failed: 0, missing: mornings - a.size };
     for (const v of a.values()) {
       if (!v.delivered) d.failed++;
@@ -115,10 +120,15 @@ export function deliveryGateReport(logText: string): DeliveryReport {
   if (athletes.length === 0) {
     return { byAthlete, pass: null, lines: ['Morning delivery within 5 min (bar: 13 of 14 mornings): NO DATA'] };
   }
-  const pass = athletes.every((k) => byAthlete[k].onTime / byAthlete[k].mornings >= ON_TIME_RATE_MIN);
+  const enough = athletes.every((k) => byAthlete[k].mornings >= GATE_WINDOW_DAYS);
+  // 13 of 14 allows one bad morning. More than that fails even before 14
+  // mornings are in; fewer mornings cannot pass yet.
+  const allowedBad = Math.round(GATE_WINDOW_DAYS * (1 - ON_TIME_RATE_MIN));
+  const ok = athletes.every((k) => byAthlete[k].mornings - byAthlete[k].onTime <= allowedBad);
+  const verdict = !ok ? false : enough ? true : null;
   return {
     byAthlete,
-    pass,
+    pass: verdict,
     lines: [
       'athlete                               mornings  on time  late  failed  missing',
       ...athletes.map((k) => {
@@ -126,7 +136,7 @@ export function deliveryGateReport(logText: string): DeliveryReport {
         return `${k.padEnd(36)} ${String(d.mornings).padStart(9)}  ${String(d.onTime).padStart(7)}  ${String(d.late).padStart(4)}  ${String(d.failed).padStart(6)}  ${String(d.missing).padStart(7)}`;
       }),
       '',
-      `Morning delivery within 5 min (bar: 13 of 14 mornings, every athlete): ${pass ? 'PASS' : 'FAIL'}`,
+      `Morning delivery within 5 min (bar: 13 of 14 mornings, every athlete): ${verdict === null ? 'NOT ENOUGH MORNINGS' : verdict ? 'PASS' : 'FAIL'}`,
       'Days with no line at all (server down all morning) count only between an athlete\'s first and last logged day.',
     ],
   };
