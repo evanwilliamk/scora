@@ -344,8 +344,7 @@ struct ChatView: View {
             .background(Color(white: 0.1))
             .cornerRadius(12)
           if let card = msg.shareImage {
-            let image = Image(uiImage: card)
-            ShareLink(item: image, preview: SharePreview("SCORA chart", image: image)) {
+            ShareLink(item: ShareCard(image: card), preview: SharePreview("SCORA chart", image: Image(uiImage: card))) {
               Label("Share", systemImage: "square.and.arrow.up")
                 .font(.caption.bold())
                 .foregroundColor(.gray)

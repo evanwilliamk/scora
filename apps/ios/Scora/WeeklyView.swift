@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Models
 
@@ -32,7 +33,7 @@ struct WeeklyView: View {
   @State private var stats: [WeeklyStat] = []
   @State private var isLoading = false
   @State private var errorText: String?
-  @State private var shareImage: Image?
+  @State private var shareImage: UIImage?
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -50,7 +51,7 @@ struct WeeklyView: View {
         Spacer()
         // PRD §5.A.5: the Sunday card can be forwarded (doc 10 2.1.6).
         if let shareImage {
-          ShareLink(item: shareImage, preview: SharePreview("SCORA Sunday review", image: shareImage)) {
+          ShareLink(item: ShareCard(image: shareImage), preview: SharePreview("SCORA Sunday review", image: Image(uiImage: shareImage))) {
             Image(systemName: "square.and.arrow.up")
               .foregroundColor(.white)
           }
@@ -90,7 +91,7 @@ struct WeeklyView: View {
       if let demo = DemoMode.weekly {
         read = demo.read
         stats = demo.stats
-        shareImage = WeeklyShare.render(voice: demo.read.voice, stats: demo.stats).map(Image.init(uiImage:))
+        shareImage = WeeklyShare.render(voice: demo.read.voice, stats: demo.stats)
         return
       }
       #endif
@@ -160,7 +161,7 @@ struct WeeklyView: View {
       await MainActor.run {
         read = decoded.read
         stats = decoded.stats
-        shareImage = WeeklyShare.render(voice: decoded.read.voice, stats: decoded.stats).map(Image.init(uiImage:))
+        shareImage = WeeklyShare.render(voice: decoded.read.voice, stats: decoded.stats)
         isLoading = false
       }
     } catch {
@@ -200,19 +201,13 @@ struct WeeklyShareCard: View {
         .foregroundColor(.white)
         .fixedSize(horizontal: false, vertical: true)
       if !stats.isEmpty {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-          ForEach(stats) { stat in
-            VStack(alignment: .leading, spacing: 4) {
-              Text(stat.label).font(.caption2.bold()).foregroundColor(.gray)
-              Text(stat.value).font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
-              if let trend = stat.trend, !trend.isEmpty {
-                Text(trend).font(.caption2).foregroundColor(.orange)
-              }
+        // Grid, not LazyVGrid: ImageRenderer does not reliably draw lazy containers.
+        Grid(horizontalSpacing: 10, verticalSpacing: 10) {
+          ForEach(Array(stride(from: 0, to: stats.count, by: 2)), id: \.self) { i in
+            GridRow {
+              tile(stats[i])
+              if i + 1 < stats.count { tile(stats[i + 1]) } else { Color.clear }
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(10)
-            .background(Color(white: 0.11))
-            .cornerRadius(10)
           }
         }
       }
@@ -225,5 +220,31 @@ struct WeeklyShareCard: View {
     .frame(width: WeeklyShare.width, alignment: .leading)
     .background(Color.black)
     .environment(\.colorScheme, .dark)
+  }
+
+  private func tile(_ stat: WeeklyStat) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(stat.label).font(.caption2.bold()).foregroundColor(.gray)
+      Text(stat.value).font(.system(size: 20, weight: .semibold)).foregroundColor(.white)
+      if let trend = stat.trend, !trend.isEmpty {
+        Text(trend).font(.caption2).foregroundColor(.orange)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .topLeading)
+    .padding(10)
+    .background(Color(white: 0.11))
+    .cornerRadius(10)
+  }
+}
+
+// A rendered card for ShareLink, exported as PNG data so every share target
+// (Messages, WhatsApp, Mail, Save Image) receives an actual image file.
+struct ShareCard: Transferable {
+  let image: UIImage
+
+  static var transferRepresentation: some TransferRepresentation {
+    DataRepresentation(exportedContentType: .png) { card in
+      card.image.pngData() ?? Data()
+    }
   }
 }
