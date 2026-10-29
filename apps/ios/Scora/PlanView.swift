@@ -508,11 +508,13 @@ struct PlanBlock: Decodable, Equatable {
   let week: Int
   let weeks: Int
   let raceDate: String?
+  var startsOn: String? = nil // set while the plan has not begun
   let phases: [Phase]
-  enum CodingKeys: String, CodingKey { case goal, week, weeks, raceDate = "race_date", phases }
+  enum CodingKeys: String, CodingKey { case goal, week, weeks, raceDate = "race_date", startsOn = "starts_on", phases }
 
-  // "Week 4 of 12 · Base"
+  // "Week 4 of 12 · Base", or "Starts Nov 2 · 12 weeks" before week 1.
   var headline: String {
+    if let startsOn { return "Starts \(Self.day(startsOn)) · \(weeks) weeks" }
     let phase = phases.first(where: \.current).map { " · \($0.name)" } ?? ""
     return "Week \(week) of \(weeks)\(phase)"
   }
@@ -527,6 +529,16 @@ struct PlanBlock: Decodable, Equatable {
     guard let d = f.date(from: raceDate) else { return goal }
     f.dateFormat = "MMM d"
     return "\(goal), \(f.string(from: d))"
+  }
+
+  static func day(_ iso: String) -> String {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.dateFormat = "yyyy-MM-dd"
+    guard let d = f.date(from: iso) else { return iso }
+    f.dateFormat = "MMM d"
+    return f.string(from: d)
   }
 }
 
@@ -554,7 +566,8 @@ struct PlanBlockView: View {
               RoundedRectangle(cornerRadius: 3)
                 .fill(p.current ? Color.orange : Color(white: 0.22))
                 .frame(height: 6)
-              Text(p.name).font(.caption2).foregroundColor(p.current ? .orange : .gray).lineLimit(1)
+              Text(p.name).font(.caption2).foregroundColor(p.current ? .orange : .gray)
+                .lineLimit(1).minimumScaleFactor(0.6)
             }
             .frame(width: max(4, (geo.size.width - 3 * CGFloat(block.phases.count - 1)) * span / CGFloat(max(block.weeks, 1))))
           }
@@ -664,7 +677,7 @@ struct PlanView: View {
           let (data, resp) = try? await URLSession.shared.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanBlockResponse.self, from: data)
-    else { return }
+    else { await MainActor.run { block = nil }; return }
     await MainActor.run { block = decoded.block }
   }
 
@@ -996,6 +1009,7 @@ struct PlanView: View {
           isSaving = false
           CalendarFeed.save(nil, for: tokenManager.athleteId) // the paste replaced the calendar import
           savedFeed = nil
+          block = nil // a paste replaces a SCORA plan
         }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
       } else {
@@ -1047,6 +1061,7 @@ struct PlanView: View {
           note = PlanDay.skippedNote(saved.rejected.count, unit: "event")
           isImporting = false
           if !silent { isEditing = false; feedLink = "" }
+          block = nil // an import replaces a SCORA plan
           CalendarFeed.save(link, for: athleteId)
           savedFeed = link
         }

@@ -230,6 +230,7 @@ export interface PlanBlock {
   week: number; // 1-based, clamped to the plan
   weeks: number;
   race_date: string | null;
+  starts_on: string | null; // the start date while the plan has not begun
   phases: { name: string; first_week: number; last_week: number; focus: string; current: boolean }[];
 }
 
@@ -239,18 +240,20 @@ export function planBlock(
 ): PlanBlock {
   const days = Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${plan.start_date}T00:00:00Z`)) / 86_400_000);
   const weeks = plan.template.duration_weeks;
+  const notStarted = days < 0;
   const week = Math.min(Math.max(Math.floor(days / 7) + 1, 1), weeks);
   return {
     goal: goalLabel(plan.template.goal_type),
     week,
     weeks,
     race_date: plan.goal_race_date,
+    starts_on: notStarted ? plan.start_date : null,
     phases: plan.template.phases.map((p) => ({
       name: p.name,
       first_week: Math.min(...p.weeks),
       last_week: Math.max(...p.weeks),
       focus: p.focus,
-      current: p.weeks.includes(week),
+      current: !notStarted && p.weeks.includes(week),
     })),
   };
 }

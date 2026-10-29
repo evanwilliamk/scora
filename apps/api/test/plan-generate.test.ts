@@ -165,6 +165,8 @@ test('planBlock: week of the plan, phases with their weeks, the current one, the
     ['Base', 1, 4, true], ['Build', 5, 9, false], ['Sharpen', 10, 12, false],
   ]);
   assert.equal(planBlock(plan, '2026-10-05').week, 1);
-  assert.equal(planBlock(plan, '2026-09-30').week, 1, 'before the start reads as week 1');
+  const early = planBlock(plan, '2026-09-30');
+  assert.deepEqual([early.starts_on, early.phases.some((p) => p.current)], ['2026-10-05', false], 'not started: says when, no phase is current');
+  assert.equal(b.starts_on, null);
   assert.equal(planBlock(plan, '2027-02-01').week, 12, 'after the end stays on the last week');
 });

@@ -389,6 +389,8 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(block.headline, "Week 4 of 12 · Base")
         XCTAssertEqual(block.raceLine, "Half marathon, Dec 27")
         XCTAssertNil(try JSONDecoder().decode(PlanBlockResponse.self, from: Data(#"{"block":null}"#.utf8)).block)
+        let later = #"{"goal":"Marathon","week":1,"weeks":16,"race_date":"2027-03-14","starts_on":"2026-11-23","phases":[]}"#
+        XCTAssertEqual(try JSONDecoder().decode(PlanBlock.self, from: Data(later.utf8)).headline, "Starts Nov 23 · 16 weeks")
     }
 
     func testPushOpenReadsTheScoraPayloadOnly() {
