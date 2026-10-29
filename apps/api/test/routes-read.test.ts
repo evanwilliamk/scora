@@ -210,3 +210,27 @@ test('card expand: the model down falls back to the card\'s own line', async () 
   assert.equal(llmCalls().length, 2, 'the read, then the failed expansion');
   assert.deepEqual(e.json(), { cardId: card.id, reply: card.translation ?? '', drivers: [], generated: false });
 });
+
+test('HealthKit: only the summary reaches the model, never the nightly series or extra fields (doc 10 §6.5)', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const nights = Array.from({ length: 6 }, (_, i) => ({
+    day: new Date(now - (i + 1) * DAY).toISOString().slice(0, 10),
+    sleepSeconds: 25_000 + i * 111, hrvMs: 181 + i, restingHr: 171 + i,
+  }));
+  const r = await read({
+    health: {
+      sleepSeconds: 26_000, hrvMs: 52.4, restingHr: 48.2, hrvWeekAvgMs: 49,
+      nights, rawSamples: [{ type: 'HKQuantityTypeIdentifierHeartRate', value: 9137, source: 'RAW-MARKER' }],
+    },
+  });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().connections.healthKit, true);
+  const sent = JSON.stringify(llmCalls()[0].body.messages);
+  assert.match(sent, /52ms/, 'the summary HRV is a driver');
+  assert.doesNotMatch(sent, /RAW-MARKER|HKQuantity|9137/, 'unknown raw fields never reach the prompt');
+  for (const n of nights) {
+    assert.ok(!sent.includes(String(n.hrvMs)) && !sent.includes(String(n.restingHr)) && !sent.includes(String(n.sleepSeconds)), `night ${n.day} reached the prompt`);
+  }
+});
