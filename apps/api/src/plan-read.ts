@@ -82,10 +82,20 @@ export function weeklyPlanDriver(
 }
 
 // Whether a read names today's planned session (doc 10 2.1.8: plan reference
-// in at least 60% of reads on a day with a session). Named = the word plan,
-// or the session's own minutes or kilometres as the driver states them.
+// in at least 60% of reads on a day with a session). Named = the word plan;
+// the session's own minutes or kilometres, in any spelling ("45 min",
+// "45-minute", "25.8 kilometres"); or its kind tied to today ("today's
+// tempo"). The kind alone is not enough: "tempo work earlier this week".
 export function readNamesPlan(voice: string, driver: Driver | null): boolean {
   if (!driver) return false;
   if (/\bplan(?:s|ned|'s)?\b/i.test(voice)) return true;
-  return driver.value.split(', ').slice(1).some((part) => voice.includes(part));
+  const [kind, ...amounts] = driver.value.split(', ');
+  for (const a of amounts) {
+    const m = /^(\d+(?:\.\d+)?) (min|km)$/.exec(a);
+    if (!m) continue;
+    const unit = m[2] === 'min' ? 'min(?:ute)?s?' : 'k(?:m|ilomet(?:er|re)s?)';
+    if (new RegExp(`(?<![\\d.])${m[1].replace('.', '\\.')}(?:\\s|-)?${unit}\\b`, 'i').test(voice)) return true;
+  }
+  const k = kind.replace(/_/g, '[ -]?');
+  return new RegExp(`\\btoday(?:'s)?\\b[^.]{0,40}\\b${k}\\b|\\b${k}\\b[^.]{0,40}\\btoday\\b`, 'i').test(voice);
 }

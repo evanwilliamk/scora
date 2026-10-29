@@ -7,19 +7,25 @@ export type Finding = { line: number; category: string };
 
 // Health values as the API words them (driver values, Strava and Oura
 // fields). A bare number is not flagged: ids, counts and timings are fine.
+// Keys may be snake_case or quoted JSON, so a key is bounded by anything that
+// is not a letter (\b fails on "_"). Three-digit HTTP statuses after a
+// service name ("Oura 401") are not values.
+const K = '(?<![A-Za-z])';
+const SEP = `(?:["':\\s=,]|"?value"?){0,12}?`;
 const PATTERNS: [string, RegExp][] = [
-  ['hrv', /\bhrv\b[^0-9\n]{0,20}\d+(?:\.\d+)?\s*ms\b/i],
-  ['heart rate', /\b(?:resting hr|rhr|heart ?rate|average_heartrate|max_heartrate|lowest_heart_rate)\b["':\s=]{0,4}\d+/i],
+  ['hrv', new RegExp(`${K}(?:average_)?hrv(?:_ms)?(?![A-Za-z])[^0-9\\n]{0,24}\\d+(?:\\.\\d+)?`, 'i')],
+  ['heart rate', new RegExp(`${K}(?:resting hr|rhr|hr|heart ?rate|(?:resting|average|max|lowest)_heart_?rate|average_heartrate|max_heartrate)(?![A-Za-z])${SEP}\\d{2,3}(?!\\d)`, 'i')],
   ['heart rate', /\b\d{2,3}\s*bpm\b/i],
-  ['sleep', /\bsleep\b[^0-9\n]{0,20}\d{1,2}(?::\d{2}|h\s*\d{1,2}m?)\b/i],
-  ['sleep', /\b(?:total_sleep_duration|deep_sleep_duration|rem_sleep_duration)\b/i],
-  ['readiness', /\b(?:oura|readiness)(?: score)?\b["':\s=]{0,4}\d{1,3}\b/i],
-  ['body weight', /\b(?:weight|body ?mass)\b["':\s=]{0,4}\d+(?:\.\d+)?\s*(?:kg|lb|lbs)?\b/i],
-  ['calories', /\b(?:calories|kilojoules)\b["':\s=]{0,4}\d+/i],
-  ['location', /\b(?:start_latlng|end_latlng|summary_polyline)\b/i],
-  ['secret', /\b(?:access_token|refresh_token|client_secret|service_role)\b["':\s=]{1,4}[A-Za-z0-9._-]{12,}/i],
+  ['sleep', new RegExp(`${K}sleep(?![A-Za-z])[^0-9\\n]{0,24}(?:\\d{1,2}h\\s*\\d{1,2}m?|\\d{1,2}:\\d{2}(?!\\s*(?:am|pm))|score${SEP}\\d{1,3})`, 'i')],
+  ['sleep', /(?:total|deep|rem|light)_sleep_duration/i],
+  ['readiness', new RegExp(`${K}(?:oura|readiness)(?![A-Za-z])(?:${SEP}score)?${SEP}(?!(?:[45]\\d\\d)\\b)\\d{1,3}(?!\\d)`, 'i')],
+  ['body weight', new RegExp(`${K}(?:weight|body ?mass)(?![A-Za-z])${SEP}\\d+(?:\\.\\d+)?`, 'i')],
+  ['calories', new RegExp(`${K}(?:calories|kilojoules)(?![A-Za-z])${SEP}(?![45]\\d\\d\\s+error)\\d+`, 'i')],
+  ['location', /(?:start_latlng|end_latlng|summary_polyline)/i],
+  ['secret', /(?:access_token|refresh_token|client_secret|service_role)["':\s=]{1,4}[A-Za-z0-9._-]{12,}/i],
   ['secret', /\bBearer\s+[A-Za-z0-9._-]{20,}/],
   ['secret', /\bsk-[A-Za-z0-9_-]{20,}/],
+  ['secret', /\beyJ[\w-]{8,}\.[\w-]{8,}\./],
 ];
 
 export function auditLog(logText: string): Finding[] {
