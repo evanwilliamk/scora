@@ -18,7 +18,9 @@ sessions as (
   from scheduled_workouts w
   join training_plans p on p.id = w.training_plan_id
   cross join win
-  where p.source = 'scora_ai' and p.current_status = 'active'
+  -- A plan completed or abandoned in the window still counts; a replaced
+  -- one does not (its successor carries the athlete's sessions).
+  where p.source = 'scora_ai' and p.current_status <> 'replaced'
     and w.scheduled_date between win.from_day and win.to_day
     and coalesce(w.planned_intensity, '') <> 'rest'
   group by w.athlete_id
@@ -28,13 +30,15 @@ adaptations as (
   from plan_adaptations a
   join training_plans p on p.id = a.training_plan_id
   cross join win
-  where p.source = 'scora_ai' and a.triggered_by = 'auto_engine'
+  where p.source = 'scora_ai' and p.current_status <> 'replaced' and a.triggered_by = 'auto_engine'
     and a.triggered_at >= win.from_day and a.triggered_at < win.to_day + 1
   group by a.athlete_id
 ),
 per_athlete as (
   select s.athlete_id, s.scheduled, s.done, s.missed, s.unmarked,
          coalesce(a.adaptations, 0) as adaptations
+  -- An athlete with adaptations but no session in the window has nothing to
+  -- adhere to and is left out of both gates.
   from sessions s left join adaptations a using (athlete_id)
 ),
 rows as (

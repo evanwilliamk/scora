@@ -59,6 +59,13 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
   await session('b', b, 3, 'easy', null);
   const c = await plan('c', 'coach'); // coach plans are not Plan tier
   await session('c', c, 2, 'easy', false);
+  // A plan abandoned in the window still counts; a replaced one does not.
+  const d = await plan('d');
+  await session('d', d, 2, 'easy', true);
+  await db.query(`update training_plans set current_status = 'abandoned' where id = $1`, [d]);
+  const e = await plan('e');
+  await session('e', e, 2, 'easy', false);
+  await db.query(`update training_plans set current_status = 'replaced' where id = $1`, [e]);
 
   for (let i = 0; i < 3; i++) {
     await db.query(
@@ -77,8 +84,9 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
   assert.deepEqual(rows.map((r) => [r.athlete_id, r.scheduled, r.done, r.adaptations]), [
     ['a', 3, 2, 3],
     ['b', 2, 1, 0],
-    ['ALL', 5, 3, 3],
+    ['d', 1, 1, 0],
+    ['ALL', 6, 4, 3],
   ]);
-  // 3 of 5 done is 60%; 3 adaptations over 2 athletes and 4 weeks.
-  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 60.0% FAIL; 3.1.11 0.38 adaptations per athlete per week PASS');
+  // 4 of 6 done is 66.7%; 3 adaptations over 3 athletes and 4 weeks.
+  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 66.7% FAIL; 3.1.11 0.25 adaptations per athlete per week PASS');
 });
