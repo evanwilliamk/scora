@@ -40,3 +40,16 @@ test('pushBody keeps the Today line whole; the voice gives way to it', () => {
   assert.ok(long.endsWith(`…\n${today}`));
   assert.ok(long.startsWith('Sleep 7:12 · Load 412\n'));
 });
+
+test('pushBody: a long Today line is trimmed so the read keeps room (review)', () => {
+  const today = 'Today: ' + 'z'.repeat(200);
+  const body = pushBody('Sleep 7:12 · Load 412', 'Body is settled and HRV is climbing for the second night.', 178, today);
+  assert.ok(body.length <= 178, `length ${body.length}`);
+  const [nums, voice, line] = body.split('\n');
+  assert.equal(nums, 'Sleep 7:12 · Load 412');
+  assert.ok(nums.length + 1 + voice.length >= 60);
+  assert.ok(line.startsWith('Today: ') && line.endsWith('…'));
+  // A short read is never padded: the Today line takes the room it leaves.
+  const short = pushBody('', 'Settled.', 178, 'Today: ' + 'q'.repeat(150));
+  assert.equal(short, 'Settled.\nToday: ' + 'q'.repeat(150));
+});
