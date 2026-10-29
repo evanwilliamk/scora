@@ -452,3 +452,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Alternatives: a `message_events` table as doc 10 names it (migration Evan applies); PostHog app events (needs the PostHog account).
 - Why: no schema change, no new service, same log-based gate report as the voice and delivery gates. No health data in the payload or the log.
 - To reverse: drop the route in apps/api/src/index.ts and the delegate method in apps/ios/Scora/PushManager.swift; the payload field is ignored by older builds.
+### 2026-10-28: Plan adherence counts an unmarked session as not done
+- Status: DECIDED
+- Branch: claude/plan-gates
+- Context: doc 10 3.1.10 compares Strava activities to scheduled sessions, but activities are fetched live and never stored, so the SQL report can only use the athlete's done/missed marks.
+- Choice: done = marked done; missed and unmarked both count against adherence; rest days left out; last 28 days up to yesterday (UTC); SCORA plans only.
+- Alternatives: leave unmarked out of the denominator (flatters adherence when athletes stop marking); store activity dates to match them (needs a migration and a sync job).
+- Why: a gate should not pass because nobody marks sessions. The unmarked column is shown so the cause is visible.
+- To reverse: in apps/api/scripts/plan-gates.sql, divide by `done + missed` instead of `scheduled`.

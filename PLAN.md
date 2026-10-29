@@ -68,6 +68,7 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] Phase 0 gates 1.1.2 and 1.1.7 measurable: pushes carry kind, date and send time; the app reports a tap to `POST /api/events/push-open` (logged, not stored); the gate report scores opens within 4h, numbers-first mornings and validator fail-throughs (1.1.4, `final_ok` on each voice line) (`claude/phase0-gates`, on `claude/delivery-telemetry`)
 - [~] Log audit for gate 1.1.6 (no PHI in logs) and §6.5 (no secrets): `npx tsx scripts/log-audit.ts <log>` flags lines with health values or credentials by line and category, never the value (`claude/phase0-gates`)
 - [~] Gate 2.1.8 measurable: a `read_plan` line on each daily read with a planned session (not rest) says whether the read named the plan (the word plan, or the session's minutes or km); the gate report scores 60% per athlete (`claude/plan-aware-gate`, on `claude/phase0-gates`)
+- [~] Phase 1 gates 2.1.1 (10 onboarded) and 2.1.9 (half used CDV) as a read-only SQL report, `apps/api/scripts/phase1-gates.sql` (`claude/plan-gates`)
 - [!] PostHog + Sentry (free tiers, but needs accounts and keys). Done when validator catches, banned-phrase hits and CDV fallbacks are counted in PostHog (doc 10 §6.1 rates)
 
 ## Phase 2: plan engine and Plan tier pieces (started 2026-10-18; pure code, all behind flags that default off, no deploy or money)
@@ -90,6 +91,7 @@ All `[~]` branches from 2026-10-17, 2026-10-18 and 2026-10-22 are merged togethe
 - [~] WorkoutKit scheduling, code half: Send to Watch on SCORA plan sessions, WorkoutScheduler behind a protocol, tested with a fake (`claude/workoutkit-schedule`, on `claude/integration-2026-10-22`)
 - [~] Dismiss a plan change (doc 07 §5): route + x on Your Plan (`claude/dismiss-adaptation`, on `claude/integration-2026-10-22`)
 - [~] Missed workouts: Past sessions on Your Plan with Done / Missed; a miss is recorded, never moved (`claude/missed-workouts`, on `claude/integration-2026-10-22`; seen on the simulator)
+- [~] Plan tier gates 3.1.10 (adherence, from the athlete's done/missed marks) and 3.1.11 (adaptations per athlete per week) as a read-only SQL report, `apps/api/scripts/plan-gates.sql`, paste into the Supabase SQL editor (`claude/plan-gates`, on `claude/integration-2026-10-22`; run on PGlite in tests)
 - [ ] WorkoutKit scheduling on a paired Apple Watch (Evan). Done when a sent session appears in the Watch's Workout app on its day and runs with the plan's steps
 - [!] Calorie engine needs body weight; Strava only sends it with `profile:read_all` (Q21). Done when an athlete with a known weight gets estimates with the method shown
 - [~] Rest posture with no move window: the session drops to easy at the same duration, named reason; long runs stay (Q19 option B, `claude/rest-no-window-downgrade`, on `claude/integration-2026-10-18`)
