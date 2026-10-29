@@ -182,3 +182,17 @@ export async function fetchActivitiesSince(
   }
   return out;
 }
+
+// The athlete's activities from the last `days` days, newest first: the order
+// Strava uses without `after`, which callers slice from the front. A count
+// cap (per_page=50) can cover far fewer days for a multi-sport athlete.
+export async function fetchRecentActivities(
+  token: string,
+  days: number,
+  fetchImpl: typeof fetch = fetch,
+  now = Date.now(),
+): Promise<any[]> {
+  const list = await fetchActivitiesSince(token, Math.floor(now / 1000) - days * 86400, fetchImpl);
+  const at = (a: any) => Date.parse(a?.start_date ?? '') || 0;
+  return list.sort((a, b) => at(b) - at(a));
+}

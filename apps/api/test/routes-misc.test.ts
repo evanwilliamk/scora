@@ -148,6 +148,10 @@ test('chat: a clean answer counts one query and draws the chart from the activit
   assert.equal(body.voice, 'Runs have held steady across the last two weeks.');
   assert.equal(body.remaining, 1);
   assert.ok(body.chart, 'the chart is built in code from the activities');
+  // Asked by date (8 weeks), not the 50 most recent.
+  const strava = new URL(guard.calls.find((c) => c.host === 'www.strava.com')!.url);
+  assert.ok(Math.abs(Number(strava.searchParams.get('after')) - (Math.floor(Date.now() / 1000) - 56 * 86400)) < 60);
+  assert.equal(strava.searchParams.get('per_page'), '200');
   const count = rest.requests.find((q) => q.method === 'PATCH' && q.table === 'athletes')!;
   assert.deepEqual({ n: count.body.cdv_count, d: count.body.cdv_count_date }, { n: 2, d: today });
 });

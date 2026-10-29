@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
-import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince } from './strava';
+import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureForRead } from './drivers';
 import { SnapshotCache, planCardExpansion } from './card-expand';
@@ -270,16 +270,14 @@ fastify.post('/api/cdv', async (request, reply) => {
       });
     }
 
-    // Fetch Strava data (larger window for real trend analysis)
-    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
-      headers: { 'Authorization': `Bearer ${stravaToken}` },
-    });
-
-    if (!stravaRes.ok) {
+    // Eight weeks: the weekday patterns claim "x of the last 6 weeks" and the
+    // weekly miles chart spans 8, so the window is by date, not by count.
+    let activities: any[];
+    try {
+      activities = await fetchRecentActivities(stravaToken, 56);
+    } catch {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-
-    const activities = (await stravaRes.json()) as any[];
 
     const M = 1609.34;
     const now = Date.now();
@@ -520,14 +518,12 @@ fastify.post('/api/read', async (request, reply) => {
 
     // Everything since 35 days ago (the driver record needs a full 28 days;
     // 50 most recent activities can fall short for multi-sport athletes).
-    const after = Math.floor(Date.now() / 1000) - 35 * 86400;
-    const stravaRes = await fetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${after}`, {
-      headers: { Authorization: `Bearer ${stravaToken}` },
-    });
-    if (!stravaRes.ok) {
+    let activities: any[];
+    try {
+      activities = await fetchRecentActivities(stravaToken, 35);
+    } catch {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const activities = (await stravaRes.json()) as any[];
 
     // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
     // cards fall back to connect prompts. Never blocks the read on Oura errors.
@@ -1206,13 +1202,13 @@ fastify.post('/api/weekly', async (request, reply) => {
       });
     }
 
-    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
-      headers: { Authorization: `Bearer ${stravaToken}` },
-    });
-    if (!stravaRes.ok) {
+    // This week and the one before, plus a day for time zones.
+    let activities: any[];
+    try {
+      activities = await fetchRecentActivities(stravaToken, 15);
+    } catch {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const activities = (await stravaRes.json()) as any[];
 
     let ouraSummary = null;
     try {
