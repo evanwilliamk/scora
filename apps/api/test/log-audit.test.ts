@@ -44,3 +44,30 @@ test('our own telemetry and scheduler lines are clean', () => {
   assert.deepEqual(auditLog(log), []);
   assert.match(auditReport(log).lines.at(-1)!, /PASS/);
 });
+
+test('JSON and snake_case health keys, Oura metric lines and bare JWTs are caught (review)', () => {
+  const lines = [
+    '{"hrv":52}',
+    '{"average_hrv": 48.5}',
+    '{"resting_heart_rate":48}',
+    '{"average_heart_rate":140}',
+    'HR 152 at the top of the climb',
+    '{"sleep":{"score":84}}',
+    '{"metric":"Oura","value":"84"}',
+    'key eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig',
+  ];
+  const f = auditLog(lines.join('\n'));
+  assert.deepEqual([...new Set(f.map((x) => x.line))], [1, 2, 3, 4, 5, 6, 7, 8], JSON.stringify(f));
+});
+
+test('statuses and clock times are not health values (review)', () => {
+  const log = [
+    'Oura 401 Unauthorized',
+    'readiness 404 not found',
+    'calories 500 error',
+    'push time sleep 10:00 pm quiet hours',
+    'scheduler: sent 3 daily, 0 weekly in 1200 ms',
+    'athlete 0b7c1d2e-1111-2222-3333-444455556666 hrv chart requested',
+  ].join('\n');
+  assert.deepEqual(auditLog(log), []);
+});
