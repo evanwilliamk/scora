@@ -52,6 +52,38 @@ final class ScoraUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Paste or import a new plan"].exists)
     }
 
+    func testYourPlanShowsTheBlock() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-plan", "-demo-plan-sessions"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Week 4 of 12 · Base"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Half marathon, Dec 27"].exists)
+    }
+
+    func testThisWeekOffersShare() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-weekly"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["SUNDAY REVIEW"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Share this week's review"].waitForExistence(timeout: 5))
+    }
+
+    func testDashboardShowsPlanTodayCard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-cards"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Plan today"].waitForExistence(timeout: 10))
+    }
+
+    func testPlanSetupFormOpens() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-plan", "-demo-plan-setup"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Build a plan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Build my plan"].exists)
+        XCTAssertTrue(app.staticTexts["First timer or first serious block"].exists)
+    }
+
     func testLaunchPerformance() throws {
         if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
             // This measures how long it takes to launch your application.
