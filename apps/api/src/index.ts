@@ -1290,7 +1290,12 @@ const start = async () => {
 };
 
 // Tests import this module and drive the routes with fastify.inject, so they
-// set SCORA_NO_LISTEN=1: no port, no push scheduler.
-if (process.env.SCORA_NO_LISTEN !== '1') start();
+// set SCORA_NO_LISTEN=1 with NODE_ENV=test: no port, no push scheduler. Both
+// are required, so a stray SCORA_NO_LISTEN in a deploy still starts the server.
+if (process.env.SCORA_NO_LISTEN === '1' && process.env.NODE_ENV === 'test') {
+  console.log('SCORA_NO_LISTEN: not listening (tests)');
+} else {
+  start();
+}
 
 export default fastify;
