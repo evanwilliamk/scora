@@ -8,7 +8,7 @@ On without a flag once merged and deployed (with a new app build where it is iOS
 - Plan Today card when the athlete has any plan; Share on This Week and under chat charts; past sessions, Watch send records.
 - Daily reads log a `read_plan` line on plan days; voice lines carry `final_ok`.
 - Error replies carry only `error`, no `detail` (causes are in the Railway log; the app never read `detail`).
-- Chat, weekly and read ask Strava by date (8 weeks, 15 days, 35 days, paged) instead of the 50 most recent activities: more Strava calls for very active athletes, well inside rate limits for the alpha.
+- Chat, weekly and read ask Strava by date (8 weeks, 15 days, 35 days, paged) instead of the 50 most recent activities: still one Strava call per request unless an athlete logged over 200 activities in the window.
 - Chat weekday patterns and "today" follow the athlete's local date.
 
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
