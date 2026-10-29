@@ -571,7 +571,8 @@ struct PlanBlockView: View {
       // week's phase in orange.
       GeometryReader { geo in
         HStack(alignment: .top, spacing: 3) {
-          ForEach(block.phases, id: \.name) { p in
+          // Keyed by first week: two phases may share a name.
+          ForEach(block.phases, id: \.firstWeek) { p in
             let span = CGFloat(p.lastWeek - p.firstWeek + 1)
             VStack(alignment: .leading, spacing: 6) {
               RoundedRectangle(cornerRadius: 3)
@@ -919,11 +920,18 @@ struct PlanView: View {
     req.httpBody = try? JSONSerialization.data(withJSONObject: [
       "athleteId": tokenManager.athleteId, "status": done ? "done" : "missed", "today": PlanDay.today(),
     ])
-    guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return }
-    let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+    let status: Int
+    if let (_, resp) = try? await URLSession.shared.data(for: req) {
+      status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+    } else {
+      status = 0
+    }
     // 404: marked elsewhere or no longer on the plan; either way it leaves the list.
     if status == 200 || status == 404 {
       await MainActor.run { unmarked.removeAll { $0.id == w.id } }
+    } else {
+      // Say so rather than leave the tap looking ignored; the session stays listed.
+      await MainActor.run { errorText = "That session could not be marked just now. Try again in a moment." }
     }
   }
 
