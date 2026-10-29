@@ -49,6 +49,7 @@ class TokenManager: ObservableObject {
     UserDefaults.standard.removeObject(forKey: tokenKey)
     UserDefaults.standard.removeObject(forKey: athleteIdKey)
     UserDefaults.standard.removeObject(forKey: athleteNameKey)
+    PushManager.shared.clearPendingOpens()
     OnboardingState.needsOnboarding = false
 
     DispatchQueue.main.async {
