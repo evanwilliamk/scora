@@ -110,12 +110,14 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] Rest posture with no move window: the session drops to easy at the same duration, named reason; long runs stay (Q19 option B, `claude/rest-no-window-downgrade`, on `claude/integration-2026-10-18`)
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
 - [ ] Plan tier gating for the flags above, once the Stripe item exists (Evan). Done when a Free athlete gets 404 or the Free behavior from every Plan-tier route, and a coach-assigned athlete never sees plan generation
+  - [!] Code half, ASK (Q30): an `athletes.tier` column (default `free`, Evan can set `plan` by hand), one `requireTier` check on every Plan-tier route, coach-assigned athletes kept out of generation. Done when route tests show a Free athlete gets the Free behavior from each Plan-tier route. Stripe then only writes the column
 
 ## Later phases (not started, see the 90-day plan)
 
 - Phase 2 (rest): Stripe subscriptions, WorkoutKit, WhatsApp doorbell
 - [~] WhatsApp doorbell core: message composer, reply parser, Twilio signature check; no sending or storage (`claude/whatsapp-core`, on `claude/integration-2026-10-22`)
 - [ ] WhatsApp doorbell live: Twilio sandbox account, opt-in copy, inbound route, why-expansion prompt (Evan: account and copy). Done when a reply "why" in the sandbox returns a validated expansion
+  - [!] Code half, ASK (Q29): store the athlete's WhatsApp number (E.164) with an opt-in timestamp, `POST /api/whatsapp/inbound` that checks the Twilio signature (built), handles why/more/pause/stop/help (built) and answers in TwiML, flag `WHATSAPP=on`. Done when route tests answer each reply word from a signed fake request; no message is sent until Evan adds the Twilio account
 - Phase 3: Stripe Connect marketplace, coach dashboard, messaging
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`
