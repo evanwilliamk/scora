@@ -17,9 +17,9 @@ enum DemoMode {
     func step(_ type: String, _ min: Double, _ intensity: String) -> PlanStep {
       PlanStep(type: type, durationMin: min, intensity: intensity, reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)
     }
-    var a = PlanWorkout(date: today, type: "run", intensity: "easy", durationMin: 40, distanceKm: nil, description: nil)
+    var a = PlanWorkout(date: today, type: "run", intensity: "easy", durationMin: 40, distanceKm: nil, description: "40-minute easy run.")
     a.steps = [step("steady", 40, "easy")]
-    var b = PlanWorkout(date: tomorrow, type: "run", intensity: "tempo", durationMin: 45, distanceKm: nil, description: nil)
+    var b = PlanWorkout(date: tomorrow, type: "run", intensity: "tempo", durationMin: 45, distanceKm: nil, description: "45-minute tempo. 10 minutes easy, 25 minutes at tempo, 10 minutes easy.")
     b.steps = [step("warmup", 10, "easy"), step("steady", 25, "tempo"), step("cooldown", 10, "easy")]
     return [a, b]
   }
