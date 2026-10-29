@@ -193,7 +193,6 @@ struct OnboardingView: View {
   }
 
   private func saveDelivery() async {
-    TimeZoneSync.remember(TimeZone.current.identifier)
     guard let url = URL(string: "\(apiBase)/api/preferences") else { return }
     await MainActor.run { isSaving = true; errorText = nil }
     var req = URLRequest(url: url)
@@ -208,6 +207,7 @@ struct OnboardingView: View {
     let ok: Bool
     if let (_, resp) = try? await URLSession.shared.data(for: req) {
       ok = (resp as? HTTPURLResponse)?.statusCode == 200
+      if ok { TimeZoneSync.remember(TimeZone.current.identifier) }
     } else {
       ok = false
     }
@@ -226,10 +226,10 @@ enum TimeZoneSync {
   private static let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
   static func remember(_ id: String) { UserDefaults.standard.set(id, forKey: key) }
   static func forget() { UserDefaults.standard.removeObject(forKey: key) }
-  // True when a zone was sent before and the phone is now in another one.
+  // True when the phone's zone is not the one last sent. With none recorded
+  // (onboarded before this build, or signed in again) it is sent once.
   static func needsSync(current: String = TimeZone.current.identifier) -> Bool {
-    guard let sent = UserDefaults.standard.string(forKey: key) else { return false }
-    return sent != current
+    UserDefaults.standard.string(forKey: key) != current
   }
   static func syncIfChanged(athleteId: String) async {
     let current = TimeZone.current.identifier

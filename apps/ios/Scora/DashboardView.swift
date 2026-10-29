@@ -181,6 +181,7 @@ struct DashboardView: View {
         #endif
         _ = await HealthManager.shared.requestAuthorization()
         await loadRead()
+        await TimeZoneSync.syncIfChanged(athleteId: tokenManager.athleteId)
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
@@ -228,7 +229,7 @@ struct DashboardView: View {
       showWeekly = false
       withAnimation { scroller.scrollTo("top", anchor: .top) }
       // The morning push opens today's read, never the one left from yesterday.
-      if loadedDay != PlanDay.today() { Task { await loadRead() } }
+      if let day = loadedDay, day != PlanDay.today(), !isLoading { Task { await loadRead() } }
     }
   }
 

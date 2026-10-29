@@ -85,9 +85,10 @@ enum HealthNights {
     f.locale = Locale(identifier: "en_US_POSIX")
     f.timeZone = TimeZone(identifier: "UTC")
     f.dateFormat = "yyyy-MM-dd"
-    guard let newest = nights.last?.day, let newestDate = f.date(from: newest) else { return nil }
+    // The newest night with an HRV value is the one compared, never averaged.
+    guard let newest = nights.last(where: { $0.hrvMs != nil })?.day, let newestDate = f.date(from: newest) else { return nil }
     let from = f.string(from: newestDate.addingTimeInterval(-7 * 86400))
-    let values = nights.dropLast().filter { $0.day >= from }.compactMap { $0.hrvMs }
+    let values = nights.filter { $0.day >= from && $0.day < newest }.compactMap { $0.hrvMs }
     guard !values.isEmpty else { return nil }
     return (values.reduce(0, +) / Double(values.count) * 10).rounded() / 10
   }
