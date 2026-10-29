@@ -614,22 +614,9 @@ fastify.post('/api/read', async (request, reply) => {
       }
     }
 
-    // With no drivers there is nothing the voice can honestly say. Don't invent.
-    if (drivers.length === 0) {
-      return reply.send({
-        read: {
-          voice: 'Not enough recent activity to read yet. Once a few runs land in Strava, the morning read fills in.',
-        },
-        posture: postureOut,
-        cards,
-        drivers,
-        connections,
-        generatedAt: new Date().toISOString(),
-      });
-    }
-
     // The athlete's own plan for today, if they pasted one. The read may name
-    // it; it never changes it (CLAUDE.md §1.3). Never blocks the read.
+    // it; it never changes it (CLAUDE.md §1.3). Never blocks the read. Loaded
+    // before the no-drivers return so Plan Today shows without recent runs.
     const today = isoDay(clientToday) ?? athleteLocalToday(activities);
     let plan = planForRead([], today);
     let weekPlanRows: StoredWorkout[] | null = null;
@@ -648,6 +635,20 @@ fastify.post('/api/read', async (request, reply) => {
       }
     } catch (e) {
       fastify.log.warn(`Plan not loaded for read: ${e instanceof Error ? e.message : e}`);
+    }
+
+    // With no drivers there is nothing the voice can honestly say. Don't invent.
+    if (drivers.length === 0) {
+      return reply.send({
+        read: {
+          voice: 'Not enough recent activity to read yet. Once a few runs land in Strava, the morning read fills in.',
+        },
+        posture: postureOut,
+        cards,
+        drivers,
+        connections,
+        generatedAt: new Date().toISOString(),
+      });
     }
 
     // Plan changes the engine made that touch today: the read may observe
