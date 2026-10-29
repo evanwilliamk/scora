@@ -6,7 +6,7 @@
 // Specs carry data inline and contain no url/href keys (the iOS WebView rejects
 // those).
 
-import { isRun } from './activity-types';
+import { isOutdoorRun, isRun } from './activity-types';
 
 const M = 1609.34;
 const DAY = 86400000;
@@ -96,7 +96,8 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
   }
 
   if (kind === 'recent_pace' || kind === 'recent_hr') {
-    const last = runs.slice(0, 10).reverse();
+    // Treadmill pace is an estimate: the pace chart shows outdoor runs only.
+    const last = (kind === 'recent_pace' ? runs.filter(isOutdoorRun) : runs).slice(0, 10).reverse();
     // Two runs on one day (doubles) get distinct labels so they don't share
     // an x position.
     const seenLabel = new Map<string, number>();

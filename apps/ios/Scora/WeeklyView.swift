@@ -148,7 +148,8 @@ struct WeeklyView: View {
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId])
+    // The local date, so "last night" and the week are the athlete's, not UTC's.
+    req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId, "today": PlanDay.today()])
 
     do {
       let (data, resp) = try await URLSession.shared.data(for: req)

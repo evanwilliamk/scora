@@ -187,21 +187,23 @@ export interface OuraSummary {
 // (Sleep, Recovery Signal) and the read actually cite. Best-effort: any route
 // that fails leaves its fields null rather than blocking the dashboard.
 //
-// With the athlete's local date, "last night" must be last night: a newest
-// night older than yesterday (ring off, not synced) leaves sleep, HRV, resting
-// HR, the sleep score and readiness null rather than presenting old values as
-// fresh. The prior-night history and the chart series keep every night.
+// With the athlete's local date, "last night" must be last night. Oura dates
+// a night by the morning it ends, so last night is dated today; an older
+// newest night (ring off, not yet synced) leaves sleep, HRV, resting HR, the
+// sleep score and readiness null rather than presenting old values as fresh.
+// The prior-night history and the chart series keep every night.
 export async function fetchOuraSummary(token: string, opts: { localToday?: string } = {}): Promise<OuraSummary> {
   const auth = { headers: { Authorization: `Bearer ${token}` } };
   const day = 86400000;
   const iso = (d: number) => new Date(d).toISOString().slice(0, 10);
-  const end = Date.now() + day; // inclusive of today
-  const start = Date.now() - 8 * day;
+  // Ranges from the athlete's date when known (UTC can be a day behind it).
+  const base = opts.localToday ? Date.parse(`${opts.localToday}T12:00:00Z`) : Date.now();
+  const end = base + day; // inclusive of today
+  const start = base - 8 * day;
   const range = `start_date=${iso(start)}&end_date=${iso(end)}`;
   // Sleep score percentiles (posture baselines) need a longer window.
-  const scoreRange = `start_date=${iso(Date.now() - 29 * day)}&end_date=${iso(end)}`;
-  const yesterday = opts.localToday ? iso(Date.parse(`${opts.localToday}T00:00:00Z`) - day) : null;
-  const fresh = (d: unknown) => yesterday === null || (typeof d === 'string' && d >= yesterday);
+  const scoreRange = `start_date=${iso(base - 29 * day)}&end_date=${iso(end)}`;
+  const fresh = (d: unknown) => !opts.localToday || d === opts.localToday;
   // The night "last night" refers to, once the sleep periods are read.
   let lastNightDay: string | null = null;
 
@@ -272,8 +274,10 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
       // The score of the same night as the sleep values; else the newest, if fresh.
       const night = lastNightDay ? rows.find((r) => r.day === lastNightDay) : rows[0] && fresh(rows[0].day) ? rows[0] : undefined;
       if (night) summary.sleepScore = night.score ?? null;
+      // Prior nights for the baselines: never the night just scored.
       summary.sleepScoreHistory = rows
-        .slice(1, 29)
+        .filter((r) => r !== night && r !== rows[0])
+        .slice(0, 28)
         .map((r) => r.score)
         .filter((v) => typeof v === 'number');
     }

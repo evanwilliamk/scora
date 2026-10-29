@@ -122,3 +122,12 @@ test('doubles get distinct x labels', () => {
   const labels = spec.data.values.map((v: any) => v.date);
   assert.equal(new Set(labels).size, labels.length, labels.join(','));
 });
+
+test('the pace chart leaves treadmill runs out; the HR chart keeps them (review 10-29)', () => {
+  const treadmill = { ...run(1, 6, 48, 150), type: 'VirtualRun', sport_type: 'VirtualRun' };
+  const mixed = [treadmill, run(2, 5, 45, 140), run(3, 4, 36, 138)];
+  const pace = buildChartSpec('recent_pace', mixed, now) as any;
+  const hr = buildChartSpec('recent_hr', mixed, now) as any;
+  assert.equal(pace.data.values.length, 2);
+  assert.equal(hr.data.values.length, 3);
+});

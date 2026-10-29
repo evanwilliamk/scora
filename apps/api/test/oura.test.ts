@@ -120,21 +120,24 @@ test('with the athlete\'s date, a stale newest night is not "last night" (review
   assert.equal(s.nights!.length, 4, 'the chart series keeps every night');
 });
 
-test('last night counts from today or yesterday, and the score is that night\'s (review 10-29)', async () => {
-  const sleep = [16, 15].map((d, i) => ({ day: day(d), type: 'long_sleep', total_sleep_duration: 27000 + i, average_hrv: 60 + i, lowest_heart_rate: 45 + i }));
-  // A daily_sleep row for today exists without a sleep period yet: not the same night.
-  stubOura({ sleep: { data: sleep }, daily_sleep: { data: [{ day: day(17), score: 70 }, { day: day(16), score: 86 }] }, daily_readiness: { data: [{ day: day(17), score: 79 }] } });
+test('last night is the night dated today (Oura dates a night by its morning); the score is that night\'s (review 10-29)', async () => {
+  const sleep = [17, 16].map((d, i) => ({ day: day(d), type: 'long_sleep', total_sleep_duration: 27000 + i, average_hrv: 60 + i, lowest_heart_rate: 45 + i }));
+  const urls = stubOura({ sleep: { data: sleep }, daily_sleep: { data: [{ day: day(17), score: 86 }, { day: day(16), score: 70 }] }, daily_readiness: { data: [{ day: day(17), score: 79 }] } });
   const s = await fetchOuraSummary('token', { localToday: day(17) });
   assert.equal(s.sleepSeconds, 27000);
-  assert.equal(s.sleepScore, 86, 'the score matches the night the sleep values came from');
+  assert.equal(s.sleepScore, 86);
   assert.equal(s.readinessScore, 79);
+  assert.deepEqual(s.sleepScoreHistory, [70], 'the scored night stays out of the baseline');
+  // Ranges end after the athlete's today, whatever the server's date.
+  assert.ok(urls.every((u) => (new URL(u).searchParams.get('end_date') ?? '') > day(17)));
 });
 
-test('the HRV week average and resting HR history cover seven calendar nights, not seven recordings (review 10-29)', async () => {
-  // Last night (17th), then only the 15th inside the week; the rest are weeks old.
-  const sleep = [17, 15, 6, 5, 4, 3, 2, 1].map((d, i) => ({ day: day(d), type: 'long_sleep', total_sleep_duration: 26000, average_hrv: 40 + i * 10, lowest_heart_rate: 45 + i }));
-  stubOura({ sleep: { data: sleep } });
-  const s = await fetchOuraSummary('token');
-  assert.equal(s.hrvWeekAvgMs, 50, 'only the 15th is in the prior week');
-  assert.deepEqual(s.restingHrHistory, [46]);
+test('the night before last is not last night: ring off or not yet synced (review 10-29)', async () => {
+  const sleep = [16, 15].map((d, i) => ({ day: day(d), type: 'long_sleep', total_sleep_duration: 27000 + i, average_hrv: 60 + i, lowest_heart_rate: 45 + i }));
+  stubOura({ sleep: { data: sleep }, daily_sleep: { data: [{ day: day(16), score: 70 }] }, daily_readiness: { data: [{ day: day(16), score: 75 }] } });
+  const s = await fetchOuraSummary('token', { localToday: day(17) });
+  assert.equal(s.sleepSeconds, null);
+  assert.equal(s.sleepScore, null);
+  assert.equal(s.readinessScore, null);
+  assert.equal(s.nights!.length, 2);
 });
