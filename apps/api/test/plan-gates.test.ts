@@ -88,7 +88,7 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
     ['ALL', 6, 4, 3],
   ]);
   // 4 of 6 done is 66.7%; 3 adaptations over 3 athletes and 4 weeks.
-  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 66.7% FAIL; 3.1.11 0.25 adaptations per athlete per week PASS; 3.1.9 NO DATA');
+  assert.equal(rows.at(-1).verdict, '3.1.10 adherence 66.7% FAIL; 3.1.11 0.25 adaptations per athlete per week, highest 0.75 PASS; 3.1.9 NO DATA');
 
   // 3.1.9 counts sessions with steps (the only ones the app can send), from
   // each athlete's first send on. a: steps on days 5, 4, 3 and 1 ago; sent 4
@@ -102,4 +102,79 @@ test('adherence and adaptation frequency per athlete and overall', async () => {
   assert.match(after.at(-1).verdict, /; 3\.1\.9 66\.7% sent to the Watch FAIL$/);
   await db.query(`update scheduled_workouts set workout_kit_pushed_at = now() where athlete_id = 'a' and scheduled_date = current_date - 1`);
   assert.match((await gates()).at(-1).verdict, /; 3\.1\.9 100\.0% sent to the Watch PASS$/);
+});
+
+// 3.1.11 on a fresh database each: plan age, moves, and the per-athlete limit.
+async function fresh() {
+  const f = new PGlite({ extensions: { vector } });
+  const dir = join(here, '..', 'supabase', 'migrations');
+  for (const x of readdirSync(dir).filter((y) => y.endsWith('.sql')).sort()) {
+    await f.exec(readFileSync(join(dir, x), 'utf8'));
+  }
+  const tpl = (await f.query<any>(
+    `insert into plan_templates (slug, version, sport, goal_type, duration_weeks, experience_level,
+       weekly_volume_range_km, author, structure_json)
+     values ('gate-fixture', '0.0.1', 'run', '10k', 4, 'regular', '[30,45)', 'Test Fixture', '{}') returning id`)).rows[0].id;
+  // A plan started startedDaysAgo with one done easy session a day since (up to 27 days).
+  const plan = async (athlete: string, startedDaysAgo: number) => {
+    const id = (await f.query<any>(
+      `insert into training_plans (athlete_id, source, template_id, start_date, end_date)
+       values ($1, 'scora_ai', $2, current_date - $3::int, current_date + 40) returning id`, [athlete, tpl, startedDaysAgo])).rows[0].id;
+    const ws: string[] = [];
+    for (let d = Math.min(startedDaysAgo, 28); d >= 1; d--) {
+      ws.push((await f.query<any>(
+        `insert into scheduled_workouts (athlete_id, training_plan_id, scheduled_date, planned_type, planned_intensity, planned_duration_min, source, athlete_completed)
+         values ($1, $2, current_date - $3::int, 'run', 'easy', 30, 'scora_ai', true) returning id`, [athlete, id, d])).rows[0].id);
+    }
+    return { id, ws };
+  };
+  const adapt = async (athlete: string, p: { id: string; ws: string[] }, i: number, type = 'downgraded', reason = 'posture_backoff_tempo') => {
+    await f.query(
+      `insert into plan_adaptations (athlete_id, training_plan_id, scheduled_workout_id, adaptation_type, original_date, new_date, reason_code, reason_text, triggered_by, triggered_at)
+       values ($1, $2, $3, $4, case when $4 = 'moved' then current_date - 3 end, case when $4 = 'moved' then current_date - 2 end,
+         $5, 'Named.', 'auto_engine', now() - interval '2 days')`, [athlete, p.id, p.ws[i], type, reason]);
+  };
+  const all = async () => (await f.query<any>(SQL)).rows.map((x) => ({ ...x, adaptations: Number(x.adaptations), adaptations_per_week: Number(x.adaptations_per_week) }));
+  return { f, plan, adapt, all };
+}
+
+test('3.1.11 divides by the weeks the plan overlaps the window, not always 4', async () => {
+  const { f, plan, adapt, all } = await fresh();
+  const young = await plan('young', 6); // under a week: counts as 1 week
+  for (let i = 0; i < 3; i++) await adapt('young', young, i);
+  const two = await plan('two', 14); // two weeks
+  for (let i = 0; i < 3; i++) await adapt('two', two, i);
+  const rows = await all();
+  assert.deepEqual(rows.map((r) => [r.athlete_id, r.adaptations, r.adaptations_per_week]), [
+    ['two', 3, 1.5],
+    ['young', 3, 3],
+    ['ALL', 6, 2],
+  ]);
+  assert.match(rows.at(-1).verdict, /3\.1\.11 2\.00 adaptations per athlete per week, highest 3\.00 FAIL/);
+  await f.close();
+});
+
+test('3.1.11 counts a move once, not again for the session it displaced', async () => {
+  const { f, plan, adapt, all } = await fresh();
+  const p = await plan('m', 40);
+  for (let i = 0; i < 5; i++) {
+    await adapt('m', p, 2 * i, 'moved', 'posture_rest_hard');
+    await adapt('m', p, 2 * i + 1, 'skipped', 'displaced_by_move');
+  }
+  const rows = await all();
+  assert.deepEqual(rows.map((r) => [r.athlete_id, r.adaptations, r.adaptations_per_week]), [['m', 5, 1.25], ['ALL', 5, 1.25]]);
+  assert.match(rows.at(-1).verdict, /highest 1\.25 PASS/);
+  await f.close();
+});
+
+test('3.1.11 fails when any one athlete is over 2 a week, even if the average is under', async () => {
+  const { f, plan, adapt, all } = await fresh();
+  const x = await plan('x', 40);
+  for (let i = 0; i < 9; i++) await adapt('x', x, i); // 2.25 a week
+  await plan('y', 40);
+  await plan('z', 40);
+  const rows = await all();
+  assert.deepEqual(rows.map((r) => [r.athlete_id, r.adaptations_per_week]), [['x', 2.25], ['y', 0], ['z', 0], ['ALL', 0.75]]);
+  assert.match(rows.at(-1).verdict, /3\.1\.11 0\.75 adaptations per athlete per week, highest 2\.25 FAIL/);
+  await f.close();
 });

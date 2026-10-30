@@ -1,7 +1,9 @@
 -- Plan tier gates (doc 10 §3.1), SCORA plans only, the last 28 days up to
 -- yesterday:
 --   3.1.10 plan adherence: at least 70% of scheduled sessions done
---   3.1.11 adaptation frequency: at most 2 per athlete per week
+--   3.1.11 adaptation frequency: at most 2 per athlete per week, for every
+--          athlete (weeks are those the athlete's plan overlaps the window,
+--          at least 1, so a plan started 6 days ago is not spread over 4)
 --   3.1.9 WorkoutKit push: at least 90% of sendable sessions (those with
 --         steps) sent to the Watch, from each athlete's first send on (a
 --         first send means they granted the permission)
@@ -26,7 +28,8 @@ sessions as (
          count(*) filter (where w.athlete_completed is false) as missed,
          count(*) filter (where w.athlete_completed is null) as unmarked,
          count(*) filter (where w.workout_kit_pushed_at is not null) as watch_sent,
-         count(*) filter (where w.workout_structure_json is not null and w.scheduled_date >= f.since) as sendable
+         count(*) filter (where w.workout_structure_json is not null and w.scheduled_date >= f.since) as sendable,
+         greatest(1, (win.to_day - greatest(win.from_day, min(p.start_date)) + 1) / 7.0) as weeks
   from scheduled_workouts w
   join training_plans p on p.id = w.training_plan_id
   left join first_send f on f.athlete_id = w.athlete_id
@@ -36,37 +39,42 @@ sessions as (
   where p.source = 'scora_ai' and p.current_status <> 'replaced'
     and w.scheduled_date between win.from_day and win.to_day
     and coalesce(w.planned_intensity, '') <> 'rest'
-  group by w.athlete_id
+  group by w.athlete_id, win.from_day, win.to_day
 ),
 adaptations as (
   select a.athlete_id, count(*) as adaptations
   from plan_adaptations a
   join training_plans p on p.id = a.training_plan_id
   cross join win
+  -- A move that lands on a planned session also writes a 'skipped' row for
+  -- the displaced one; that is the same change, so it counts once.
   where p.source = 'scora_ai' and p.current_status <> 'replaced' and a.triggered_by = 'auto_engine'
+    and coalesce(a.reason_code, '') <> 'displaced_by_move'
     and a.triggered_at >= win.from_day and a.triggered_at < win.to_day + 1
   group by a.athlete_id
 ),
 per_athlete as (
   select s.athlete_id, s.scheduled, s.done, s.missed, s.unmarked, s.watch_sent, s.sendable,
-         coalesce(a.adaptations, 0) as adaptations
+         coalesce(a.adaptations, 0) as adaptations, s.weeks,
+         coalesce(a.adaptations, 0) / s.weeks as per_week
   -- An athlete with adaptations but no session in the window has nothing to
   -- adhere to and is left out of both gates.
   from sessions s left join adaptations a using (athlete_id)
 ),
 rows as (
   select athlete_id, scheduled, done, missed, unmarked, watch_sent, sendable, adaptations,
-         round(adaptations / 4.0, 2) as adaptations_per_week, null::text as verdict, 0 as sort
+         round(per_week, 2) as adaptations_per_week, null::text as verdict, 0 as sort
   from per_athlete
   union all
   select 'ALL', coalesce(sum(scheduled), 0), coalesce(sum(done), 0), coalesce(sum(missed), 0),
          coalesce(sum(unmarked), 0), coalesce(sum(watch_sent), 0), coalesce(sum(sendable), 0), coalesce(sum(adaptations), 0),
-         round(coalesce(sum(adaptations), 0) / greatest(count(*), 1) / 4.0, 2),
+         round(coalesce(sum(adaptations), 0) / greatest(coalesce(sum(weeks), 0), 1), 2),
          case when count(*) = 0 then '3.1.10 NO DATA; 3.1.11 NO DATA'
            else '3.1.10 adherence ' || round(100.0 * sum(done) / sum(scheduled), 1) || '% '
              || case when sum(done) >= 0.7 * sum(scheduled) then 'PASS' else 'FAIL' end
-             || '; 3.1.11 ' || round(sum(adaptations) / count(*) / 4.0, 2) || ' adaptations per athlete per week '
-             || case when sum(adaptations) <= 2 * 4 * count(*) then 'PASS' else 'FAIL' end
+             || '; 3.1.11 ' || round(sum(adaptations) / sum(weeks), 2) || ' adaptations per athlete per week, highest '
+             || round(max(per_week), 2) || ' '
+             || case when max(per_week) <= 2 then 'PASS' else 'FAIL' end
          end
          || '; 3.1.9 ' || case when coalesce(sum(sendable), 0) = 0 then 'NO DATA'
               else round(100.0 * sum(watch_sent) / sum(sendable), 1) || '% sent to the Watch '
