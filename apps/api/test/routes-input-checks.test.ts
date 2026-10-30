@@ -159,3 +159,21 @@ test('chat quota: with a stored time zone the app\'s date cannot open a fresh da
   assert.ok(!rest.requests.some((q) => q.method === 'PATCH'));
   assert.equal(rest.requests.find((q) => q.table === 'athlete_preferences')!.params.get('athlete_id'), 'eq.42');
 });
+
+// 6. Strava token missing.
+
+test('prediction and calories: no Strava token is a 401 asking to reconnect', async () => {
+  process.env.RACE_PREDICTIONS = 'on';
+  process.env.CALORIE_ENGINE = 'on';
+  try {
+    for (const url of ['/api/plan/prediction?athleteId=42&race=10k', '/api/calories?athleteId=42']) {
+      const r = await get(url);
+      assert.equal(r.statusCode, 401, url);
+      assert.match(r.json().error, /please reconnect Strava/);
+      assert.equal(guard.calls.length, 0);
+    }
+  } finally {
+    process.env.RACE_PREDICTIONS = '';
+    process.env.CALORIE_ENGINE = '';
+  }
+});

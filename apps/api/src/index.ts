@@ -1157,7 +1157,12 @@ fastify.get('/api/plan/prediction', async (request, reply) => {
   try {
     const race = raceParam ?? (await adaptStore().activeScoraPlan(athleteId))?.template.goal_type;
     if (!race) return reply.code(422).send({ error: 'No race given and no active plan with a goal race.' });
-    const token = await getValidStravaToken(athleteId);
+    let token: string;
+    try {
+      token = await getValidStravaToken(athleteId);
+    } catch {
+      return reply.code(401).send({ error: STRAVA_RECONNECT });
+    }
     let activities: any[];
     try {
       activities = await fetchActivitiesSince(token, Math.floor(Date.now() / 1000) - 60 * 86400);
@@ -1181,7 +1186,12 @@ fastify.get('/api/calories', async (request, reply) => {
   const { athleteId } = request.query as { athleteId?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {
-    const token = await getValidStravaToken(athleteId);
+    let token: string;
+    try {
+      token = await getValidStravaToken(athleteId);
+    } catch {
+      return reply.code(401).send({ error: STRAVA_RECONNECT });
+    }
     const headers = { Authorization: `Bearer ${token}` };
     const after = Math.floor(Date.now() / 1000) - 14 * 86400;
     const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', { headers });
