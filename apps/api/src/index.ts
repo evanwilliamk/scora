@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
-import { athleteLocalToday, postureForRead } from './drivers';
+import { athleteLocalToday, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
@@ -601,8 +601,19 @@ fastify.post('/api/read', async (request, reply) => {
     );
 
     // Posture is decided by rules from the driver record, not by the LLM.
-    // No race source is wired yet, so race_in_next_7d stays null.
-    const posture = postureForRead(activities, recovery, { localToday });
+    // race_in_next_7d comes from the active SCORA plan's race date (the same
+    // plan /api/plan/block shows); no plan or no date leaves it null. Never
+    // blocks the read.
+    let raceInNext7d: boolean | null = null;
+    if (generationEnabled()) {
+      try {
+        const active = await withTimeout(adaptStore().activeScoraPlan(String(athleteId)), 2000);
+        raceInNext7d = raceWithinWeek(active?.goal_race_date, localToday);
+      } catch (e) {
+        fastify.log.warn(`Race date not loaded for read: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    const posture = postureForRead(activities, recovery, { localToday, raceInNext7d });
     // A posture no rule backed (the engine's default, empty evidence) is not
     // shown or cited anywhere: no badge, no POSTURE line, no snapshot posture.
     const postureOut = posture.backed

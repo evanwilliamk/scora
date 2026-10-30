@@ -244,3 +244,12 @@ test('virtual runs count toward load (review 10-29)', () => {
   assert.equal(virtual.load_7d, real.load_7d);
   assert.ok((virtual.load_7d ?? 0) > 0);
 });
+
+test('raceWithinWeek: 0 to 7 days ahead on the athlete\'s calendar (night fixes 10-30)', async () => {
+  const { raceWithinWeek } = await import('../src/drivers');
+  assert.equal(raceWithinWeek('2026-10-30', '2026-10-30'), true);
+  assert.equal(raceWithinWeek('2026-11-06', '2026-10-30'), true);
+  assert.equal(raceWithinWeek('2026-11-07', '2026-10-30'), false);
+  assert.equal(raceWithinWeek('2026-10-29', '2026-10-30'), false);
+  assert.equal(raceWithinWeek(null, '2026-10-30'), null);
+});

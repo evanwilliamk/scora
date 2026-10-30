@@ -209,6 +209,16 @@ export function computeDriverRecord(
   return { drivers: d, baselines, completeness };
 }
 
+// race_in_next_7d from the active plan's race date: true when the race is 0
+// to 7 days after the athlete's local today, false when it is further off or
+// past, null when there is no race date to read.
+export function raceWithinWeek(raceDate: string | null | undefined, today: string): boolean | null {
+  if (!raceDate || !/^\d{4}-\d{2}-\d{2}$/.test(raceDate) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return null;
+  const days = Math.round((Date.parse(`${raceDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  if (!Number.isFinite(days)) return null;
+  return days >= 0 && days <= 7;
+}
+
 // The clauses that made the posture fire, as drivers the read may cite, so a
 // named posture is always backed by visible numbers (CLAUDE.md §3.2, §3.4).
 const EVIDENCE: Record<string, (v: number | boolean) => Driver> = {
