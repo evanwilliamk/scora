@@ -92,7 +92,7 @@ export async function generatePlan(
   if (await store.hasActiveCoachPlan(athleteId)) {
     throw new GenerateError('coach_plan_active', 'Your coach sets your plan.');
   }
-  const template = matchTemplate(templates, req);
+  const template = matchTemplate(templates, { ...req, today });
   if (!template) {
     // Doc 09 §2.6: when the race has templates but not at this volume, say so.
     const sameRace = templates.filter((t) => t.sport === req.sport && t.goal_type === req.goal_type && t.experience_level === req.experience_level);

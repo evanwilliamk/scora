@@ -92,6 +92,20 @@ test('no matching template: a named error, nothing stored, no invented plan', as
   assert.equal((await db.query(`select 1 from training_plans where athlete_id = 'g2'`)).rows.length, 0);
 });
 
+test('with templates of two lengths, the one that still fits before the race is chosen', async () => {
+  // In-memory only: a longer, newer variant of the 4-week fixture. Race 11-15
+  // from 10-21: 4 weeks starts this Monday, 8 weeks would have started in
+  // September. The version tie-break alone picked the 8-week and refused.
+  const [four] = templates;
+  const eight = { ...four, slug: 'test-fixture-8wk', version: '9.0.0', duration_weeks: 8 };
+  let stored: any = null;
+  const store = { hasActiveCoachPlan: async () => false, createPlan: async (p: any) => { stored = p; return 'mem-1'; } };
+  const { plan } = await generatePlan('mem', req, '2026-10-21', [eight, four], store);
+  assert.equal(plan.template_slug, four.slug);
+  assert.equal(plan.start_date, '2026-10-19');
+  assert.equal(stored.template.slug, four.slug);
+});
+
 test('a race too close for the template is refused', async () => {
   const store = sqlGenerateStore(db);
   // Race 11-08: a 4-week plan would have started 10-12, before this week.
