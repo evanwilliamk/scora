@@ -14,7 +14,7 @@ const DATA = {
 test('a reply whose numbers are all in the data passes untouched', () => {
   const r = checkCdvReply(
     '18.4 miles over 3 runs this week, down 17% from 22.1 last week.',
-    [{ metric: 'This week', value: '18.4 mi', trend: '-17%' }, { metric: 'Runs', value: '3', trend: 'steady' }],
+    [{ metric: 'This week', value: '18.4 mi', trend: '-17%' }, { metric: 'Runs', value: '3', trend: 'flat' }],
     DATA, 'How is my week going?',
   );
   assert.equal(r.fallback, false);
@@ -38,11 +38,23 @@ test("numbers from the athlete's own question are theirs to repeat", () => {
   assert.equal(r.fallback, false);
 });
 
-test('banned phrasing still falls back, and posture-only trends need no numbers', () => {
-  const r = checkCdvReply('You should run 9 miles today.', [{ metric: 'Thursday', value: '9 mi', trend: 'primed' }], DATA, 'Thursday?');
+test('banned phrasing still falls back, and number-free trends need no numbers', () => {
+  const r = checkCdvReply('You should run 9 miles today.', [{ metric: 'Thursday', value: '9 mi', trend: 'flat' }], DATA, 'Thursday?');
   assert.equal(r.fallback, true);
   assert.ok(r.bannedHits.includes('you should'));
   assert.equal(r.drivers.length, 1);
+});
+
+test('TREND never carries a posture: the line is dropped; a long trend is cut (night fixes 10-30)', () => {
+  for (const trend of ['primed', 'steady', 'moderate', 'back-off', 'back off', 'rest', 'taper', 'steady, holding']) {
+    const r = checkCdvReply('18.4 miles this week.', [{ metric: 'This week', value: '18.4 mi', trend }], DATA, 'How is my week?');
+    assert.deepEqual(r.drivers, [], trend);
+  }
+  const ok = checkCdvReply('18.4 miles this week.', [
+    { metric: 'This week', value: '18.4 mi', trend: 'down 17%' },
+    { metric: 'Runs', value: '3', trend: 'about the same as usual for you' },
+  ], DATA, 'How is my week?');
+  assert.deepEqual(ok.drivers, [{ metric: 'This week', value: '18.4 mi', trend: 'down 17%' }, { metric: 'Runs', value: '3' }]);
 });
 
 test('parseCdvLines reads the voice and METRIC lines and ignores the CHART line', () => {

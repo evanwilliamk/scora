@@ -416,7 +416,7 @@ PATTERN-AWARENESS (allowed, NOT prescription):
 
 OUTPUT FORMAT (exactly):
 - Line 1: one-sentence voice read that directly answers the question (may include a pattern observation if relevant).
-- Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <primed|steady|moderate|back-off|rest|taper OR short trend like +12% / flat / down>
+- Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <short trend only: up, down or flat, with a percent from the data if there is one, like +12% / down 5% / flat>. Never a posture word in TREND.
 - Last line: CHART: <kind>, the one chart that best shows the data behind your answer. SCORA draws it from the real data; you only pick the kind:
 ${CHART_MENU}
 Only cite metrics that exist in the data.`;
