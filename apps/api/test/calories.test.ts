@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cyclingMet, estimateCalories, runningKcal } from '../src/calories';
+import { cyclingMet, estimateCalories, runningKcal, walkingKcal } from '../src/calories';
 
 test('running: ACSM equation, about 1 kcal per kg per km on the flat, more uphill', () => {
   // 70 kg, 10 km in 50 min: 200 m/min -> VO2 43.5 -> 3.045 L/min -> 761 kcal.
@@ -33,10 +33,23 @@ test('no weight or no data, no estimate; other sports are left out in v1', () =>
   assert.equal(estimateCalories({ id: 5, type: 'Swim', distance: 1500, moving_time: 1800 }, 70), null);
 });
 
-test('below running speed the ACSM walking equation is used (review fix)', () => {
-  // 20 km in 4 h with 1000 m climb: 83 m/min, a hike-paced trail run.
-  // Walking: 3.5 + 8.33 + 1.8 x 83.3 x 0.05 = 19.33 ml/kg/min -> 70 kg x 240 min -> 1624 kcal.
-  assert.equal(Math.round(runningKcal(70, 20000, 4 * 3600, 1000)), 1624);
-  // At running speed nothing changes.
-  assert.equal(Math.round(runningKcal(70, 10000, 3000)), 761);
+test('every run uses the running equation, however slow; walks and hikes use the walking one', () => {
+  // 70 kg, 5 km in 40:00 (125 m/min) is still a run: 3.5 + 25 = 28.5 ml/kg/min
+  // -> 1.995 L/min x 5 x 40 = 399 kcal. The old pace cutoff switched to the
+  // walking equation here and gave 224, less than the same 5 km at 37:15.
+  const slow = estimateCalories({ id: 6, type: 'Run', distance: 5000, moving_time: 2400 }, 70);
+  const faster = estimateCalories({ id: 7, type: 'Run', distance: 5000, moving_time: 2235 }, 70);
+  assert.deepEqual([slow!.kcal, slow!.method], [399, 'acsm_running']);
+  assert.ok(slow!.kcal >= faster!.kcal);
+  // A hike-paced trail run (20 km in 4 h, 1000 m climb) is still a run.
+  const trail = estimateCalories({ id: 8, type: 'Run', sport_type: 'TrailRun', distance: 20000, moving_time: 4 * 3600, total_elevation_gain: 1000 }, 70);
+  assert.equal(trail!.method, 'acsm_running');
+  assert.equal(trail!.kcal, Math.round(runningKcal(70, 20000, 4 * 3600, 1000)));
+  // Walk and Hike: walking equation, labelled as such.
+  // 20 km in 4 h with 1000 m climb: 3.5 + 8.33 + 1.8 x 83.3 x 0.05 = 19.33 ml/kg/min -> 1624 kcal.
+  assert.equal(Math.round(walkingKcal(70, 20000, 4 * 3600, 1000)), 1624);
+  const hike = estimateCalories({ id: 9, type: 'Hike', distance: 20000, moving_time: 4 * 3600, total_elevation_gain: 1000 }, 70);
+  assert.deepEqual([hike!.kcal, hike!.method], [1624, 'acsm_walking']);
+  const walk = estimateCalories({ id: 10, type: 'Walk', distance: 5000, moving_time: 3600 }, 70);
+  assert.equal(walk!.method, 'acsm_walking');
 });
