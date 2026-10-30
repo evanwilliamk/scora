@@ -138,3 +138,34 @@ test('every table that holds athlete data is in the deletion inventory (Q27)', a
   assert.deepEqual(missing, [], 'add the new table to docs/account-deletion-inventory.md and to account deletion');
   assert.ok(listed.has('athletes') && listed.has('device_tokens'));
 });
+
+test('create_scora_plan takes the per-athlete plan lock and still saves the plan', async () => {
+  const template = {
+    slug: 'lock-fixture', version: '0.0.1', sport: 'run', goal_type: '10k', duration_weeks: 4,
+    experience_level: 'regular', weekly_volume_range_km: [30, 45], author: 'Test Fixture',
+    status: 'draft', reviewed_by: null, reviewed_on: null,
+  };
+  const payload = (start: string) => JSON.stringify({
+    athlete_id: 'lock1', template, goal_race_type: '10k', goal_race_date: '2026-12-20',
+    start_date: start, end_date: '2026-12-20', weekly_volume_start_km: 32, planned_type: 'run',
+    workouts: [
+      { scheduled_date: start, planned_intensity: 'easy', planned_duration_min: 40, structure: null },
+      { scheduled_date: '2026-11-25', planned_intensity: 'tempo', planned_duration_min: 45, structure: [] },
+    ],
+  });
+  // The lock is held for the rest of the transaction, keyed like replace_external_plan's.
+  await db.exec('begin');
+  const first = (await db.query<{ id: string }>('select create_scora_plan($1::jsonb) as id', [payload('2026-11-23')])).rows[0].id;
+  const held = await db.query<{ n: number }>(
+    `select count(*)::int as n from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()
+       and objid = (hashtext('scora.plan:' || 'lock1')::bigint & 4294967295)::oid`);
+  await db.exec('commit');
+  assert.equal(held.rows[0].n, 1);
+
+  const second = (await db.query<{ id: string }>('select create_scora_plan($1::jsonb) as id', [payload('2026-11-24')])).rows[0].id;
+  const plans = await db.query<{ id: string; current_status: string }>(
+    `select id, current_status from training_plans where athlete_id = 'lock1' order by created_at, start_date`);
+  assert.deepEqual(plans.rows.map((r) => [r.id, r.current_status]), [[first, 'replaced'], [second, 'active']]);
+  const ws = await db.query<{ n: number }>(`select count(*)::int as n from scheduled_workouts where training_plan_id = $1`, [second]);
+  assert.equal(ws.rows[0].n, 2);
+});
