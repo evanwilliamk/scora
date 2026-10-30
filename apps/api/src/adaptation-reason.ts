@@ -81,8 +81,29 @@ function measurePairs(text: string): [string, string][] {
   }
   return out;
 }
-// A shorter or trimmed session. A move keeps the session unchanged.
-const SHORTENED = /\b(shorter|shortened|shorten(?:s|ing)?|cut|cuts|trimmed|trim|reduced|reduce[sd]?|less time|fewer minutes|scaled back|pared)\b/i;
+// A shorter or trimmed session. A move keeps the session unchanged. These
+// words only ever describe the session or its minutes.
+const SHORTENED = /\b(shortened|shorten(?:s|ing)?|trimmed|trim|less time|fewer minutes|scaled back|pared)\b/i;
+// These can describe a driver too ("HRV reduced 12%", "sleep cut short"), so
+// they count only when they apply to the session or its minutes ("were cut",
+// "cut to 30 min", "reduced to", "20 minutes shorter").
+const SHORT_OR_DRIVER = /\b(shorter|cut|cuts|reduced|reduce[sd]?)\b/gi;
+const DRIVER_NOUN = /\b(hrv|sleep|slept|night|nights|resting|heart rate|hr|rhr|load|acwr|recovery|readiness|score|bpm)\b/i;
+const DRIVER_AMOUNT = /^\s+(?:by\s+)?[+-]?\d+(?:\.\d+)?\s?(?:%|percent|bpm|ms|pts?|points?)/i;
+function saysSessionShortened(t: string): boolean {
+  if (SHORTENED.test(t)) return true;
+  for (const m of t.matchAll(SHORT_OR_DRIVER)) {
+    const before = t.slice(0, m.index).split(/[.,;:!?]/).pop() ?? '';
+    const lastWords = before.trim().split(/\s+/).slice(-3).join(' ');
+    const after = t.slice((m.index ?? 0) + m[0].length);
+    // "HRV reduced 12%", "sleep was cut short", "a shorter night": a driver.
+    if (DRIVER_AMOUNT.test(after)) continue;
+    if (DRIVER_NOUN.test(lastWords) && !/\b(?:min|mins|minutes?|h|hrs?|hours?)\b/i.test(lastWords)) continue;
+    if (/^\s+(?:night|nights|sleep)\b/i.test(after)) continue;
+    return true;
+  }
+  return false;
+}
 const UP = /\b(above|up|higher|over|rose|risen|climb(?:ed|ing)?|more)\b/i;
 const DOWN = /\b(below|down|under|lower|dropped|fell|fallen|less)\b/i;
 
@@ -149,7 +170,7 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
     if (!backed.has(`${n}|${u}`)) issues.push(`unbacked measure ${n} ${u}`);
   }
   // A move keeps the session whole; it is never shorter.
-  if (d.type === 'moved' && SHORTENED.test(t)) issues.push('says shortened for a move');
+  if (d.type === 'moved' && saysSessionShortened(t)) issues.push('says shortened for a move');
   return [...new Set(issues)];
 }
 
