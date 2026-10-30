@@ -66,7 +66,7 @@ export function sqlPlanStore(db: Db): PlanStore {
          join training_plans p on p.id = w.training_plan_id
          where w.athlete_id = $1 and p.current_status = 'active'
            and w.scheduled_date between $2 and $3
-         order by w.scheduled_date, w.created_at`,
+         order by w.scheduled_date, w.created_at, w.id`,
         [athleteId, from, to]
       );
       return r.rows as StoredWorkout[];
@@ -125,7 +125,10 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
         .select('id, scheduled_date, planned_type, planned_intensity, planned_duration_min, planned_distance_km, planned_description, workout_structure_json, athlete_completed, training_plans!inner(current_status)')
         .eq('athlete_id', athleteId).eq('training_plans.current_status', 'active')
         .gte('scheduled_date', from).lte('scheduled_date', to)
-        .order('scheduled_date', { ascending: true });
+        // Same-day sessions in a fixed order, as the SQL store and refresh_ical_plan read them.
+        .order('scheduled_date', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
       check(r, 'Load workouts');
       return (r.data ?? []).map(({ training_plans: _p, planned_distance_km, ...w }: any) => ({
         ...w,

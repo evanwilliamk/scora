@@ -17,26 +17,37 @@ export interface CalorieEstimate {
   date: string;
   sport: string;
   kcal: number;
-  method: 'acsm_running' | 'measured_work' | 'met_cycling';
+  method: 'acsm_running' | 'acsm_walking' | 'measured_work' | 'met_cycling';
   inputs: Record<string, number>;
 }
 
 const KCAL_PER_L_O2 = 5;
 
 // ACSM equations, speed in m/min, grade = climb over distance (uphill only).
-// Running (above ~134 m/min): VO2 = 3.5 + 0.2 x speed + 0.9 x speed x grade.
-// Below that the walking equation holds (hiking pace on a trail "run"):
-// VO2 = 3.5 + 0.1 x speed + 1.8 x speed x grade.
-export const ACSM_RUNNING_MIN_SPEED = 134;
+// Running: VO2 = 3.5 + 0.2 x speed + 0.9 x speed x grade.
+// Walking: VO2 = 3.5 + 0.1 x speed + 1.8 x speed x grade.
+// The equation follows the activity type, not the pace: every run uses the
+// running equation however slow (a 40 min 5K is still running), and only
+// Walk and Hike use the walking one.
+const WALK_TYPES = new Set(['Walk', 'Hike']);
+const isWalk = (a: any): boolean => WALK_TYPES.has(a?.type) || WALK_TYPES.has(a?.sport_type);
 
-export function runningKcal(weightKg: number, distanceM: number, movingS: number, climbM = 0): number {
+function acsmKcal(weightKg: number, distanceM: number, movingS: number, climbM: number, walking: boolean): number {
   const minutes = movingS / 60;
   const speed = distanceM / minutes;
   const grade = distanceM > 0 ? Math.max(0, climbM) / distanceM : 0;
-  const vo2 = speed >= ACSM_RUNNING_MIN_SPEED
-    ? 3.5 + 0.2 * speed + 0.9 * speed * grade
-    : 3.5 + 0.1 * speed + 1.8 * speed * grade;
+  const vo2 = walking
+    ? 3.5 + 0.1 * speed + 1.8 * speed * grade
+    : 3.5 + 0.2 * speed + 0.9 * speed * grade;
   return (vo2 * weightKg / 1000) * KCAL_PER_L_O2 * minutes;
+}
+
+export function runningKcal(weightKg: number, distanceM: number, movingS: number, climbM = 0): number {
+  return acsmKcal(weightKg, distanceM, movingS, climbM, false);
+}
+
+export function walkingKcal(weightKg: number, distanceM: number, movingS: number, climbM = 0): number {
+  return acsmKcal(weightKg, distanceM, movingS, climbM, true);
 }
 
 // Compendium of Physical Activities, road cycling by speed (km/h).
@@ -63,6 +74,14 @@ export function estimateCalories(a: any, weightKg: number | null | undefined): C
       ...base,
       kcal: Math.round(runningKcal(weightKg, distance, moving, climb)),
       method: 'acsm_running',
+      inputs: { weight_kg: weightKg, distance_m: distance, moving_s: moving, climb_m: climb },
+    };
+  }
+  if (isWalk(a) && distance > 0) {
+    return {
+      ...base,
+      kcal: Math.round(walkingKcal(weightKg, distance, moving, climb)),
+      method: 'acsm_walking',
       inputs: { weight_kg: weightKg, distance_m: distance, moving_s: moving, climb_m: climb },
     };
   }

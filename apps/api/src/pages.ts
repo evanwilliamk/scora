@@ -23,13 +23,13 @@ export function scriptString(s: string): string {
 
 // Fixed copy for OAuth error codes (RFC 6749 §4.1.2.1). The raw query value
 // is never shown: a crafted link could otherwise put any text on our domain.
-export function oauthErrorMessage(code: unknown): string {
+export function oauthErrorMessage(code: unknown, provider: 'Oura' | 'Strava' = 'Oura'): string {
   switch (code) {
     case 'access_denied':
       return 'Access was not granted.';
     case 'temporarily_unavailable':
     case 'server_error':
-      return 'Oura is having trouble right now. Try again in a few minutes.';
+      return `${provider} is having trouble right now. Try again in a few minutes.`;
     default:
       return 'The connection did not complete.';
   }

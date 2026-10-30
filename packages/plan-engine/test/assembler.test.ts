@@ -6,6 +6,7 @@ import {
   startDateForRace, structureMinutes,
 } from '../src/index';
 import type { PlanTemplate } from '../src/index';
+import { addDays } from '../src/dates';
 
 const FIXTURES = fileURLToPath(new URL('./fixtures/', import.meta.url));
 const [T] = loadTemplates(FIXTURES, { allowDrafts: true });
@@ -93,6 +94,28 @@ test('template matching: sport, goal, level and volume range [min, max); no matc
   assert.equal(matchTemplate([T], { ...q, duration_weeks: 12 }), null);
   const newer: PlanTemplate = { ...T, slug: 'test-fixture-4wk-b', version: '0.0.10' };
   assert.equal(matchTemplate([T, newer], q), newer); // 0.0.10 > 0.0.1, compared numerically
+});
+
+test('template matching with a race date: among durations that still fit, the longest; none fit, the shortest', () => {
+  const q = { sport: 'run', goal_type: '10k', experience_level: 'regular', current_weekly_km: 30 } as const;
+  const w12: PlanTemplate = { ...T, slug: 'tpl-12wk', version: '1.0.0', duration_weeks: 12 };
+  const w16: PlanTemplate = { ...T, slug: 'tpl-16wk', version: '2.0.0', duration_weeks: 16 };
+  const w8: PlanTemplate = { ...T, slug: 'tpl-8wk', version: '1.0.0', duration_weeks: 8 };
+  const all = [w16, w12, w8];
+  const today = '2026-10-21'; // Wednesday; this week's Monday is 2026-10-19
+  // Race 13 weeks out: 16 would have started in the past, 12 fits (version tie-break alone picked 16).
+  const race13 = '2027-01-17'; // Sunday of the 13th week from 2026-10-19
+  assert.equal(startDateForRace(w12, race13) >= MON, true);
+  assert.equal(startDateForRace(w16, race13) < MON, true);
+  assert.equal(matchTemplate(all, { ...q, goal_race_date: race13, today }), w12);
+  // Race far out: the longest fits.
+  assert.equal(matchTemplate(all, { ...q, goal_race_date: '2027-03-07', today }), w16);
+  // A start of exactly this Monday fits.
+  assert.equal(matchTemplate([w16, w12], { ...q, goal_race_date: addDays(MON, 7 * 12 - 1), today }), w12);
+  // Nothing fits: the shortest, so the caller says the race is too soon for it.
+  assert.equal(matchTemplate(all, { ...q, goal_race_date: '2026-11-15', today }), w8);
+  // No race date: unchanged, highest version.
+  assert.equal(matchTemplate(all, q), w16);
 });
 
 test('assembled weeks feed the adaptation engine directly', () => {

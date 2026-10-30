@@ -549,3 +549,31 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: onboarding sent the time zone once, so after a trip the push arrived at the old zone's chosen time while the app read the new local day.
 - Choice: when the app comes forward in a different zone than the one last sent, it sends the new zone; delivery stays at the chosen local time. Alternative: keep the home zone until the athlete changes it in settings.
 - To reverse: drop the TimeZoneSync call in DashboardView's scenePhase handler.
+
+### 2026-10-30: Race predictions pool races and training efforts
+- Status: DECIDED
+- Branch: claude/estimates-fixes
+- Context: when any race existed, only races counted, so one old 5K outweighed a strong 22 km run last week and the 3-effort floor was skipped.
+- Choice: one pool of races and qualifying training runs, races win ties, 3-effort floor for all; "your recent races" wording only when all three are races. Alternative: races only, with a recency cutoff.
+- To reverse: restore the races-only branch in race-prediction.ts.
+
+### 2026-10-30: Calories use the running equation for every run; walks and hikes get the walking one
+- Status: DECIDED
+- Branch: claude/estimates-fixes
+- Context: runs slower than 7:28/km used the ACSM walking equation and got about half the burn.
+- Choice: running equation for Run, TrailRun and VirtualRun at any pace; Walk and Hike now get a walking estimate (they had none). Alternative: keep walks without an estimate.
+- To reverse: drop Walk/Hike from the type check in calories.ts.
+
+### 2026-10-30: Calendar import keeps yesterday's sessions
+- Status: DECIDED
+- Branch: claude/ical-watch-fixes (no change)
+- Context: review flagged that iCal import stores yesterday's events.
+- Choice: keep it, matching the paste rule (yesterday to 26 weeks out), so a refresh does not drop a session the athlete can still mark done or missed.
+- To reverse: skip `date < today` in plan-ical.ts.
+
+### 2026-10-30: A late read can go out just after midnight under yesterday's date
+- Status: DECIDED
+- Branch: claude/delivery-fixes
+- Context: the 120-minute late window stopped at local midnight, so a 23:30 delivery that failed twice was skipped for the day.
+- Choice: the window continues past midnight, keyed by yesterday's date, skipped if a later day was already sent. Alternative: cap delivery times at 21:59.
+- To reverse: remove the yesterday check in delivery.ts.

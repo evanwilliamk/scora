@@ -3,7 +3,7 @@
 // number comes from the template (CLAUDE.md §6.1, §6.3). The session's
 // sentence is said from these rows by describe.ts; it adds nothing to them.
 
-import { addDays, daysBetween, parseDate } from './dates';
+import { addDays, daysBetween, parseDate, weekStart } from './dates';
 import { REST_SLOT, WEEKDAYS } from './template-types';
 import type { ExperienceLevel, PlanTemplate, Sport, Weekday, WorkoutStep } from './template-types';
 import { scaleStructure, structureMinutes, phaseOf, workoutFor } from './template-loader';
@@ -22,6 +22,10 @@ export interface TemplateQuery {
   experience_level: ExperienceLevel;
   current_weekly_km: number;
   duration_weeks?: number;
+  // With both, the race date picks among durations: a template whose start
+  // would fall before this week cannot be followed.
+  goal_race_date?: string;
+  today?: string; // athlete's local date
 }
 
 // doc 07 v2 §6.1 step 2. No match returns null: the caller says "template not
@@ -34,8 +38,20 @@ export function matchTemplate(templates: PlanTemplate[], q: TemplateQuery): Plan
     && (q.duration_weeks === undefined || t.duration_weeks === q.duration_weeks)
     && q.current_weekly_km >= t.weekly_volume_range_km[0]
     && q.current_weekly_km < t.weekly_volume_range_km[1]);
-  // Deterministic tie-break: highest version, then slug.
-  hits.sort((a, b) => compareVersion(b.version, a.version) || a.slug.localeCompare(b.slug));
+  // With a race date, templates that still fit before the race (start on or
+  // after this week's Monday) come first, longest first; ones that do not fit
+  // follow, shortest first, so the caller's race_too_soon names the shortest.
+  // Then the deterministic tie-break: highest version, then slug.
+  const thisMonday = q.goal_race_date && q.today ? weekStart(q.today) : null;
+  const fits = (t: PlanTemplate) => thisMonday !== null && startDateForRace(t, q.goal_race_date!) >= thisMonday;
+  const byLength = (a: PlanTemplate, b: PlanTemplate) => {
+    if (thisMonday === null) return 0;
+    const fa = fits(a);
+    const fb = fits(b);
+    if (fa !== fb) return fa ? -1 : 1;
+    return fa ? b.duration_weeks - a.duration_weeks : a.duration_weeks - b.duration_weeks;
+  };
+  hits.sort((a, b) => byLength(a, b) || compareVersion(b.version, a.version) || a.slug.localeCompare(b.slug));
   return hits[0] ?? null;
 }
 

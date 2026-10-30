@@ -166,7 +166,11 @@ enum WatchSend {
   static func canSend(type: String, steps: [PlanStep]?, date: String, today: String) -> Bool {
     guard let steps, !steps.isEmpty, (try? WorkoutExport.activity(for: type)) != nil else { return false }
     guard let d = day(date), let t = day(today) else { return false }
-    let diff = Calendar(identifier: .gregorian).dateComponents([.day], from: t, to: d).day ?? -1
+    // Both dates are UTC midnights; counting in UTC keeps a DST change in the
+    // device zone from shortening the gap by an hour (and so by a day).
+    var utc = Calendar(identifier: .gregorian)
+    utc.timeZone = TimeZone(identifier: "UTC")!
+    let diff = utc.dateComponents([.day], from: t, to: d).day ?? -1
     return diff >= 0 && diff <= daysAhead
   }
 

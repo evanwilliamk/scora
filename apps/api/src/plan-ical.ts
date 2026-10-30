@@ -101,30 +101,55 @@ export function parseIcsEvents(text: string): IcsEvent[] {
   return events;
 }
 
-const validZone = (tz: string | undefined): string => {
-  if (!tz) return 'UTC';
+const knownZone = (tz: string | undefined): string | null => {
+  if (!tz) return null;
   try {
     new Intl.DateTimeFormat('en-CA', { timeZone: tz });
     return tz;
   } catch {
-    return 'UTC';
+    return null;
   }
 };
 
+const validZone = (tz: string | undefined): string => knownZone(tz) ?? 'UTC';
+
+// en-CA formats as YYYY-MM-DD.
+const dateIn = (t: number, timeZone: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(t);
+
+// Milliseconds `timeZone` is ahead of UTC at instant `t`.
+function zoneOffset(t: number, timeZone: string): number {
+  const parts: Record<string, number> = {};
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  for (const p of fmt.formatToParts(t)) if (p.type !== 'literal') parts[p.type] = Number(p.value);
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - Math.floor(t / 1000) * 1000;
+}
+
+// The instant a wall-clock time (given as if UTC) names in `timeZone`. Two
+// passes settle the offset across a DST change.
+function wallTimeToInstant(wallAsUtc: number, timeZone: string): number {
+  let t = wallAsUtc - zoneOffset(wallAsUtc, timeZone);
+  t = wallAsUtc - zoneOffset(t, timeZone);
+  return t;
+}
+
 // The calendar date of an event's start, in the athlete's zone. An all-day
-// date, a floating time and a TZID time keep their written date; a UTC time
-// ("Z") is converted to the athlete's zone first.
-export function eventDate(e: Pick<IcsEvent, 'dtstart'>, timeZone?: string): string | null {
+// date and a floating time keep their written date; a UTC time ("Z") and a
+// time with a known TZID are converted to the athlete's zone first. An
+// unknown TZID keeps the written date.
+export function eventDate(e: Pick<IcsEvent, 'dtstart'> & Partial<Pick<IcsEvent, 'dtstartParams'>>, timeZone?: string): string | null {
   const v = e.dtstart;
   if (!v) return null;
   const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(v);
   if (!m) return null;
   const [, y, mo, d, h, mi, s, z] = m;
-  if (z) {
-    const t = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:${s ?? '00'}Z`);
-    if (Number.isNaN(t)) return null;
-    // en-CA formats as YYYY-MM-DD.
-    return new Intl.DateTimeFormat('en-CA', { timeZone: validZone(timeZone), year: 'numeric', month: '2-digit', day: '2-digit' }).format(t);
+  const source = h === undefined || z ? null : knownZone(e.dtstartParams?.TZID);
+  if (z || source) {
+    const wall = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:${s ?? '00'}Z`);
+    if (Number.isNaN(wall)) return null;
+    return dateIn(source ? wallTimeToInstant(wall, source) : wall, validZone(timeZone));
   }
   return `${y}-${mo}-${d}`;
 }

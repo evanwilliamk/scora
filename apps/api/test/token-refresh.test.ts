@@ -101,3 +101,49 @@ test('a save that matches no athlete row is reported too (review 4)', async () =
   }
   assert.deepEqual(errors, ['Strava token refresh not saved: no athlete row matched']);
 });
+
+test('concurrent Oura reads for one athlete share a single refresh (single-use refresh tokens)', async () => {
+  const sb = fakeSupabase([
+    { data: { oura_access_token: 'old', oura_refresh_token: 'r1', oura_expires_at: 0 } },
+    { data: [{ strava_id: 's1' }] },
+  ]);
+  const ep = tokenEndpoint({ access_token: 'new', refresh_token: 'r2', expires_in: 86400 });
+  const tokens = await Promise.all([1, 2, 3].map(() => getValidOuraToken('s1', sb as any, ep.f)));
+  assert.deepEqual(tokens, ['new', 'new', 'new']);
+  assert.equal(ep.calls.length, 1);
+  assert.equal(sb.queries.length, 2, 'one lookup, one save');
+  assert.deepEqual(sb.queries[1].calls.slice(1, 3), [['eq', 'strava_id', 's1'], ['eq', 'oura_refresh_token', 'r1']],
+    'the save only lands over the token it spent');
+
+  // Settled: the next read looks again rather than reusing the old promise.
+  const later = fakeSupabase([{ data: { oura_access_token: 'new', oura_refresh_token: 'r2', oura_expires_at: now() + 3600 } }]);
+  assert.equal(await getValidOuraToken('s1', later as any, ep.f), 'new');
+  assert.equal(ep.calls.length, 1);
+});
+
+test('concurrent Strava reads for one athlete share a single refresh; other athletes do not wait', async () => {
+  const sb = fakeSupabase([
+    { data: { strava_access_token: 'old', strava_refresh_token: 'ref1', strava_expires_at: 0 } },
+    { data: { strava_access_token: 'other', strava_refresh_token: 'x', strava_expires_at: now() + 3600 } },
+    { data: [{ strava_id: 's1' }] },
+  ]);
+  const ep = tokenEndpoint({ access_token: 'new', refresh_token: 'ref2', expires_at: now() + 21600 });
+  const [a, b, c] = await Promise.all([
+    getValidStravaToken('s1', sb as any, ep.f),
+    getValidStravaToken('s1', sb as any, ep.f),
+    getValidStravaToken('s2', sb as any, ep.f),
+  ]);
+  assert.deepEqual([a, b, c], ['new', 'new', 'other']);
+  assert.equal(ep.calls.length, 1);
+  assert.deepEqual(sb.queries[2].calls.slice(1, 3), [['eq', 'strava_id', 's1'], ['eq', 'strava_refresh_token', 'ref1']]);
+});
+
+test('a failed refresh rejects every waiting caller and is not cached', async () => {
+  const sb = fakeSupabase([{ data: { oura_access_token: 'old', oura_refresh_token: 'r1', oura_expires_at: 0 } }]);
+  const refused = tokenEndpoint({}, 400);
+  const results = await Promise.allSettled([getValidOuraToken('s9', sb as any, refused.f), getValidOuraToken('s9', sb as any, refused.f)]);
+  assert.deepEqual(results.map((r) => r.status), ['rejected', 'rejected']);
+  assert.equal(refused.calls.length, 1);
+  const retry = fakeSupabase([{ data: { oura_access_token: 'ok', oura_refresh_token: 'r1', oura_expires_at: now() + 3600 } }]);
+  assert.equal(await getValidOuraToken('s9', retry as any, refused.f), 'ok');
+});

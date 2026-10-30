@@ -15,7 +15,7 @@ import {
   fetchOuraSummary,
   OURA_CLIENT_ID,
 } from './oura';
-import { consumeCdvQuota, pingDatabase, quotaDay } from './usage';
+import { consumeCdvQuota, pingDatabase, quotaDay, refundCdvQuota } from './usage';
 import { generateValidatedVoice } from './voice';
 import { checkCdvWithRetry } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
@@ -97,16 +97,28 @@ fastify.get('/api/auth/strava', async (request, reply) => {
 });
 
 fastify.get('/api/auth/strava/callback', async (request, reply) => {
-  const { code } = request.query as { code?: string };
+  const { code, error: oauthError } = request.query as { code?: string; error?: string };
 
-  if (!code) {
-    return reply.type('text/html').send(`
-      <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5;">
-        <div style="text-align: center;"><h1>⚠️ Missing Authorization</h1><p>No authorization code received. Please try again.</p></div>
-      </body></html>
-    `);
+  // A denial (?error=access_denied, no code) or a missing code still hands
+  // back to the app, like the Oura callback.
+  if (oauthError) {
+    return reply.type('text/html').send(resultPage({
+      title: 'Strava not connected',
+      lines: [oauthErrorMessage(oauthError, 'Strava')],
+      deepLink: 'scora://auth/failed?reason=cancelled',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
-  
+  if (!code) {
+    return reply.code(400).type('text/html').send(resultPage({
+      title: 'Strava not connected',
+      lines: ['No authorization came back from Strava.'],
+      deepLink: 'scora://auth/failed?reason=missing',
+      buttonLabel: 'Back to SCORA',
+    }));
+  }
+
+
   try {
     const tokenResponse = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
@@ -470,6 +482,14 @@ Answer THIS question specifically using the data above. If the data can't answer
     } catch (e) {
       const err = e instanceof LlmHttpError ? e.message : String(e);
       fastify.log.error({ err }, 'OpenAI error');
+      // No answer, so no query spent: give it back.
+      if (quota?.allowed) {
+        try {
+          await refundCdvQuota(athleteId, quota.day);
+        } catch (re) {
+          fastify.log.error({ err: re }, 'CDV quota refund failed');
+        }
+      }
       return reply.code(500).send({ error: 'LLM failed' });
     }
 
@@ -1234,7 +1254,10 @@ fastify.post('/api/weekly', async (request, reply) => {
       // Oura optional — weekly read works on Strava alone.
     }
 
-    const { stats, drivers, hasData } = buildWeeklySummary(activities, ouraSummary);
+    // The 7 complete days before the athlete's today: a Monday-morning push
+    // must not count this morning's run, and the plan driver reads the same days.
+    const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+    const { stats, drivers, hasData } = buildWeeklySummary(activities, ouraSummary, today);
 
     // The athlete's plan over the same 7 days, if they have one: the review
     // may name how the week tracked against it, never what to do about it.
@@ -1242,7 +1265,6 @@ fastify.post('/api/weekly', async (request, reply) => {
       try {
         // The 7 complete days before today: a Sunday-morning review must not
         // count Sunday's long run as missed.
-        const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
         const from = addDays(today, -7);
         const to = addDays(today, -1);
         const planDriverWeek = weeklyPlanDriver(await planStore().workoutsBetween(String(athleteId), from, to), activities, from, to);
@@ -1351,10 +1373,11 @@ fastify.post('/api/unregister-device', async (request, reply) => {
 // local date and send time (unix seconds).
 fastify.post('/api/events/push-open', async (request, reply) => {
   const { athleteId, kind, date, sentAt } = (request.body as any) || {};
-  // A uuid, a real date and a send time in the last 7 days (a minute of clock
+  // The Strava athlete id the app stores at sign-in (device_tokens are keyed
+  // by it), a real date and a send time in the last 7 days (a minute of clock
   // skew allowed): nothing else can reach the log line or skew the gate.
   const now = Date.now();
-  if (typeof athleteId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(athleteId)
+  if (typeof athleteId !== 'string' || !/^[1-9][0-9]{0,19}$/.test(athleteId)
       || (kind !== 'daily' && kind !== 'weekly')
       || typeof date !== 'string' || !isoDay(date)
       || typeof sentAt !== 'number' || !Number.isFinite(sentAt)

@@ -59,15 +59,37 @@ export interface DueResult {
   localDate: string;
 }
 
+// The calendar day before `date` (YYYY-MM-DD).
+function previousDate(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export function dueDeliveries(prefs: DeliveryPrefs, now: Date): DueResult {
   const tz = isValidTimezone(prefs.timezone) ? prefs.timezone : DEFAULT_TIMEZONE;
   const { date, minute, weekday } = localClock(now, tz);
-  const inWindow = minute >= prefs.delivery_minute && minute < prefs.delivery_minute + LATE_WINDOW_MIN;
-  return {
-    daily: inWindow && prefs.last_daily_sent_on !== date,
-    weekly: inWindow && weekday === 1 && prefs.last_weekly_sent_on !== date,
-    localDate: date,
-  };
+  const end = prefs.delivery_minute + LATE_WINDOW_MIN;
+  if (minute >= prefs.delivery_minute && minute < end) {
+    return {
+      daily: prefs.last_daily_sent_on !== date,
+      weekly: weekday === 1 && prefs.last_weekly_sent_on !== date,
+      localDate: date,
+    };
+  }
+  // A late delivery time (23:30) keeps its window past local midnight: the
+  // retry is for yesterday's read, keyed by yesterday's date, so the claim
+  // still allows one send per day. Never once a later day was sent.
+  const yesterday = previousDate(date);
+  if (minute + 1440 < end) {
+    const notSince = (last: string | null) => last === null || last < yesterday;
+    return {
+      daily: notSince(prefs.last_daily_sent_on),
+      weekly: (weekday + 6) % 7 === 1 && notSince(prefs.last_weekly_sent_on),
+      localDate: yesterday,
+    };
+  }
+  return { daily: false, weekly: false, localDate: date };
 }
 
 // Minutes between the athlete's set delivery time on `localDate` and `at`,

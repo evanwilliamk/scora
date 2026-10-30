@@ -123,10 +123,11 @@ export async function knowledgeForRead(
     try {
       const q = buildRetrievalQuery(input.posture, input.drivers, input.scheduled);
       const [embedding] = await deps.embed([q.text]);
-      let chunks = await deps.match(embedding, RETRIEVAL_TOP_K, q.tags);
-      // Tags can be too narrow for a young library: retry unfiltered.
-      if (chunks.length === 0 && q.tags.length > 0) chunks = await deps.match(embedding, RETRIEVAL_TOP_K, []);
-      chunks = chunks.filter((c) => c.similarity >= RETRIEVAL_MIN_SIMILARITY);
+      const close = (cs: RetrievedChunk[]) => cs.filter((c) => c.similarity >= RETRIEVAL_MIN_SIMILARITY);
+      let chunks = close(await deps.match(embedding, RETRIEVAL_TOP_K, q.tags));
+      // Tags can be too narrow for a young library: retry unfiltered when the
+      // tagged search found nothing close enough (not just nothing at all).
+      if (chunks.length === 0 && q.tags.length > 0) chunks = close(await deps.match(embedding, RETRIEVAL_TOP_K, []));
       if (chunks.length > 0) {
         return { mode: 'library', chunks, pattern: null, promptBlock: libraryPromptBlock(chunks) };
       }

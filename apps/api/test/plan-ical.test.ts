@@ -72,6 +72,25 @@ test('a UTC start time is placed on the athlete\'s own calendar day', () => {
   assert.equal(eventDate({ dtstart: 'garbage' }, 'UTC'), null);
 });
 
+test('a TZID start time is moved from its own zone to the athlete\'s', () => {
+  const at = (dtstart: string, TZID: string, tz: string) => eventDate({ dtstart, dtstartParams: { TZID } }, tz);
+  // 01:00 UTC on Nov 3 is 18:00 on Nov 2 in Los Angeles.
+  assert.equal(at('20261103T010000', 'Etc/UTC', 'America/Los_Angeles'), '2026-11-02');
+  // 22:00 in New York on Oct 23 is already Oct 24 in Berlin.
+  assert.equal(at('20261023T220000', 'America/New_York', 'Europe/Berlin'), '2026-10-24');
+  // Across the US DST change (Nov 1): 23:30 New York on Nov 1 is 04:30 UTC Nov 2.
+  assert.equal(at('20261101T233000', 'America/New_York', 'UTC'), '2026-11-02');
+  // Same zone as the athlete: the written date.
+  assert.equal(at('20261023T060000', 'America/New_York', 'America/New_York'), '2026-10-23');
+  // Unknown TZID: the written date, as before.
+  assert.equal(at('20261103T010000', 'Not/AZone', 'America/Los_Angeles'), '2026-11-03');
+  // An all-day date keeps its date whatever the zone.
+  assert.equal(eventDate({ dtstart: '20261103', dtstartParams: { VALUE: 'DATE', TZID: 'Etc/UTC' } }, 'America/Los_Angeles'), '2026-11-03');
+  // Through the import itself.
+  const r = importIcs(cal(ev('UID:t', 'DTSTART;TZID=Etc/UTC:20261103T010000', 'SUMMARY:Easy run 30 min')), TODAY, 'America/Los_Angeles');
+  assert.equal(r.rows[0].date, '2026-11-02');
+});
+
 test('repeating, cancelled and undated events are left out with a reason', () => {
   const r = importIcs(cal(
     ev('UID:r', 'DTSTART;VALUE=DATE:20261023', 'RRULE:FREQ=WEEKLY;COUNT=4', 'SUMMARY:Easy run 30 min'),
@@ -233,4 +252,43 @@ test('a calendar refresh keeps done/missed marks on sessions it brings back (rev
   const [again] = await store.workoutsBetween('rf2', '2026-10-23', '2026-10-23');
   assert.notEqual(again.id, first.id, 'a new row');
   assert.equal(again.athlete_completed, true, 'the mark came along');
+});
+
+test('a refresh keeps two identical sessions marked apart and keeps the Watch send (review 2026-10-30)', async () => {
+  const store = sqlPlanStore(db);
+  // The importer drops exact repeats, but the function takes any rows, and
+  // two sessions can share day, sport and words.
+  const row = (date: string) => ({ date, type: 'run', intensity: 'easy', duration_min: 30, distance_km: null, description: 'Easy run 30 min' });
+  const rows = [row('2026-10-23'), row('2026-10-23'), row('2026-10-24')] as any;
+  await store.saveIcalPlan('rf3', rows);
+  const [a, b] = await store.workoutsBetween('rf3', '2026-10-23', '2026-10-23');
+  const [c] = await store.workoutsBetween('rf3', '2026-10-24', '2026-10-24');
+  assert.equal(a.planned_description, b.planned_description, 'identical sessions');
+  assert.equal(await store.markCompleted('rf3', a.id, true, '2026-10-24'), true);
+  assert.equal(await store.markCompleted('rf3', b.id, false, '2026-10-24'), true);
+  assert.equal(await store.markWatchSent('rf3', c.id), true);
+  const sent = (await db.query<{ t: string }>(`select workout_kit_pushed_at::text as t from scheduled_workouts where id = $1`, [c.id])).rows[0].t;
+
+  await store.refreshIcalPlan('rf3', rows);
+  const day = await store.workoutsBetween('rf3', '2026-10-23', '2026-10-23');
+  assert.equal(day.length, 2);
+  assert.ok(day.every((w) => w.id !== a.id && w.id !== b.id), 'new rows');
+  assert.deepEqual(day.map((w) => w.athlete_completed), [true, false], 'one done, one missed, in the same order');
+  const [c2] = await store.workoutsBetween('rf3', '2026-10-24', '2026-10-24');
+  const after = (await db.query<{ t: string | null }>(`select workout_kit_pushed_at::text as t from scheduled_workouts where id = $1`, [c2.id])).rows[0].t;
+  assert.notEqual(c2.id, c.id);
+  assert.equal(after, sent, 'the Watch send came along');
+});
+
+test('the Supabase store orders same-day sessions by creation, then id', async () => {
+  const { supabasePlanStore } = await import('../src/plan-store');
+  const orders: any[] = [];
+  const q: any = {
+    select: () => q, eq: () => q, gte: () => q, lte: () => q,
+    order: (col: string, o?: any) => { orders.push([col, o?.ascending ?? true]); return q; },
+    then: (res: any) => res({ data: [], error: null }),
+  };
+  const store = supabasePlanStore({ from: () => q, rpc: async () => ({ data: null, error: null }) });
+  await store.workoutsBetween('ath', '2026-10-23', '2026-10-25');
+  assert.deepEqual(orders, [['scheduled_date', true], ['created_at', true], ['id', true]]);
 });

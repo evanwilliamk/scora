@@ -116,9 +116,29 @@ export async function storeOuraTokens(athleteId: string, tokenData: any): Promis
   }
 }
 
+// One refresh per athlete at a time in this process. Oura refresh tokens
+// rotate on use, so two reads racing on an expired token would both spend the
+// same old refresh token and the second would fail. Concurrent callers share
+// the in-flight lookup (and refresh, if one is needed) instead.
+const ouraTokenInFlight = new Map<string, Promise<string>>();
+
+export async function getValidOuraToken(
+  athleteId: string,
+  // Injectable for tests; production uses the shared client and fetch.
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const key = String(athleteId);
+  const pending = ouraTokenInFlight.get(key);
+  if (pending) return pending;
+  const p = getValidOuraTokenOnce(athleteId, supabase, fetchImpl).finally(() => ouraTokenInFlight.delete(key));
+  ouraTokenInFlight.set(key, p);
+  return p;
+}
+
 // Returns a valid Oura access token, refreshing if expired. Throws if the
 // athlete has not connected Oura (the dashboard treats this as "not connected").
-export async function getValidOuraToken(
+async function getValidOuraTokenOnce(
   athleteId: string,
   // Injectable for tests; production uses the shared client and fetch.
   supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
@@ -154,6 +174,8 @@ export async function getValidOuraToken(
       oura_expires_at: expiresAt,
     })
     .eq('strava_id', String(athleteId))
+    // Only over the token we spent: never overwrite a newer set (a reconnect).
+    .eq('oura_refresh_token', athlete.oura_refresh_token)
     .select('strava_id');
   // The provider may have retired the old refresh token, so a lost save means
   // the next refresh fails and the athlete must reconnect. Say so loudly; the
