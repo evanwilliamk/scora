@@ -98,6 +98,16 @@ export interface TickDeps {
   clock?: () => Date;
   // athlete:kind:date -> when its last try failed (ms), kept across ticks.
   failedAt?: Map<string, number>;
+  // Claims whose release threw, retried at the start of each tick so the
+  // stuck claim does not cost the athlete the day's read.
+  pendingReleases?: Map<string, PendingRelease>;
+}
+
+export interface PendingRelease {
+  athleteId: string;
+  kind: 'daily' | 'weekly';
+  localDate: string;
+  previous: string | null;
 }
 
 export const RETRY_AFTER_MS = 15 * 60_000;
@@ -106,6 +116,17 @@ export const DELIVERY_CONCURRENCY = 4;
 // One scheduler tick: every athlete whose local delivery time has come and
 // who has not had today's read gets it; Monday also brings the weekly review.
 export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: number; weekly: number }> {
+  // Before loading preferences, so a released claim reads as not yet sent.
+  // A release only resets a column still holding its own date, so a late
+  // retry cannot undo another send.
+  for (const [key, r] of deps.pendingReleases ?? []) {
+    try {
+      await deps.prefs.release(r.athleteId, r.kind, r.localDate, r.previous);
+      deps.pendingReleases!.delete(key);
+    } catch (e) {
+      deps.log.error(`scheduler: release retry for ${r.athleteId} ${r.kind} failed: ${e instanceof Error ? e.message : e}`);
+    }
+  }
   let athletes: string[];
   let prefs: Awaited<ReturnType<PrefsStore['getMany']>>;
   try {
@@ -138,7 +159,13 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
         } finally {
           if (!delivered) {
             deps.failedAt?.set(key, now.getTime());
-            await deps.prefs.release(athleteId, kind, due.localDate, previous);
+            try {
+              await deps.prefs.release(athleteId, kind, due.localDate, previous);
+            } catch (e) {
+              // Left claimed, no later tick would try again: queue the release.
+              deps.log.error(`scheduler: release of ${kind} for ${athleteId} failed: ${e instanceof Error ? e.message : e}`);
+              deps.pendingReleases?.set(key, { athleteId, kind, localDate: due.localDate, previous });
+            }
           }
           // After the release: telemetry must never cost a read.
           try {
@@ -184,6 +211,7 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
         : pushToAthlete(baseUrl, athleteId, '/api/weekly', 'This week', localDate, log),
     log,
     failedAt: new Map(),
+    pendingReleases: new Map(),
   };
   // Skip a tick while the last one is still running; never let a rejection
   // escape the cron callback (an unhandled rejection kills the process).

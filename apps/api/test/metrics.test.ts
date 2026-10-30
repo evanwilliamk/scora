@@ -197,3 +197,20 @@ test('a long effort today reads "Today", never "0 days ago" (review 10-29)', () 
   assert.equal(long.value, 'Today');
   assert.equal(long.unit, '');
 });
+
+test('weekly summary with today counts the 7 local days before it, never 8 of 7', () => {
+  // Monday 2026-11-02 06:00 push. Runs every day from last Monday 07:00
+  // through this Monday 05:30, all inside the last 7x24 hours of a clock
+  // that reads 06:00 local.
+  const today = '2026-11-02';
+  const days = ['2026-10-26T07:00', '2026-10-27T07:00', '2026-10-28T07:00', '2026-10-29T07:00',
+    '2026-10-30T07:00', '2026-10-31T07:00', '2026-11-01T07:00', '2026-11-02T05:30'];
+  const acts = days.map((d) => ({ type: 'Run', distance: 8000, moving_time: 2400, start_date: `${d}:00Z`, start_date_local: `${d}:00Z` }));
+  // The prior week, for the trend.
+  acts.push({ type: 'Run', distance: 5000, moving_time: 1500, start_date: '2026-10-20T07:00:00Z', start_date_local: '2026-10-20T07:00:00Z' });
+  const w = buildWeeklySummary(acts, null, today);
+  assert.equal(w.drivers.find((d) => d.metric === 'Days trained')!.value, '7 of 7');
+  assert.equal(w.stats.find((s) => s.label === 'Days run')!.value, '7/7');
+  assert.equal(w.stats.find((s) => s.label === 'Volume')!.value, '34.8 mi');
+  assert.equal(w.drivers.find((d) => d.metric === 'Load')!.trend, '+1020% wk');
+});

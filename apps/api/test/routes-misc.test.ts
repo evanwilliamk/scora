@@ -156,6 +156,21 @@ test('chat: a clean answer counts one query and draws the chart from the activit
   assert.deepEqual({ n: count.body.cdv_count, d: count.body.cdv_count_date }, { n: 2, d: today });
 });
 
+test('chat: a failed model call gives the query back', async () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  // Token lookup, quota, its count, then the refund's own read of the counted row.
+  connected({ cdv_count: 1, cdv_count_date: today });
+  connected({ cdv_count: 1, cdv_count_date: today });
+  rest.answer('athletes', { body: [] });
+  connected({ cdv_count: 2, cdv_count_date: today });
+  guard.stravaActivities(twoWeeks());
+  guard.openAi({ status: 500, body: { error: { message: 'upstream' } } });
+  const r = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today });
+  assert.equal(r.statusCode, 500, r.body);
+  const counts = rest.requests.filter((q) => q.method === 'PATCH' && q.table === 'athletes').map((q) => q.body.cdv_count);
+  assert.deepEqual(counts, [2, 1], 'counted, then given back');
+});
+
 test('chat: prescriptive drafts are replaced, never sent', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
   connected({ cdv_count: 0, cdv_count_date: today });
