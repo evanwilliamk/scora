@@ -60,7 +60,29 @@ const DAY_FORMS: Record<string, RegExp> = Object.fromEntries(WEEKDAYS.map((day) 
   new RegExp(`\\b(?:${day}|${day.slice(0, 3)}${day === 'Tuesday' ? '|Tues' : day === 'Thursday' ? '|Thur|Thurs' : ''})\\.?(?:'s)?\\b`, 'i'),
 ]));
 const ADVICE = /\b(skip|try|consider|make sure|remember to|feel free|listen to your body|keep (?:it|things)|ease|go easy|rest up|aim|take it|should|need to|be sure|focus on|prioriti[sz]e)\b/i;
-const NUMBER_WORDS = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|ninety|hundred|half|dozen)\b/i;
+const NUMBER_WORDS = /\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|half|dozen)\b/i;
+// Time and distance units. A number said with one of these is a claim about
+// the session or a duration, never a bare score.
+const MEASURE_UNITS: [RegExp, string][] = [
+  [/^(?:min|mins|minutes?)$/i, 'min'], [/^(?:h|hrs?|hours?)$/i, 'h'], [/^(?:s|secs?|seconds?)$/i, 's'],
+  [/^(?:mi|miles?)$/i, 'mi'], [/^(?:km|kilomet(?:er|re)s?)$/i, 'km'], [/^(?:m|met(?:er|re)s?)$/i, 'm'],
+];
+// [number, unit family] for each number in the text said with a time or distance unit.
+function measurePairs(text: string): [string, string][] {
+  const out: [string, string][] = [];
+  // "5:40" carries its own units: hours and minutes (or minutes and seconds).
+  for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:])/g)) {
+    const a = String(parseFloat(m[1])), b = String(parseFloat(m[2]));
+    out.push([a, 'h'], [a, 'min'], [b, 'min'], [b, 's']);
+  }
+  for (const m of text.matchAll(/(?<![\d.:])(\d+(?:\.\d+)?)(?![\d:])\s?([a-z]+)?/gi)) {
+    const unit = MEASURE_UNITS.find(([re]) => re.test(m[2] ?? ''))?.[1];
+    if (unit) out.push([String(parseFloat(m[1])), unit]);
+  }
+  return out;
+}
+// A shorter or trimmed session. A move keeps the session unchanged.
+const SHORTENED = /\b(shorter|shortened|shorten(?:s|ing)?|cut|cuts|trimmed|trim|reduced|reduce[sd]?|less time|fewer minutes|scaled back|pared)\b/i;
 const UP = /\b(above|up|higher|over|rose|risen|climb(?:ed|ing)?|more)\b/i;
 const DOWN = /\b(below|down|under|lower|dropped|fell|fallen|less)\b/i;
 
@@ -117,7 +139,18 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   const facts: Driver[] = mins ? [{ metric: 'Duration', value: `${mins} min` }] : [];
   const v = validateVoice(t, [...evidence, ...facts]);
   issues.push(...v.bannedHits.map((h) => `banned: ${h}`), ...v.unbackedNumbers.map((n) => `unbacked number ${n}`));
-  return issues;
+
+  // A number said with a time or distance unit must be the change's own
+  // duration, or a driver that states that number in that unit. "62 minutes
+  // shorter" is not backed by "Sleep score 62".
+  const backed = new Set<string>(mins ? [`${mins}|min`] : []);
+  for (const e of evidence) for (const [n, u] of measurePairs(`${e.value} ${e.trend ?? ''}`)) backed.add(`${n}|${u}`);
+  for (const [n, u] of measurePairs(t)) {
+    if (!backed.has(`${n}|${u}`)) issues.push(`unbacked measure ${n} ${u}`);
+  }
+  // A move keeps the session whole; it is never shorter.
+  if (d.type === 'moved' && SHORTENED.test(t)) issues.push('says shortened for a move');
+  return [...new Set(issues)];
 }
 
 export interface WrittenReason {
