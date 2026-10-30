@@ -127,3 +127,22 @@ test('every number word is caught, thirteen to nineteen, seventy, eighty and zer
     assert.ok(issues.includes('number in words'), `${word} -> ${issues.join(', ')}`);
   }
 });
+
+test('cut or reduced on a driver does not reject a move; on the session it does', () => {
+  const ok = [
+    "Tuesday's intervals moved to Thursday with HRV reduced 12% from your week.",
+    "Tuesday's intervals moved to Thursday because HRV was cut by 12% this week.",
+    "Tuesday's intervals moved to Thursday after a shorter night of sleep.",
+    "Tuesday's intervals moved to Thursday because your sleep was cut short.",
+  ];
+  for (const t of ok) assert.ok(!reasonIssues(t, moved, evidence).includes('says shortened for a move'), t);
+  const bad = [
+    "Tuesday's intervals moved to Thursday and were cut.",
+    "Tuesday's intervals moved to Thursday, cut to 30 min.",
+    "Tuesday's intervals moved to Thursday and reduced to 30 minutes.",
+    "Tuesday's intervals moved to Thursday, 20 minutes shorter.",
+    "Tuesday's intervals moved to Thursday as a shorter session.",
+    "Tuesday's intervals moved to Thursday, trimmed a little.",
+  ];
+  for (const t of bad) assert.ok(reasonIssues(t, moved, evidence).includes('says shortened for a move'), t);
+});

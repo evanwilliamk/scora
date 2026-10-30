@@ -186,3 +186,19 @@ test('an unbacked posture is left out of the query and picks no pattern (night f
   assert.equal(k.mode, 'none');
   assert.equal(k.promptBlock, '');
 });
+
+test('HealthKit-only athlete (sleep hours, no score) still gets the back-off pattern (night fixes 10-30 regression)', async () => {
+  // index.ts sets sleepScore null for HealthKit, so both sleep score drivers
+  // are null. Last night's duration backs the sleep-hours slot instead.
+  const input = {
+    posture: 'back-off' as const,
+    drivers: { acwr: 1.3, hrv_7d_avg_delta: -6, consecutive_hard_days: 1, sleep_last_night_score: null, sleep_7d_avg_delta: null },
+    completeness: 0.6,
+    scheduled: { planned_intensity: 'threshold' },
+  };
+  const withHours = await knowledgeForRead({ ...input, sleepSeconds: 6 * 3600 + 12 * 60 }, { enabled: false });
+  assert.equal(withHours.pattern?.id, 'plan-says-hard-body-says-back-off-v1');
+  // No sleep at all: nothing fills "Sleep {{sleep_hours}}", so it stays off.
+  const noSleep = await knowledgeForRead({ ...input, sleepSeconds: null }, { enabled: false });
+  assert.notEqual(noSleep.pattern?.id, 'plan-says-hard-body-says-back-off-v1');
+});

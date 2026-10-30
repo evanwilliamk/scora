@@ -281,6 +281,27 @@ test('a refresh keeps two identical sessions marked apart and keeps the Watch se
   assert.equal(after, sent, 'the Watch send came along');
 });
 
+test('a refresh never swaps marks between same-day sessions that differ only in length (review 2026-10-30)', async () => {
+  const store = sqlPlanStore(db);
+  // One insert gives both rows the same created_at, so without the duration
+  // in the key they pair by random uuid. Several athletes make a swap show.
+  const row = (duration_min: number) => ({ date: '2026-10-23', type: 'run', intensity: 'easy', duration_min, distance_km: null, description: null });
+  const rows = [row(30), row(60)] as any;
+  for (let i = 0; i < 8; i++) {
+    const ath = `rf-len-${i}`;
+    await store.saveIcalPlan(ath, rows);
+    const day = await store.workoutsBetween(ath, '2026-10-23', '2026-10-23');
+    const short = day.find((w: any) => w.planned_duration_min === 30)!;
+    const long = day.find((w: any) => w.planned_duration_min === 60)!;
+    assert.equal(await store.markCompleted(ath, short.id, true, '2026-10-24'), true);
+    assert.equal(await store.markCompleted(ath, long.id, false, '2026-10-24'), true);
+    await store.refreshIcalPlan(ath, rows);
+    const again = await store.workoutsBetween(ath, '2026-10-23', '2026-10-23');
+    assert.equal(again.find((w: any) => w.planned_duration_min === 30)?.athlete_completed, true, `${ath}: 30 min stays done`);
+    assert.equal(again.find((w: any) => w.planned_duration_min === 60)?.athlete_completed, false, `${ath}: 60 min stays missed`);
+  }
+});
+
 test('the Supabase store orders same-day sessions by creation, then id', async () => {
   const { supabasePlanStore } = await import('../src/plan-store');
   const orders: any[] = [];

@@ -271,16 +271,23 @@ final class ScoraTests: XCTestCase {
         ])
     }
 
-    func testLastNightHRVAndRestingHRAreTodaysOnly() {
-        let nights = [
-            HealthNight(day: "2026-10-15", sleepSeconds: 7 * 3600, hrvMs: 61, restingHr: 47),
-            HealthNight(day: "2026-10-18", sleepSeconds: 6 * 3600, hrvMs: 54, restingHr: 48),
-        ]
-        XCTAssertEqual(HealthNights.lastNightHRV(nights, today: "2026-10-18"), 54)
-        XCTAssertEqual(HealthNights.lastNightRestingHR(nights, today: "2026-10-18"), 48)
-        // Three days without a sample: stale values are not sent as last night's.
-        XCTAssertNil(HealthNights.lastNightHRV(nights, today: "2026-10-21"))
-        XCTAssertNil(HealthNights.lastNightRestingHR(nights, today: "2026-10-21"))
+    func testLastNightHRVAndRestingHRAreTheNewestWithin36Hours() {
+        let f = ISO8601DateFormatter()
+        let at = { (s: String) in f.date(from: s)! }
+        // A 6 AM read: no HRV or resting HR dated today yet.
+        let now = at("2026-10-19T10:00:00Z")
+        let hrv: [(date: Date, value: Double)] = [(date: at("2026-10-15T09:00:00Z"), value: 70),
+                                                   (date: at("2026-10-18T09:00:00Z"), value: 54.04),
+                                                   (date: at("2026-10-18T06:00:00Z"), value: 60)]
+        let rhr: [(date: Date, value: Double)] = [(date: at("2026-10-18T20:00:00Z"), value: 48.4)]
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, now: now), 54, "yesterday's newest sample counts at 6 AM")
+        XCTAssertEqual(HealthNights.lastNightRestingHR(rhr, now: now), 48)
+        // Beyond 36 hours: stale values are not sent as last night's, even
+        // though they are the newest samples ever.
+        let later = at("2026-10-21T10:00:00Z")
+        XCTAssertNil(HealthNights.lastNightHRV(hrv, now: later))
+        XCTAssertNil(HealthNights.lastNightRestingHR(rhr, now: later))
+        XCTAssertNil(HealthNights.lastNightHRV([], now: now))
     }
 
     func testHealthNightsCountOverlapsOnceAndIgnoreNaps() {

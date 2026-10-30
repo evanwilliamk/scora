@@ -78,15 +78,24 @@ enum HealthNights {
     nights.first { $0.day == today }?.sleepSeconds
   }
 
-  // Last night's HRV and resting HR come from the same night, never from the
-  // newest sample ever: the API reads them as last night's, so a value from
-  // days ago is sent as nil.
-  static func lastNightHRV(_ nights: [HealthNight], today: String) -> Double? {
-    nights.first { $0.day == today }?.hrvMs
+  // Last night's HRV and resting HR: the newest sample within the last 36
+  // hours, never the newest sample ever. A 6 AM read often has no sample
+  // dated today (no overnight HRV without the Watch on, resting HR is
+  // written later in the day), so yesterday's still counts; a value from
+  // days ago is sent as nil, since the API reads it as last night's.
+  static let recentWindow: TimeInterval = 36 * 3600
+
+  static func newestRecent(_ xs: [(date: Date, value: Double)], now: Date = Date(), window: TimeInterval = recentWindow) -> Double? {
+    xs.filter { $0.date <= now && now.timeIntervalSince($0.date) <= window }
+      .max(by: { $0.date < $1.date })?.value
   }
 
-  static func lastNightRestingHR(_ nights: [HealthNight], today: String) -> Double? {
-    nights.first { $0.day == today }?.restingHr
+  static func lastNightHRV(_ samples: [(date: Date, value: Double)], now: Date = Date()) -> Double? {
+    newestRecent(samples, now: now).map { ($0 * 10).rounded() / 10 }
+  }
+
+  static func lastNightRestingHR(_ samples: [(date: Date, value: Double)], now: Date = Date()) -> Double? {
+    newestRecent(samples, now: now).map { $0.rounded() }
   }
 
   // The nights in the 7 days before the newest one, one value per night: the
@@ -142,12 +151,14 @@ final class HealthManager {
   // caller can simply omit the summary and fall back to connect prompts.
   func fetchSummary() async -> HealthSummary? {
     guard HKHealthStore.isHealthDataAvailable() else { return nil }
-    let nights = await recentNights()
+    let recent = await recentNights()
+    let nights = recent?.nights
     let today = HealthNights.localToday()
+    let now = Date()
     let summary = HealthSummary(
       sleepSeconds: HealthNights.lastNightSleep(nights ?? [], today: today),
-      hrvMs: HealthNights.lastNightHRV(nights ?? [], today: today),
-      restingHr: HealthNights.lastNightRestingHR(nights ?? [], today: today),
+      hrvMs: HealthNights.lastNightHRV(recent?.hrv ?? [], now: now),
+      restingHr: HealthNights.lastNightRestingHR(recent?.restingHr ?? [], now: now),
       hrvWeekAvgMs: HealthNights.weekAverageHRV(nights ?? []),
       nights: nights
     )
@@ -159,8 +170,10 @@ final class HealthManager {
 
   // MARK: - Queries
 
-  // The last 28 days, grouped into dated nights (HealthNights.group).
-  private func recentNights(days: Double = 28) async -> [HealthNight]? {
+  // The last 28 days, grouped into dated nights (HealthNights.group), plus the
+  // raw HRV and resting HR samples for last night's values.
+  private typealias Samples = [(date: Date, value: Double)]
+  private func recentNights(days: Double = 28) async -> (nights: [HealthNight]?, hrv: Samples, restingHr: Samples)? {
     let start = Date().addingTimeInterval(-days * 24 * 3600)
     let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: [])
     func samples(_ type: HKSampleType) async -> [HKSample] {
@@ -186,6 +199,6 @@ final class HealthManager {
     let hrv = (await samples(hrvType)).compactMap { $0 as? HKQuantitySample }.map { (date: $0.endDate, value: $0.quantity.doubleValue(for: ms)) }
     let rhr = (await samples(rhrType)).compactMap { $0 as? HKQuantitySample }.map { (date: $0.endDate, value: $0.quantity.doubleValue(for: bpm)) }
     let nights = HealthNights.group(sleep: asleep.map { (start: $0.startDate, end: $0.endDate) }, hrv: hrv, restingHr: rhr)
-    return nights.isEmpty ? nil : nights
+    return (nights: nights.isEmpty ? nil : nights, hrv: hrv, restingHr: rhr)
   }
 }

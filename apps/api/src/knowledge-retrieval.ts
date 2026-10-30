@@ -120,7 +120,9 @@ export async function knowledgeForRead(
   // postureBacked false: the posture is the engine's default with no evidence.
   // Nothing downstream may lean on it (no posture in the query, no pattern,
   // since every pattern is keyed to a posture).
-  input: { posture: Posture; postureBacked?: boolean; drivers: PostureDrivers; completeness: number; scheduled?: ScheduledWorkout | null },
+  // sleepSeconds: last night's sleep duration (Oura or HealthKit). It backs the
+  // patterns' sleep-hours slot; it is not a posture driver.
+  input: { posture: Posture; postureBacked?: boolean; drivers: PostureDrivers; completeness: number; scheduled?: ScheduledWorkout | null; sleepSeconds?: number | null },
   deps: KnowledgeDeps
 ): Promise<ReadKnowledge> {
   if (deps.enabled && deps.embed && deps.match) {
@@ -144,7 +146,11 @@ export async function knowledgeForRead(
   const pattern = selectPattern(
     {
       posture: input.posture,
-      drivers: input.drivers as Record<string, number | boolean | null | undefined>,
+      drivers: {
+        ...(input.drivers as Record<string, number | boolean | null | undefined>),
+        sleep_last_night_seconds:
+          typeof input.sleepSeconds === 'number' && Number.isFinite(input.sleepSeconds) && input.sleepSeconds > 0 ? input.sleepSeconds : null,
+      },
       scheduledWorkout: input.scheduled ?? null,
       dataCompleteness: input.completeness,
     },

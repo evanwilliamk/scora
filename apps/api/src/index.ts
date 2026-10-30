@@ -736,6 +736,7 @@ fastify.post('/api/read', async (request, reply) => {
         drivers: posture.record.drivers,
         completeness: posture.record.completeness,
         scheduled: plan.scheduled,
+        sleepSeconds: recovery?.sleepSeconds ?? null,
       },
       knowledgeDeps
     );
