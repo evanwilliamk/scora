@@ -27,6 +27,7 @@ All tested on PGlite (`apps/api/test/migrations.test.ts`), none applied anywhere
 6. `20261018020000_create_scora_plan.sql`
 7. `20261022000000_ical_plans.sql`
 8. `20261028000000_rls_all_tables.sql` (Q28; RLS on, no policies; the API uses the service role, so nothing breaks)
+9. `20261030000000_ical_refresh_pairing.sql` (calendar refresh keeps each done/missed mark and the Watch send on its own session; redefines `refresh_ical_plan` only)
 
 The scheduler, Your Plan and onboarding read `athlete_preferences`, `training_plans` and `scheduled_workouts`, so 2 and 3 matter even with every flag off.
 
