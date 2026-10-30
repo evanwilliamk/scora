@@ -17,7 +17,17 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
   // The stored row's id (GET /api/plan); freshly parsed rows have none.
   var rowId: String? = nil
 
-  var id: String { rowId ?? "\(date)|\(type)|\(description ?? "")" }
+  // Made once per row, so two pasted rows with the same day, type and a
+  // blank description still get their own identity in the list.
+  private var localId = UUID().uuidString
+
+  var id: String { rowId ?? localId }
+
+  // Same session, whatever the local identity.
+  static func == (a: PlanWorkout, b: PlanWorkout) -> Bool {
+    a.date == b.date && a.type == b.type && a.intensity == b.intensity && a.durationMin == b.durationMin
+      && a.distanceKm == b.distanceKm && a.description == b.description && a.steps == b.steps && a.rowId == b.rowId
+  }
 
   enum CodingKeys: String, CodingKey {
     case date, type, intensity, description
@@ -598,6 +608,52 @@ struct PlanBlockView: View {
   }
 }
 
+// MARK: - Plan sheet state
+
+enum PlanSheet {
+  // Building replaces the plan unless the plan is known to be empty: a plan
+  // that did not load may still exist on the server.
+  static func buildReplaces(loaded: Bool, workouts: [PlanWorkout]) -> Bool { !loaded || !workouts.isEmpty }
+  static let loadFailed = "Your plan did not load. Try again in a moment."
+  static let markFailed = "That session could not be marked just now. Try again in a moment."
+  static let dismissFailed = "That change could not be cleared just now. Try again in a moment."
+}
+
+// What the sheet shows around the plan's sessions. All of it belongs to one
+// plan, so a new plan clears it before the reload.
+struct PlanExtras: Equatable {
+  var unmarked: [PlanWorkout] = []
+  var changes: [PlanAdaptation] = []
+  var changesOn = false // the adaptations endpoint answered
+  var prediction: RacePrediction?
+
+  mutating func clearForNewPlan() {
+    unmarked = []; changes = []; prediction = nil
+  }
+}
+
+// One request at a time per row, and a failure shown next to its row.
+struct PlanRowRequests: Equatable {
+  private(set) var pending: Set<String> = []
+  private(set) var failed: [String: String] = [:]
+
+  func isPending(_ id: String) -> Bool { pending.contains(id) }
+  func error(for id: String) -> String? { failed[id] }
+
+  // False while a request for this row is still out.
+  mutating func begin(_ id: String) -> Bool {
+    guard !pending.contains(id) else { return false }
+    pending.insert(id)
+    failed[id] = nil
+    return true
+  }
+
+  mutating func finish(_ id: String, error: String?) {
+    pending.remove(id)
+    failed[id] = error
+  }
+}
+
 // MARK: - View
 
 struct PlanView: View {
@@ -606,12 +662,13 @@ struct PlanView: View {
 
   @State private var text = ""
   @State private var workouts: [PlanWorkout] = []
-  @State private var unmarked: [PlanWorkout] = []
-  @State private var changes: [PlanAdaptation] = []
-  @State private var changesOn = false // the adaptations endpoint answered
+  @State private var extras = PlanExtras()
+  @State private var planLoaded = false // GET /api/plan answered; until then a build replaces
+  @State private var loadFailed = false
+  @State private var marks = PlanRowRequests()
+  @State private var dismissals = PlanRowRequests()
   @State private var history: [PlanAdaptation] = []
   @State private var showHistory = false
-  @State private var prediction: RacePrediction?
   @State private var note: String?
   @State private var errorText: String?
   @State private var isSaving = false
@@ -639,6 +696,13 @@ struct PlanView: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
+          if loadFailed {
+            VStack(alignment: .leading, spacing: 6) {
+              Text(PlanSheet.loadFailed).font(.footnote).foregroundColor(.gray)
+              Button("Try again") { Task { await loadPlan() } }
+                .font(.footnote).foregroundColor(.orange)
+            }
+          }
           if workouts.isEmpty || isEditing {
             pasteSection
           } else {
@@ -673,8 +737,8 @@ struct PlanView: View {
     .task { await loadOptions() }
     .task { await loadBlock() }
     .sheet(isPresented: $showSetup) {
-      PlanSetupView(goals: planGoals, athleteId: tokenManager.athleteId, apiBase: apiBase, replacesPlan: !workouts.isEmpty) {
-        Task { await loadPlan(); await loadBlock() }
+      PlanSetupView(goals: planGoals, athleteId: tokenManager.athleteId, apiBase: apiBase, replacesPlan: PlanSheet.buildReplaces(loaded: planLoaded, workouts: workouts)) {
+        Task { await reloadAfterReplace(); await loadBlock() }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
       }
     }
@@ -776,26 +840,32 @@ struct PlanView: View {
   private var upcomingSection: some View {
     VStack(alignment: .leading, spacing: 10) {
       if let block { PlanBlockView(block: block) }
-      if !changes.isEmpty {
+      if !extras.changes.isEmpty {
         Text("Plan changes").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
-        ForEach(changes) { c in
-          HStack(alignment: .top, spacing: 8) {
-            Text(c.reason)
-              .font(.footnote)
-              .foregroundColor(Color(white: 0.8))
-              .frame(maxWidth: .infinity, alignment: .leading)
-            // Acknowledge: the change stays in the plan, it leaves this list.
-            Button(action: { Task { await dismissChange(c) } }) {
-              Image(systemName: "xmark").font(.caption2.bold()).foregroundColor(.gray)
+        ForEach(extras.changes) { c in
+          VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+              Text(c.reason)
+                .font(.footnote)
+                .foregroundColor(Color(white: 0.8))
+                .frame(maxWidth: .infinity, alignment: .leading)
+              // Acknowledge: the change stays in the plan, it leaves this list.
+              Button(action: { Task { await dismissChange(c) } }) {
+                Image(systemName: "xmark").font(.caption2.bold()).foregroundColor(.gray)
+              }
+              .disabled(dismissals.isPending(c.id))
+              .accessibilityLabel("Dismiss this plan change")
             }
-            .accessibilityLabel("Dismiss this plan change")
+            if let err = dismissals.error(for: c.id) {
+              Text(err).font(.caption).foregroundColor(.gray)
+            }
           }
           .padding(12)
           .background(Color(white: 0.08))
           .cornerRadius(10)
         }
       }
-      if changesOn {
+      if extras.changesOn {
         Button("All plan changes") {
           Task {
             let loaded = await loadHistory()
@@ -807,7 +877,7 @@ struct PlanView: View {
           .font(.footnote).foregroundColor(.orange)
           .sheet(isPresented: $showHistory) { PlanHistoryView(rows: history) }
       }
-      if let prediction {
+      if let prediction = extras.prediction {
         VStack(alignment: .leading, spacing: 4) {
           Text("Race estimate").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
           if let h = prediction.headline {
@@ -817,20 +887,26 @@ struct PlanView: View {
         }
         .padding(.bottom, 4)
       }
-      if unmarked.contains(where: { $0.rowId != nil }) {
+      if extras.unmarked.contains(where: { $0.rowId != nil }) {
         Text("Past sessions").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
-        ForEach(unmarked.filter { $0.rowId != nil }) { w in
-          HStack {
-            VStack(alignment: .leading, spacing: 2) {
-              Text(w.dayLabel).font(.subheadline.bold()).foregroundColor(.white)
-              Text(w.detail).font(.caption).foregroundColor(.gray)
+        ForEach(extras.unmarked.filter { $0.rowId != nil }) { w in
+          VStack(alignment: .leading, spacing: 6) {
+            HStack {
+              VStack(alignment: .leading, spacing: 2) {
+                Text(w.dayLabel).font(.subheadline.bold()).foregroundColor(.white)
+                Text(w.detail).font(.caption).foregroundColor(.gray)
+              }
+              Spacer()
+              // A miss is recorded, never rescheduled (CLAUDE.md §6.2).
+              Button("Completed") { Task { await mark(w, done: true) } }
+                .font(.caption.bold()).foregroundColor(.orange)
+              Button("Missed") { Task { await mark(w, done: false) } }
+                .font(.caption.bold()).foregroundColor(.gray).padding(.leading, 10)
             }
-            Spacer()
-            // A miss is recorded, never rescheduled (CLAUDE.md §6.2).
-            Button("Completed") { Task { await mark(w, done: true) } }
-              .font(.caption.bold()).foregroundColor(.orange)
-            Button("Missed") { Task { await mark(w, done: false) } }
-              .font(.caption.bold()).foregroundColor(.gray).padding(.leading, 10)
+            .disabled(marks.isPending(w.id))
+            if let err = marks.error(for: w.id) {
+              Text(err).font(.caption).foregroundColor(.gray)
+            }
           }
           .padding(12)
           .background(Color(white: 0.08))
@@ -911,8 +987,12 @@ struct PlanView: View {
 
   private func mark(_ w: PlanWorkout, done: Bool) async {
     guard let rowId = w.rowId, let url = URL(string: "\(apiBase)/api/plan/workouts/\(rowId)/status") else { return }
+    guard await MainActor.run(body: { marks.begin(w.id) }) else { return }
     #if DEBUG
-    if DemoMode.planSessions != nil { await MainActor.run { unmarked.removeAll { $0.id == w.id } }; return }
+    if DemoMode.planSessions != nil {
+      await MainActor.run { marks.finish(w.id, error: nil); extras.unmarked.removeAll { $0.id == w.id } }
+      return
+    }
     #endif
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
@@ -928,19 +1008,19 @@ struct PlanView: View {
     }
     // 404: marked elsewhere or no longer on the plan; either way it leaves the list.
     if status == 200 || status == 404 {
-      await MainActor.run { unmarked.removeAll { $0.id == w.id } }
+      await MainActor.run { marks.finish(w.id, error: nil); extras.unmarked.removeAll { $0.id == w.id } }
     } else {
-      // Say so rather than leave the tap looking ignored; the session stays listed.
-      await MainActor.run { errorText = "That session could not be marked just now. Try again in a moment." }
+      // Say so next to the row rather than leave the tap looking ignored; the session stays listed.
+      await MainActor.run { marks.finish(w.id, error: PlanSheet.markFailed) }
     }
   }
 
-  private func loadPlan() async {
+  private func loadPlan(quiet: Bool = false) async {
     #if DEBUG
     if let demo = DemoMode.planSessions {
       var past = PlanWorkout(date: PlanDay.today(Date().addingTimeInterval(-2 * 86_400)), type: "run", intensity: "tempo", durationMin: 45, distanceKm: nil, description: nil)
       past.rowId = "demo-past"
-      await MainActor.run { workouts = demo; unmarked = [past] }
+      await MainActor.run { workouts = demo; extras.unmarked = [past]; planLoaded = true; loadFailed = false }
       return
     }
     #endif
@@ -951,9 +1031,21 @@ struct PlanView: View {
           let (data, resp) = try? await URLSession.shared.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanListResponse.self, from: data)
-    else { return }
-    await MainActor.run { workouts = decoded.workouts; unmarked = decoded.recent ?? [] }
+    else {
+      // Say so: an empty list here would read as "no plan", and Build would not ask before replacing.
+      if !quiet { await MainActor.run { loadFailed = true } }
+      return
+    }
+    await MainActor.run { workouts = decoded.workouts; extras.unmarked = decoded.recent ?? []; planLoaded = true; loadFailed = false }
     await loadChanges()
+  }
+
+  // A new plan (built, pasted or imported) makes the old plan's past
+  // sessions, changes and estimate stale: clear them, then read the new plan.
+  private func reloadAfterReplace() async {
+    await MainActor.run { extras.clearForNewPlan(); marks = PlanRowRequests(); dismissals = PlanRowRequests() }
+    await loadPlan(quiet: true)
+    await loadPrediction()
   }
 
   // Named plan changes. The endpoint is off (404) until plan adaptations are
@@ -966,7 +1058,7 @@ struct PlanView: View {
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
     else { return }
-    await MainActor.run { changes = PlanChanges.visible(decoded.adaptations); changesOn = true }
+    await MainActor.run { extras.changes = PlanChanges.visible(decoded.adaptations); extras.changesOn = true }
   }
 
   // True once the history arrived; a failed load must not read as "no changes".
@@ -984,16 +1076,23 @@ struct PlanView: View {
 
   private func dismissChange(_ c: PlanAdaptation) async {
     guard let url = URL(string: "\(apiBase)/api/plan/adaptations/\(c.id)/dismiss") else { return }
+    guard await MainActor.run(body: { dismissals.begin(c.id) }) else { return }
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId])
-    guard let (_, resp) = try? await URLSession.shared.data(for: req) else { return }
-    let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+    let status: Int
+    if let (_, resp) = try? await URLSession.shared.data(for: req) {
+      status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+    } else {
+      status = 0
+    }
     // 404: already dismissed (another device) or gone; either way it leaves the list.
     if status == 200 || status == 404 {
-      await MainActor.run { changes = PlanChanges.dismissing(c.id, from: changes) }
+      await MainActor.run { dismissals.finish(c.id, error: nil); extras.changes = PlanChanges.dismissing(c.id, from: extras.changes) }
       await loadChanges() // the list shows three; refill from the server
+    } else {
+      await MainActor.run { dismissals.finish(c.id, error: PlanSheet.dismissFailed) }
     }
   }
 
@@ -1006,7 +1105,7 @@ struct PlanView: View {
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PredictionResponse.self, from: data)
     else { return }
-    await MainActor.run { prediction = decoded.prediction }
+    await MainActor.run { extras.prediction = decoded.prediction }
   }
 
   private func savePlan() async {
@@ -1031,8 +1130,10 @@ struct PlanView: View {
           CalendarFeed.save(nil, for: tokenManager.athleteId) // the paste replaced the calendar import
           savedFeed = nil
           block = nil // a paste replaces a SCORA plan
+          planLoaded = true
         }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
+        await reloadAfterReplace()
       } else {
         let msg = (try? JSONDecoder().decode(PlanErrorResponse.self, from: data))?.error ?? "Saving the plan failed."
         await MainActor.run { errorText = msg; isSaving = false }
@@ -1085,8 +1186,10 @@ struct PlanView: View {
           block = nil // an import replaces a SCORA plan
           CalendarFeed.save(link, for: athleteId)
           savedFeed = link
+          planLoaded = true
         }
         NotificationCenter.default.post(name: Notification.Name("planChanged"), object: nil)
+        await reloadAfterReplace()
       } else if status == 409 {
         // The plan is no longer the calendar import: stop refreshing it.
         await MainActor.run { CalendarFeed.save(nil, for: athleteId); savedFeed = nil }
