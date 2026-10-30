@@ -1394,6 +1394,10 @@ fastify.post('/api/register-device', async (request, reply) => {
   if (!athleteId || !deviceToken) {
     return reply.code(400).send({ error: 'Missing: athleteId, deviceToken' });
   }
+  // An APNs device token is hex (64 characters today; Apple allows longer).
+  if (typeof deviceToken !== 'string' || !/^[0-9a-fA-F]{64,200}$/.test(deviceToken)) {
+    return reply.code(400).send({ error: 'deviceToken must be a hex string of 64 to 200 characters.' });
+  }
   try {
     await registerDeviceToken(athleteId, deviceToken);
     return reply.send({ ok: true });

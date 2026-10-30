@@ -177,3 +177,15 @@ test('prediction and calories: no Strava token is a 401 asking to reconnect', as
     process.env.CALORIE_ENGINE = '';
   }
 });
+
+// 7. Device token.
+
+test('register-device: only a hex token of 64 to 200 characters is stored', async () => {
+  for (const deviceToken of ['abc', 'zz'.repeat(32), 'a'.repeat(201), { t: 'a'.repeat(64) }, 'ab12'.repeat(15) + 'ab1 ']) {
+    const r = await post('/api/register-device', { athleteId: 'a1', deviceToken });
+    assert.equal(r.statusCode, 400, JSON.stringify(deviceToken).slice(0, 40));
+  }
+  assert.equal(rest.requests.length, 0);
+  const ok = await post('/api/register-device', { athleteId: 'a1', deviceToken: 'AB12'.repeat(16) });
+  assert.equal(ok.statusCode, 200, ok.body);
+});
