@@ -577,3 +577,17 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: the 120-minute late window stopped at local midnight, so a 23:30 delivery that failed twice was skipped for the day.
 - Choice: the window continues past midnight, keyed by yesterday's date, skipped if a later day was already sent. Alternative: cap delivery times at 21:59.
 - To reverse: remove the yesterday check in delivery.ts.
+
+### 2026-10-30: No posture badge or POSTURE line when the posture has no evidence
+- Status: DECIDED
+- Branch: claude/voice-posture-fixes
+- Context: with no usable drivers (new Strava-only athlete, no Oura) the engine defaults to steady with empty evidence, and the read presented it as a rules decision.
+- Choice: keep the enum; when evidence is empty the read prompt gets no POSTURE line, the response posture is null and the app shows no badge. Alternative: a new "not enough data" posture (changes the posture set in CLAUDE.md, so not done).
+- To reverse: drop the empty-evidence check in drivers.ts.
+
+### 2026-10-30: Pattern numeric slots must have a driver; some use the nearest driver
+- Status: DECIDED
+- Branch: claude/voice-posture-fixes
+- Context: a pattern needing an HRV change could fire with no HRV.
+- Choice: each numeric slot needs a non-null driver; days to race, sleep hours and long-run distance have no exact driver yet, so the race flag, sleep score or 7-day sleep change, and days since long effort stand in. Pattern cooldowns (exclude_if_recently_fired) still do nothing: reads do not store which pattern fired (needs a column).
+- To reverse: remove numericSlotsBacked from packages/voice/src/matcher.ts.
