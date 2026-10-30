@@ -28,6 +28,9 @@ All tested on PGlite (`apps/api/test/migrations.test.ts`), none applied anywhere
 7. `20261022000000_ical_plans.sql`
 8. `20261028000000_rls_all_tables.sql` (Q28; RLS on, no policies; the API uses the service role, so nothing breaks)
 9. `20261030000000_ical_refresh_pairing.sql` (calendar refresh keeps each done/missed mark and the Watch send on its own session; redefines `refresh_ical_plan` only)
+10. `20261030010000_create_scora_plan_lock.sql` (plan setup takes the same per-athlete lock as a calendar paste or refresh; redefines `create_scora_plan` only)
+
+9 and 10 redefine functions that 7 and 6 first create. If you re-run any earlier migration, re-run 9 and 10 last.
 
 The scheduler, Your Plan and onboarding read `athlete_preferences`, `training_plans` and `scheduled_workouts`, so 2 and 3 matter even with every flag off.
 
@@ -35,9 +38,9 @@ The scheduler, Your Plan and onboarding read `athlete_preferences`, `training_pl
 
 | Flag | Turns on | Also needs |
 |---|---|---|
-| `ICAL_IMPORT=on` | calendar link import on Your Plan | migration 7 |
+| `ICAL_IMPORT=on` | calendar link import on Your Plan | migrations 7 and 9 |
 | `KNOWLEDGE_RETRIEVAL=on` | knowledge library in the read | migration 1, an ingest run, the starter sources (spec §6) |
-| `PLAN_GENERATION=on` | plan setup screen, `/api/plan/options`, `/api/plan/block` | migrations 4 to 6, reviewed templates in `packages/plan-templates` (none yet) |
+| `PLAN_GENERATION=on` | plan setup screen, `/api/plan/options`, `/api/plan/block` | migrations 4 to 6 and 10, reviewed templates in `packages/plan-templates` (none yet) |
 | `PLAN_ADAPTATIONS=on` | named plan changes with the read, change history | a SCORA plan (above) |
 | `ADAPTATION_REASON_LLM=on` | gpt-4o-mini words the change reason | `PLAN_ADAPTATIONS` |
 | `INLINE_CHARTS=on` | tappable drivers in the read | nothing else |
