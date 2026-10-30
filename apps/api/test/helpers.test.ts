@@ -66,6 +66,20 @@ test('writtenDistances: km and miles; capital M is miles, small m is metres', ()
   assert.deepEqual(writtenDistances('13.1 miles'), { km: [], mi: [13.1] });
 });
 
+test('writtenMinutes: h:mm:ss, paces in min/mi and zones are not durations', () => {
+  assert.ok(writtenMinutes('Sun: long run 1:05:00').includes(65));
+  assert.deepEqual(writtenMinutes('5 mi at 7:30 min/mi'), []);
+  assert.deepEqual(writtenMinutes('40 min easy, Z2 HR'), [40]);
+  assert.deepEqual(writtenMinutes('3x8 min at threshold'), [8]);
+});
+
+test('writtenDistances: race paces and all-caps words are not distances', () => {
+  assert.deepEqual(writtenDistances('Tue: 6x800m at 5k pace'), { km: [], mi: [] });
+  assert.deepEqual(writtenDistances('10 mi at half marathon pace, 1M pace finish'), { km: [], mi: [10] });
+  assert.deepEqual(writtenDistances('TUE: 45 MIN TEMPO'), { km: [], mi: [] });
+  assert.deepEqual(writtenDistances('SAT: 6M EASY'), { km: [], mi: [6] });
+});
+
 test('dataValues collects measures and skips names and dates', () => {
   const data = { name: 'Morning Run', date: '2026-10-28', dow: 'Wed', km: 10.2, splits: [{ pace: '5:01' }, 42] };
   assert.deepEqual(dataValues(data), ['10.2', '5:01', '42']);

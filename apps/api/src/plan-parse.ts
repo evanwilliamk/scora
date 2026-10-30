@@ -64,24 +64,31 @@ const num = (s: string) => Number(s.replace(',', '.'));
 const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
 
 // Numbers written with a given unit after them ("45 min", "45-min", "1.5 h").
-function withUnit(text: string, units: string, flags = 'gi'): number[] {
-  const re = new RegExp(`${NUM}[\\s-]*(?:${units})(?![a-z])`, flags);
+// Not the minutes of a clock time ("7:30 min/mi") and not a zone ("Z2 HR").
+// `after` adds a lookahead, e.g. to skip a race pace ("5k pace").
+function withUnit(text: string, units: string, flags = 'gi', after = ''): number[] {
+  const re = new RegExp(`(?<![\\d:.,zZ])${NUM}[\\s-]*(?:${units})(?![a-zA-Z])${after}`, flags);
   return [...text.matchAll(re)].map((m) => num(m[1]));
 }
+const NOT_PACE = String.raw`(?!\s*pace)`;
 const MINUTES = "min|mins|minute|minutes|'|\u2019|\u2032";
 const HOURS = 'h|hr|hrs|hour|hours';
 const KM = 'km|k|kms|kilometers?|kilometres?';
 const MI = 'mi|mile|miles|miler|mls';
 
 // Every duration written in a session, in minutes: "45 min", "1.5 h",
-// "1:15" (not a pace like 4:30/km), "1h30", "1 hr 15 min".
+// "1:15" (not a pace like 4:30/km or 7:30 min/mi), "1:05:00", "1h30",
+// "1 hr 15 min".
 export function writtenMinutes(text: string): number[] {
   const out = [
     ...withUnit(text, MINUTES),
     ...withUnit(text, HOURS).map((h) => h * 60),
   ];
-  for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:]|\s*\/)/g)) {
+  for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:]|\s*(?:min\w*|')?\s*\/)/g)) {
     out.push(Number(m[1]) * 60 + Number(m[2]));
+  }
+  for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d):([0-5]\d)(?![\d:])/g)) {
+    out.push(Number(m[1]) * 60 + Number(m[2]) + Number(m[3]) / 60);
   }
   for (const m of text.matchAll(/(\d{1,2})\s*(?:h|hr|hrs|hours?)\s*(\d{1,2})(?:\s*(?:min|mins|minutes|m))?(?![a-z\d])/gi)) {
     out.push(Number(m[1]) * 60 + Number(m[2]));
@@ -90,11 +97,12 @@ export function writtenMinutes(text: string): number[] {
 }
 
 // Every distance written in a session, by unit. A capital M after a number
-// is miles ("6M easy"); a small m is metres ("8x400m") and is not counted.
+// is miles ("6M easy", not "45 MIN"); a small m is metres ("8x400m") and is
+// not counted. A race pace ("at 5k pace") is not a distance.
 export function writtenDistances(text: string): { km: number[]; mi: number[] } {
   return {
-    km: withUnit(text, KM),
-    mi: [...withUnit(text, MI), ...withUnit(text, 'M', 'g')],
+    km: withUnit(text, KM, 'gi', NOT_PACE),
+    mi: [...withUnit(text, MI, 'gi', NOT_PACE), ...withUnit(text, 'M', 'g', NOT_PACE)],
   };
 }
 
