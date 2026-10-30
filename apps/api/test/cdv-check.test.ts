@@ -45,11 +45,15 @@ test('banned phrasing still falls back, and number-free trends need no numbers',
   assert.equal(r.drivers.length, 1);
 });
 
-test('TREND never carries a posture: the line is dropped; a long trend is cut (night fixes 10-30)', () => {
+test('TREND never carries a posture: only the trend is cut, the METRIC line and value stay', () => {
+  // "steady" meaning flat must not cost the athlete a real, measured value.
   for (const trend of ['primed', 'steady', 'moderate', 'back-off', 'back off', 'rest', 'taper', 'steady, holding']) {
     const r = checkCdvReply('18.4 miles this week.', [{ metric: 'This week', value: '18.4 mi', trend }], DATA, 'How is my week?');
-    assert.deepEqual(r.drivers, [], trend);
+    assert.deepEqual(r.drivers, [{ metric: 'This week', value: '18.4 mi' }], trend);
   }
+  // A stripped posture trend does not rescue an unbacked value.
+  const bad = checkCdvReply('18.4 miles this week.', [{ metric: 'This week', value: '25 mi', trend: 'steady' }], DATA, 'How is my week?');
+  assert.deepEqual(bad.drivers, []);
   const ok = checkCdvReply('18.4 miles this week.', [
     { metric: 'This week', value: '18.4 mi', trend: 'down 17%' },
     { metric: 'Runs', value: '3', trend: 'about the same as usual for you' },

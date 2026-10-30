@@ -42,8 +42,9 @@ const questionCounts = (q: string) =>
 const timesWhole = (t: string) => t.replace(/\b(\d{1,2}):([0-5]\d)\b/g, '$1.$2');
 
 // TREND is a short direction, never a posture: postures are decided by
-// SCORA's rules, and the chat has none to cite. A METRIC line that puts one
-// there is dropped; any other long-form trend is cut back to nothing.
+// SCORA's rules, and the chat has none to cite. A trend with a posture word
+// (or any other long-form trend) is cut back to nothing; the METRIC line and
+// its measured value stay ("steady" meaning flat must not lose a real value).
 const POSTURE_WORD = /\b(?:primed|steady|moderate|back[\s-]?off|rest(?:ing)?|taper(?:ing)?)\b/i;
 const SHORT_TREND = /^(?:(?:up|down|flat)(?:\s+[+-]?\d+(?:\.\d+)?\s?%)?|[+-]?\d+(?:\.\d+)?\s?%(?:\s+(?:up|down))?)(?:\s+(?:wk|week|w\/w|vs last week|on the week))?$/i;
 export function trendIssue(trend: string | undefined): 'posture' | 'long' | null {
@@ -60,8 +61,7 @@ export function checkCdvReply(voice: string, metricLines: Driver[], data: unknow
   // A METRIC line is shown to the athlete as a driver, so its name, value and
   // trend must all be in the data.
   const drivers = metricLines
-    .filter((d) => trendIssue(d.trend) !== 'posture')
-    .map((d) => (trendIssue(d.trend) === 'long' ? { metric: d.metric, value: d.value } : d))
+    .map((d) => (trendIssue(d.trend) ? { metric: d.metric, value: d.value } : d))
     .filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).unbackedNumbers.length === 0);
   const v = validateVoice(timesWhole(voice), source);
   // Folding makes "8:47" read as 8.47, so a decimal the voice writes as a
