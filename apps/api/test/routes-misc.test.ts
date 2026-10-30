@@ -35,29 +35,33 @@ beforeEach(() => {
 const post = (url: string, payload: unknown) => app.inject({ method: 'POST', url, payload });
 const llmCalls = () => guard.calls.filter((c) => c.host === 'api.openai.com');
 
+const addDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+// The app's day must be within a day of the server's, so these use the real one.
+const T = new Date().toISOString().slice(0, 10);
+
 test('manual plan: numbers the text does not state are dropped before saving', async () => {
   const text = 'Tue: 45 min tempo\nThu: easy run';
   guard.openAi(JSON.stringify({ workouts: [
-    { date: '2026-10-27', type: 'run', intensity: 'tempo', duration_min: 45, description: 'Tue: 45 min tempo' },
-    { date: '2026-10-29', type: 'run', intensity: 'easy', duration_min: 40, description: 'Thu: easy run' },
+    { date: addDays(T, 1), type: 'run', intensity: 'tempo', duration_min: 45, description: 'Tue: 45 min tempo' },
+    { date: addDays(T, 3), type: 'run', intensity: 'easy', duration_min: 40, description: 'Thu: easy run' },
   ] }));
   rest.answer('rpc/replace_manual_plan', { body: 'plan-1' });
-  const r = await post('/api/plan/manual', { athleteId: 'a1', text, today: '2026-10-26' });
+  const r = await post('/api/plan/manual', { athleteId: 'a1', text, today: T });
   assert.equal(r.statusCode, 200, r.body);
   const body = r.json();
   assert.equal(body.planId, 'plan-1');
   const saved = rest.requests.find((q) => q.table === 'rpc/replace_manual_plan')!;
   assert.equal(saved.body.p_athlete_id, 'a1');
   assert.equal(saved.body.p_raw_text, text);
-  const thu = saved.body.p_rows.find((w: any) => w.date === '2026-10-29');
+  const thu = saved.body.p_rows.find((w: any) => w.date === addDays(T, 3));
   assert.equal(thu.duration_min, null, 'the model\'s 40 minutes is not in the text');
-  assert.equal(saved.body.p_rows.find((w: any) => w.date === '2026-10-27').duration_min, 45);
+  assert.equal(saved.body.p_rows.find((w: any) => w.date === addDays(T, 1)).duration_min, 45);
   assert.ok(body.adjusted.some((a: string) => /duration 40 min is not written/.test(a)));
 });
 
 test('manual plan: nothing with a day is a 422 and nothing is saved', async () => {
   guard.openAi(JSON.stringify({ workouts: [] }));
-  const r = await post('/api/plan/manual', { athleteId: 'a1', text: 'Run more this month', today: '2026-10-26' });
+  const r = await post('/api/plan/manual', { athleteId: 'a1', text: 'Run more this month', today: T });
   assert.equal(r.statusCode, 422);
   assert.match(r.json().error, /No sessions with a day or date/);
   assert.equal(rest.requests.length, 0);
@@ -89,7 +93,7 @@ test('preferences: defaults for a new athlete; a save upserts and answers in app
 });
 
 test('register-device upserts on the token, so a phone moving accounts follows its athlete', async () => {
-  const r = await post('/api/register-device', { athleteId: 'a1', deviceToken: 'abc123' });
+  const r = await post('/api/register-device', { athleteId: 'a1', deviceToken: 'ab12'.repeat(16) });
   assert.equal(r.statusCode, 200, r.body);
   const q = rest.requests[0];
   assert.equal(q.table, 'device_tokens');

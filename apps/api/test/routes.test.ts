@@ -144,7 +144,7 @@ test('error replies carry a plain message, never the internal error text', async
     assert.equal(r.statusCode, 401, url);
     assert.deepEqual(Object.keys(r.json()), ['error'], url);
   }
-  const dev = await post('/api/register-device', { athleteId: 'a1', deviceToken: 'abc' });
+  const dev = await post('/api/register-device', { athleteId: 'a1', deviceToken: 'abc1'.repeat(16) });
   assert.equal(dev.statusCode, 500);
   assert.deepEqual(dev.json(), { error: 'Failed to register device' });
 });
