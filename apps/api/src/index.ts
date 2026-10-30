@@ -15,7 +15,7 @@ import {
   fetchOuraSummary,
   OURA_CLIENT_ID,
 } from './oura';
-import { consumeCdvQuota, pingDatabase, quotaDay } from './usage';
+import { consumeCdvQuota, pingDatabase, quotaDay, refundCdvQuota } from './usage';
 import { generateValidatedVoice } from './voice';
 import { checkCdvWithRetry } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
@@ -470,6 +470,14 @@ Answer THIS question specifically using the data above. If the data can't answer
     } catch (e) {
       const err = e instanceof LlmHttpError ? e.message : String(e);
       fastify.log.error({ err }, 'OpenAI error');
+      // No answer, so no query spent: give it back.
+      if (quota?.allowed) {
+        try {
+          await refundCdvQuota(athleteId, quota.day);
+        } catch (re) {
+          fastify.log.error({ err: re }, 'CDV quota refund failed');
+        }
+      }
       return reply.code(500).send({ error: 'LLM failed' });
     }
 

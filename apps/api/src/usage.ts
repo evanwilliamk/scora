@@ -33,6 +33,7 @@ export interface CdvQuota {
   used: number; // queries used today, including this one when allowed
   remaining: number; // remaining after this call
   limit: number;
+  day: string; // the quota day this call was counted on
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10); // UTC calendar day
@@ -80,7 +81,7 @@ export async function consumeCdvQuota(
   const usedBefore = athlete.cdv_count_date === day ? athlete.cdv_count ?? 0 : 0;
 
   if (usedBefore >= limit) {
-    return { allowed: false, used: usedBefore, remaining: 0, limit };
+    return { allowed: false, used: usedBefore, remaining: 0, limit, day };
   }
 
   const usedAfter = usedBefore + 1;
@@ -89,5 +90,27 @@ export async function consumeCdvQuota(
     .update({ cdv_count: usedAfter, cdv_count_date: day })
     .eq('strava_id', String(athleteId));
 
-  return { allowed: true, used: usedAfter, remaining: limit - usedAfter, limit };
+  return { allowed: true, used: usedAfter, remaining: limit - usedAfter, limit, day };
+}
+
+// Give back a query counted by consumeCdvQuota whose answer never came (the
+// LLM call failed), so a provider outage does not spend the athlete's day.
+// Only on the same quota day and never below zero. Same read-modify-write
+// caveat as consumeCdvQuota.
+export async function refundCdvQuota(
+  athleteId: string,
+  day: string,
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+): Promise<void> {
+  const { data: athlete, error } = await supabase
+    .from('athletes')
+    .select('cdv_count, cdv_count_date')
+    .eq('strava_id', String(athleteId))
+    .single();
+  if (error || !athlete) throw new Error('Athlete not found');
+  if (athlete.cdv_count_date !== day || !(athlete.cdv_count > 0)) return;
+  await supabase
+    .from('athletes')
+    .update({ cdv_count: athlete.cdv_count - 1 })
+    .eq('strava_id', String(athleteId));
 }
