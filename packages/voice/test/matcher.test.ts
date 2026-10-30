@@ -190,3 +190,24 @@ test('a pattern does not fire when a numeric slot has no driver behind it (night
   // Same with the sleep slot: HRV alone does not back "Sleep {{sleep_hours}}".
   assert.notEqual(pick({ ...ctx, drivers: { acwr: 1.3, hrv_7d_avg_delta: -6, consecutive_hard_days: 1 } }), 'plan-says-hard-body-says-back-off-v1');
 });
+
+test('HealthKit-only sleep hours back the sleep slot: no score needed (night fixes 10-30 regression)', () => {
+  // HealthKit sends sleep duration but no Oura-style score, so the score
+  // drivers are null. The duration alone backs "Sleep {{sleep_hours}}".
+  const ctx: MatchContext = {
+    posture: 'back-off',
+    scheduledWorkout: { planned_intensity: 'threshold' },
+    drivers: {
+      acwr: 1.3, hrv_7d_avg_delta: -6, consecutive_hard_days: 1,
+      sleep_last_night_score: null, sleep_7d_avg_delta: null, sleep_last_night_seconds: 6 * 3600 + 40 * 60,
+    },
+  };
+  assert.equal(pick(ctx), 'plan-says-hard-body-says-back-off-v1');
+  const rest: MatchContext = {
+    posture: 'rest',
+    scheduledWorkout: { planned_intensity: 'rest' },
+    drivers: { consecutive_hard_days: 3, sleep_last_night_seconds: 7 * 3600 },
+  };
+  assert.equal(pick(rest), 'plan-says-rest-body-agrees-v1');
+  assert.notEqual(pick({ ...rest, drivers: { consecutive_hard_days: 3 } }), 'plan-says-rest-body-agrees-v1');
+});

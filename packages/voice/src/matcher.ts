@@ -21,11 +21,13 @@ function rule(src: string) {
 // A slot not listed here is filled from the driver of the same name. Some
 // slots have no exact driver in the record yet (days to race, sleep as
 // hours:minutes, long distance), so the closest recorded driver stands in:
-// without it there is certainly nothing to fill the slot with.
+// without it there is certainly nothing to fill the slot with. Sleep hours
+// come from sleep_last_night_seconds (the duration itself), so a HealthKit-only
+// athlete with sleep hours but no Oura score still backs the slot.
 export const NUMERIC_SLOT_SOURCES: Record<string, string[]> = {
   hrv_pct_change: ['hrv_7d_avg_delta'],
   days_to_race: ['race_in_next_7d'],
-  sleep_hours_minutes: ['sleep_last_night_score', 'sleep_7d_avg_delta'],
+  sleep_hours_minutes: ['sleep_last_night_seconds', 'sleep_last_night_score', 'sleep_7d_avg_delta'],
   long_distance_km: ['days_since_long_effort'],
 };
 
