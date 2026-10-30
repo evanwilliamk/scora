@@ -81,7 +81,8 @@ test('calorie estimates are off by default', async () => {
 });
 
 test('push-open logs a telemetry line and stores nothing; bad input is a 400', async () => {
-  const id = '0b7c1d2e-1111-2222-3333-444455556666';
+  // The Strava athlete id, as the app stores it (TokenManager, PushManager).
+  const id = '12345678';
   const sentAt = Math.floor(Date.now() / 1000) - 600;
   const ok = await post('/api/events/push-open', { athleteId: id, kind: 'daily', date: '2026-10-28', sentAt });
   assert.equal(ok.statusCode, 204);
@@ -90,6 +91,9 @@ test('push-open logs a telemetry line and stores nothing; bad input is a 400', a
     {},
     { athleteId: 'a', kind: 'daily', date: '2026-10-28', sentAt },
     { athleteId: id + '"}', kind: 'daily', date: '2026-10-28', sentAt },
+    { athleteId: '0b7c1d2e-1111-2222-3333-444455556666', kind: 'daily', date: '2026-10-28', sentAt },
+    { athleteId: 12345678, kind: 'daily', date: '2026-10-28', sentAt },
+    { athleteId: '1'.repeat(21), kind: 'daily', date: '2026-10-28', sentAt },
     { athleteId: id, kind: 'hourly', date: '2026-10-28', sentAt },
     { athleteId: id, kind: 'daily', date: 'today', sentAt },
     { athleteId: id, kind: 'daily', date: '2026-10-28', sentAt: '1' },

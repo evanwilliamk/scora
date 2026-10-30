@@ -1351,10 +1351,11 @@ fastify.post('/api/unregister-device', async (request, reply) => {
 // local date and send time (unix seconds).
 fastify.post('/api/events/push-open', async (request, reply) => {
   const { athleteId, kind, date, sentAt } = (request.body as any) || {};
-  // A uuid, a real date and a send time in the last 7 days (a minute of clock
+  // The Strava athlete id the app stores at sign-in (device_tokens are keyed
+  // by it), a real date and a send time in the last 7 days (a minute of clock
   // skew allowed): nothing else can reach the log line or skew the gate.
   const now = Date.now();
-  if (typeof athleteId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(athleteId)
+  if (typeof athleteId !== 'string' || !/^[1-9][0-9]{0,19}$/.test(athleteId)
       || (kind !== 'daily' && kind !== 'weekly')
       || typeof date !== 'string' || !isoDay(date)
       || typeof sentAt !== 'number' || !Number.isFinite(sentAt)
