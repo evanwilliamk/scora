@@ -14,6 +14,11 @@ export const EMBEDDING_DIMS = 1536;
 // chunk is one idea, large enough to keep the author's argument intact.
 export const CHUNK_MAX_CHARS = 1500;
 export const CHUNK_OVERLAP_CHARS = 200;
+// Entry ids per delete during a sync prune. 100 UUIDs keep a PostgREST
+// `in.(...)` filter near 4 KB, well under URL limits.
+export const PRUNE_BATCH = 100;
+// Rows per page when listing stored entry ids (PostgREST caps at 1000).
+const LIST_PAGE = 1000;
 const EMBED_BATCH = 64;
 
 // One FieldCopy export entry (spec §3).
@@ -169,7 +174,9 @@ export interface KnowledgeStore {
   // edited passage now splits into fewer chunks).
   pruneEntry(fieldcopyEntryId: string, keep: number): Promise<void>;
   // Full sync: delete every FieldCopy-sourced chunk whose entry is not in
-  // `keepEntryIds` (entries removed from the export).
+  // `keepEntryIds` (entries removed from the export). Lists the stored ids
+  // and deletes the missing ones in batches of PRUNE_BATCH. Refuses an empty
+  // keep list, which would wipe the library.
   pruneMissing(keepEntryIds: string[]): Promise<void>;
 }
 
@@ -185,6 +192,11 @@ export async function ingest(
   // removed too. Off by default (a partial export must not wipe the rest).
   deps: { embed: Embedder; store: KnowledgeStore; batchSize?: number; sync?: boolean }
 ): Promise<IngestResult> {
+  // Checked before any embedding is paid for: an empty export under sync
+  // would delete every FieldCopy chunk.
+  if (deps.sync && entries.length === 0) {
+    throw new IngestError('Refusing to sync an empty export: it would delete the whole library');
+  }
   const plan = planIngest(entries);
   const batch = deps.batchSize ?? EMBED_BATCH;
 
@@ -214,6 +226,21 @@ export async function ingest(
   if (deps.sync) await deps.store.pruneMissing(entries.map((e) => e.id));
 
   return { sources: plan.sources.length, chunks: plan.chunks.length, embedCalls };
+}
+
+function refuseEmptyKeep(keepEntryIds: string[]): void {
+  if (keepEntryIds.length === 0) {
+    throw new IngestError('Refusing to sync with no entries: it would delete the whole library');
+  }
+}
+
+// Stored ids not in the keep list, split into delete batches.
+function missingBatches(stored: Iterable<string>, keepEntryIds: string[]): string[][] {
+  const keep = new Set(keepEntryIds);
+  const missing = [...new Set(stored)].filter((id) => !keep.has(id));
+  const out: string[][] = [];
+  for (let i = 0; i < missing.length; i += PRUNE_BATCH) out.push(missing.slice(i, i + PRUNE_BATCH));
+  return out;
 }
 
 // OpenAI embeddings over fetch, matching how the API already calls OpenAI.
@@ -268,10 +295,13 @@ export function sqlStore(db: { query: (sql: string, params?: any[]) => Promise<{
       await db.query('delete from knowledge_chunks where fieldcopy_entry_id = $1 and chunk_index >= $2', [entryId, keep]);
     },
     async pruneMissing(keepEntryIds) {
-      await db.query(
-        'delete from knowledge_chunks where fieldcopy_entry_id is not null and not (fieldcopy_entry_id = any($1))',
-        [keepEntryIds]
+      refuseEmptyKeep(keepEntryIds);
+      const stored = await db.query(
+        'select distinct fieldcopy_entry_id as id from knowledge_chunks where fieldcopy_entry_id is not null'
       );
+      for (const ids of missingBatches(stored.rows.map((r) => r.id as string), keepEntryIds)) {
+        await db.query('delete from knowledge_chunks where fieldcopy_entry_id = any($1)', [ids]);
+      }
     },
   };
 }
@@ -317,10 +347,25 @@ export function supabaseStore(sb: SupabaseLike): KnowledgeStore {
       if (r.error) throw new IngestError(`Chunk prune failed: ${r.error.message}`);
     },
     async pruneMissing(keepEntryIds) {
-      // PostgREST 'not in' list; ids are FieldCopy UUIDs.
-      const list = `(${keepEntryIds.map((id) => `"${id.replace(/"/g, '')}"`).join(',')})`;
-      const r = await sb.from('knowledge_chunks').delete().not('fieldcopy_entry_id', 'is', null).not('fieldcopy_entry_id', 'in', list);
-      if (r.error) throw new IngestError(`Chunk sync failed: ${r.error.message}`);
+      refuseEmptyKeep(keepEntryIds);
+      // List stored ids page by page (one row per chunk, so ids repeat), then
+      // delete the missing ones in small batches: a single 'not in' over the
+      // whole export overflows the URL once the library is large.
+      const stored: string[] = [];
+      for (let from = 0; ; from += LIST_PAGE) {
+        const r = await sb.from('knowledge_chunks').select('fieldcopy_entry_id')
+          .not('fieldcopy_entry_id', 'is', null)
+          .order('fieldcopy_entry_id').order('chunk_index')
+          .range(from, from + LIST_PAGE - 1);
+        if (r.error) throw new IngestError(`Chunk sync listing failed: ${r.error.message}`);
+        const rows = (r.data ?? []) as { fieldcopy_entry_id: string }[];
+        stored.push(...rows.map((x) => x.fieldcopy_entry_id));
+        if (rows.length < LIST_PAGE) break;
+      }
+      for (const ids of missingBatches(stored, keepEntryIds)) {
+        const r = await sb.from('knowledge_chunks').delete().in('fieldcopy_entry_id', ids);
+        if (r.error) throw new IngestError(`Chunk sync failed: ${r.error.message}`);
+      }
     },
   };
 }

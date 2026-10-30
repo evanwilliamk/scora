@@ -19,11 +19,15 @@ async function main() {
   const dryRun = args.includes('--dry-run');
   const sync = args.includes('--sync');
   if (!file) {
-    console.error('Usage: ingest-knowledge.ts <export.json> [--dry-run]');
+    console.error('Usage: ingest-knowledge.ts <export.json> [--dry-run] [--sync]');
     process.exit(2);
   }
 
   const entries = parseExport(JSON.parse(readFileSync(file, 'utf8')));
+  if (sync && entries.length === 0) {
+    console.error('Refusing --sync with an empty export: it would delete the whole library');
+    process.exit(2);
+  }
   const plan = planIngest(entries);
   const chars = plan.chunks.reduce((s, c) => s + c.embedText.length, 0);
   console.log(`${entries.length} entries, ${plan.sources.length} sources, ${plan.chunks.length} chunks, ~${Math.round(chars / 4)} tokens to embed`);
