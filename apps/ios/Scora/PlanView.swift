@@ -777,7 +777,7 @@ struct PlanView: View {
   private var pasteSection: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Have a training plan?")
-        .font(.system(size: 22, weight: .regular, design: .serif))
+        .scaledSerif(22, relativeTo: .title2)
         .foregroundColor(.white)
       Text("Paste your plan and SCORA reads it alongside your body. One session per line with a day or date works best.")
         .font(.subheadline)
@@ -881,7 +881,7 @@ struct PlanView: View {
         VStack(alignment: .leading, spacing: 4) {
           Text("Race estimate").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
           if let h = prediction.headline {
-            Text(h).font(.system(size: 22, weight: .regular, design: .serif)).foregroundColor(.white)
+            Text(h).scaledSerif(22, relativeTo: .title2).foregroundColor(.white)
           }
           Text(prediction.basis).font(.footnote).foregroundColor(.gray)
         }

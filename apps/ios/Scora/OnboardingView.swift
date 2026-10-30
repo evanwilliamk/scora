@@ -110,7 +110,7 @@ struct OnboardingView: View {
     case .delivery:
       VStack(alignment: .leading, spacing: 16) {
         Text("Morning read")
-          .font(.system(size: 28, weight: .regular, design: .serif))
+          .scaledSerif(28, relativeTo: .title)
           .foregroundColor(.white)
         Text("Your read arrives as a notification each morning. Time zone: \(OnboardingState.zoneLabel(.current)).")
           .font(.body)
@@ -144,7 +144,7 @@ struct OnboardingView: View {
   private func screen(title: String, body: String, primary: (String, () -> Void), secondary: (String, () -> Void)?) -> some View {
     VStack(alignment: .leading, spacing: 16) {
       Text(title)
-        .font(.system(size: 28, weight: .regular, design: .serif))
+        .scaledSerif(28, relativeTo: .title)
         .foregroundColor(.white)
         .fixedSize(horizontal: false, vertical: true)
       Text(body)

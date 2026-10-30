@@ -302,7 +302,7 @@ struct DashboardView: View {
           }
         }
         Text(ReadText.attributed(read.voice, links: read.links ?? [], series: read.series ?? [:]))
-          .font(.system(size: 20, weight: .regular, design: .serif))
+          .scaledSerif(20)
           .foregroundColor(.white)
           .tint(.orange)
           .fixedSize(horizontal: false, vertical: true)
@@ -510,5 +510,25 @@ enum APIErrorText {
     guard let text = (try? JSONDecoder().decode(Body.self, from: data))?.error,
           !text.isEmpty, text.count <= 200, !text.contains("<") else { return fallback }
     return text
+  }
+}
+
+// The voice's serif, at its designed size by default and scaling with the
+// reader's Dynamic Type setting from there.
+struct ScaledSerif: ViewModifier {
+  @ScaledMetric private var size: CGFloat
+
+  init(_ base: CGFloat, relativeTo style: Font.TextStyle) {
+    _size = ScaledMetric(wrappedValue: base, relativeTo: style)
+  }
+
+  func body(content: Content) -> some View {
+    content.font(.system(size: size, weight: .regular, design: .serif))
+  }
+}
+
+extension View {
+  func scaledSerif(_ size: CGFloat, relativeTo style: Font.TextStyle = .body) -> some View {
+    modifier(ScaledSerif(size, relativeTo: style))
   }
 }
