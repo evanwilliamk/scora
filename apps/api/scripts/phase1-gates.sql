@@ -3,8 +3,11 @@
 --   2.1.1 at least 10 athletes completed onboarding
 --   2.1.9 at least 50% of them made a chat chart (CDV) query
 -- Read-only. Paste into the Supabase SQL editor. The CDV counter keeps only
--- the last day used, so "made a query" means a last use on or after the
--- phase start. The other Phase 1 gates come from the logs
+-- the last day used (cdv_count is that day's count), so "made a query" means
+-- a last use on or after the phase start with a count above 0: a failed
+-- request is refunded (count lowered, date kept), so a date with a count of
+-- 0 is not a query. Only the last day is kept, so an athlete whose last day
+-- was all refunds is missed even if an earlier day had a real query. The other Phase 1 gates come from the logs
 -- (scripts/voice-gate-report.ts) or are manual. Doc 10 counts only
 -- tier = 'free'; there is no tier column yet, so every onboarded athlete counts.
 with params as (
@@ -17,7 +20,7 @@ onboarded as (
 ),
 per_athlete as (
   select o.athlete_id, o.onboarded_at,
-         coalesce(a.cdv_count_date >= params.phase_start, false) as used_cdv
+         coalesce(a.cdv_count_date >= params.phase_start and a.cdv_count > 0, false) as used_cdv
   from onboarded o
   cross join params
   left join athletes a on a.strava_id = o.athlete_id

@@ -44,3 +44,11 @@ test('counts onboarding in the phase and CDV use since its start', async () => {
   for (let i = 0; i < 3; i++) await athlete(`t${i}`, 3, 1);
   assert.equal(await verdict(), '2.1.1 10 onboarded PASS; 2.1.9 60.0% used CDV PASS');
 });
+
+test('a refunded CDV request (count back to 0, date kept) is not a query', async () => {
+  // Continues from the test above: 10 onboarded, 6 used CDV.
+  await db.query(`insert into athletes (name, strava_id, cdv_count, cdv_count_date) values ('r0', 'r0', 0, current_date - 1), ('r1', 'r1', 0, current_date - 1)`);
+  await db.query(`insert into athlete_preferences (athlete_id, onboarded_at) values ('r0', now() - interval '2 days'), ('r1', now() - interval '2 days')`);
+  // 6 of 12 is 50.0% (PASS); counting the refunds would make it 8 of 12.
+  assert.equal(await verdict(), '2.1.1 12 onboarded PASS; 2.1.9 50.0% used CDV PASS');
+});
