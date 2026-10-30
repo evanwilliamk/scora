@@ -110,12 +110,32 @@ async function refreshStravaToken(refreshToken: string, fetchImpl: typeof fetch 
   return (await response.json()) as StravaTokenResponse;
 }
 
+// One refresh per athlete at a time in this process. Strava may rotate the
+// refresh token on use, so two reads racing on an expired token would both spend the
+// same old refresh token and the second would fail. Concurrent callers share
+// the in-flight lookup (and refresh, if one is needed) instead.
+const stravaTokenInFlight = new Map<string, Promise<string>>();
+
+export async function getValidStravaToken(
+  stravaId: string,
+  // Injectable for tests; production uses the shared client and fetch.
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const key = String(stravaId);
+  const pending = stravaTokenInFlight.get(key);
+  if (pending) return pending;
+  const p = getValidStravaTokenOnce(stravaId, supabase, fetchImpl).finally(() => stravaTokenInFlight.delete(key));
+  stravaTokenInFlight.set(key, p);
+  return p;
+}
+
 /**
  * Returns a valid Strava access token for the athlete, refreshing it first
  * if it is expired or within a 5-minute safety window. Rotates the stored
  * refresh token (Strava may issue a new one on refresh).
  */
-export async function getValidStravaToken(
+async function getValidStravaTokenOnce(
   stravaId: string,
   // Injectable for tests; production uses the shared client and fetch.
   supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
@@ -152,6 +172,8 @@ export async function getValidStravaToken(
       strava_expires_at: refreshed.expires_at,
     })
     .eq('strava_id', String(stravaId))
+    // Only over the token we spent: never overwrite a newer set (a reconnect).
+    .eq('strava_refresh_token', athlete.strava_refresh_token)
     .select('strava_id');
   // The provider may have retired the old refresh token, so a lost save means
   // the next refresh fails and the athlete must reconnect. Say so loudly; the

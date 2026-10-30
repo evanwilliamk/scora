@@ -7,7 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import {
   parseExport, chunkPassage, planIngest, ingest, sqlStore, supabaseStore, openAiEmbedder,
-  IngestError, EMBEDDING_DIMS, EMBEDDING_MODEL,
+  IngestError, EMBEDDING_DIMS, EMBEDDING_MODEL, PRUNE_BATCH,
 } from '../src/knowledge-ingest';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -210,4 +210,67 @@ test('an entry emptied out loses its chunks; sync removes entries missing from t
   await ingest(parseExport([{ id: 'sync-c', source_title: 'Sync Book', passage: 'Only C now.' }]), { embed: fakeEmbed([]), store, sync: true });
   assert.equal(await count('sync-b'), 0, 'sync removes entries not in the export');
   assert.equal(await count('sync-c'), 1);
+});
+
+test('sync refuses an empty export before embedding, and the store refuses an empty keep list', async () => {
+  const store = sqlStore(db);
+  await ingest(parseExport([{ id: 'keep-me', source_title: 'Guard Book', passage: 'Still here.' }]), { embed: fakeEmbed([]), store });
+  const calls: string[][] = [];
+  await assert.rejects(ingest([], { embed: fakeEmbed(calls), store, sync: true }), /empty export/);
+  assert.equal(calls.length, 0);
+  await assert.rejects(store.pruneMissing([]), /no entries/);
+  const left = await db.query<{ n: number }>(`select count(*)::int as n from knowledge_chunks where fieldcopy_entry_id = 'keep-me'`);
+  assert.equal(left.rows[0].n, 1, 'nothing was deleted');
+});
+
+test('sql sync prunes missing entries in batches', async () => {
+  const store = sqlStore(db);
+  const many = parseExport(Array.from({ length: PRUNE_BATCH + 30 }, (_, i) => (
+    { id: `bulk-${i}`, source_title: 'Bulk Book', passage: `Passage ${i}.` })));
+  await ingest(many, { embed: fakeEmbed([]), store });
+  const deletes: number[] = [];
+  const spy = { query: async (sql: string, params?: any[]) => {
+    if (/^delete/.test(sql) && /any\(\$1\)/.test(sql)) deletes.push(params![0].length);
+    return db.query(sql, params);
+  } };
+  await ingest(parseExport([{ id: 'bulk-0', source_title: 'Bulk Book', passage: 'Passage 0.' }]),
+    { embed: fakeEmbed([]), store: sqlStore(spy), sync: true });
+  const ids = await db.query<{ id: string }>('select distinct fieldcopy_entry_id as id from knowledge_chunks where fieldcopy_entry_id is not null');
+  assert.deepEqual(ids.rows.map((r) => r.id), ['bulk-0']);
+  assert.ok(deletes.length >= 2 && deletes.every((n) => n <= PRUNE_BATCH), `batched deletes: ${deletes}`);
+});
+
+test('supabaseStore sync lists stored ids page by page and deletes missing ones in batches', async () => {
+  // In-memory knowledge_chunks behind a PostgREST-shaped fake.
+  let rows = Array.from({ length: 2500 }, (_, i) => ({ fieldcopy_entry_id: `e-${Math.floor(i / 2)}`, chunk_index: i % 2 }));
+  rows.push({ fieldcopy_entry_id: null as any, chunk_index: 0 });
+  const deletes: string[][] = [];
+  const sb = {
+    from: (_t: string) => ({
+      select: () => {
+        const q: any = {
+          not: () => q,
+          order: () => q,
+          range: async (a: number, b: number) => {
+            const page = rows.filter((r) => r.fieldcopy_entry_id !== null).slice(a, Math.min(b + 1, a + 1000));
+            return { data: page, error: null };
+          },
+        };
+        return q;
+      },
+      delete: () => ({
+        in: async (_col: string, ids: string[]) => {
+          deletes.push(ids);
+          rows = rows.filter((r) => !ids.includes(r.fieldcopy_entry_id));
+          return { error: null };
+        },
+      }),
+    }),
+  };
+  const keep = Array.from({ length: 2000 }, (_, i) => `keep-${i}`).concat(['e-0', 'e-7']);
+  await supabaseStore(sb).pruneMissing(keep);
+  assert.deepEqual([...new Set(rows.map((r) => r.fieldcopy_entry_id))].sort(), ['e-0', 'e-7', null].sort());
+  assert.ok(deletes.every((ids) => ids.length <= PRUNE_BATCH));
+  assert.equal(deletes.flat().length, 1248, 'each missing entry deleted once');
+  await assert.rejects(supabaseStore(sb).pruneMissing([]), /no entries/);
 });

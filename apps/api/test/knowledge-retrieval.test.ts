@@ -75,6 +75,20 @@ test('retries without tags when the tagged search is empty', async () => {
   assert.deepEqual(seen[1], []);
 });
 
+test('retries without tags when every tagged hit is under the similarity floor', async () => {
+  const seen: string[][] = [];
+  const match: ChunkMatcher = async (_e, _n, tags) => {
+    seen.push(tags);
+    return tags.length ? [chunk({ id: 'weak', similarity: 0.2 })] : [chunk({ id: 'strong', similarity: 0.6 })];
+  };
+  const k = await knowledgeForRead({ posture: 'back-off', drivers: backOffDrivers, completeness: 1 },
+    { enabled: true, embed: topicEmbed, match, patterns: [] });
+  assert.equal(k.mode, 'library');
+  assert.deepEqual(k.chunks.map((c) => c.id), ['strong']);
+  assert.equal(seen.length, 2);
+  assert.deepEqual(seen[1], []);
+});
+
 test('falls back to the pattern library when the flag is off, retrieval fails, or nothing is close', async () => {
   const input = {
     posture: 'back-off' as const,
