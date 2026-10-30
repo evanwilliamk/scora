@@ -68,6 +68,14 @@ final class ScoraUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Share this week's review"].waitForExistence(timeout: 5))
     }
 
+    func testDashboardIconButtonsHaveLabels() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read"]
+        app.launch()
+        XCTAssertTrue(app.buttons["This week"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Ask about your training"].exists)
+    }
+
     func testDashboardShowsPlanTodayCard() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-demo-read", "-demo-cards"]

@@ -305,6 +305,7 @@ struct ChatView: View {
             .foregroundColor(input.isEmpty || limitReached ? .gray : .orange)
         }
         .disabled(input.isEmpty || isLoading || limitReached)
+        .accessibilityLabel("Send")
       }
       .padding()
       .background(Color.black)

@@ -263,11 +263,13 @@ struct DashboardView: View {
         Image(systemName: "calendar")
           .foregroundColor(.orange)
       }
+      .accessibilityLabel("This week")
       .padding(.trailing, 4)
       Button(action: { showChat = true }) {
         Image(systemName: "bubble.left.and.bubble.right")
           .foregroundColor(.orange)
       }
+      .accessibilityLabel("Ask about your training")
       Button("Sign Out") { tokenManager.logout() }
         .font(.subheadline)
         .foregroundColor(.orange)
