@@ -337,7 +337,7 @@ fastify.post('/api/cdv', async (request, reply) => {
     // is the athlete's day, and the app sends its local date.
     const localDay = (a: any): string => String(a.start_date_local || a.start_date || '').slice(0, 10);
     const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
-    const todayLocal = isoDay(body.today) ?? athleteLocalToday(activities);
+    const todayLocal = nearToday(body.today) ?? athleteLocalToday(activities);
     // The last six weeks by the athlete's dates: exactly six of each weekday.
     const windowStart = new Date(Date.parse(`${todayLocal}T00:00:00Z`) - 42 * 86400000).toISOString().slice(0, 10);
     const sixWeeks = runs.filter(a => { const d = localDay(a); return d > windowStart && d <= todayLocal; });
@@ -558,7 +558,7 @@ fastify.post('/api/read', async (request, reply) => {
 
     // The athlete's local date for "last night" and calendar-day counts: the
     // app's, else the newest activity's offset.
-    const localToday = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+    const localToday = nearToday((request.body as any)?.today) ?? athleteLocalToday(activities);
 
     // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
     // cards fall back to connect prompts. Never blocks the read on Oura errors.
@@ -632,7 +632,7 @@ fastify.post('/api/read', async (request, reply) => {
     if (adaptationsEnabled()) {
       // The scheduler sends the athlete's local date; the app does not yet, so
       // fall back to the newest activity's UTC offset, never the server's UTC day.
-      const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+      const today = localToday;
       try {
         // Optional: gpt-4o-mini words the reason from the posture drivers,
         // checked in code, fixed sentence on any failure (ADAPTATION_REASON_LLM).
@@ -662,7 +662,7 @@ fastify.post('/api/read', async (request, reply) => {
     // The athlete's own plan for today, if they pasted one. The read may name
     // it; it never changes it (CLAUDE.md §1.3). Never blocks the read. Loaded
     // before the no-drivers return so Plan Today shows without recent runs.
-    const today = isoDay(clientToday) ?? athleteLocalToday(activities);
+    const today = localToday;
     let plan = planForRead([], today);
     let weekPlanRows: StoredWorkout[] | null = null;
     try {
@@ -786,7 +786,7 @@ Write today's read using only these drivers.`;
     if (inlineChartsEnabled()) {
       // Charts are extra: any failure leaves the read as plain text.
       try {
-        const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+        const today = localToday;
         const series = buildDriverSeries(activities, recovery, today);
         const links = linkDrivers(voice, readDrivers, new Set(Object.keys(series) as SeriesKey[]));
         const used = new Set(links.map((l) => l.key));
@@ -910,6 +910,19 @@ const isoDay = (v: unknown): string | null => {
 };
 const addDays = (day: string, n: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+// The /api/read reply when no Strava token resolves.
+const STRAVA_RECONNECT = 'Strava not connected or refresh failed — please reconnect Strava.';
+
+// The app's local date, accepted only within a day of the server's UTC date
+// (every real time zone is). A far-off "today" would steer plan queries,
+// adaptations and the race-week freeze, so anything else is null and the
+// route falls back to a server-derived day (or answers 400).
+const nearToday = (v: unknown, now: Date = new Date()): string | null => {
+  const day = isoDay(v);
+  if (!day) return null;
+  const server = now.toISOString().slice(0, 10);
+  return day >= addDays(server, -1) && day <= addDays(server, 1) ? day : null;
+};
 let _planSb: ReturnType<typeof createClient> | null = null;
 const planStore = () => {
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
@@ -928,7 +941,7 @@ fastify.post('/api/plan/manual', async (request, reply) => {
     return reply.code(400).send({ error: 'Missing: athleteId, text' });
   }
   // The app sends its local date so weekday names resolve in the athlete's zone.
-  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  const today = nearToday(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
     const parsed = await parsePlanText(text, today, openAiPlanLlm(process.env.OPENAI_API_KEY || ''));
     if (parsed.rows.length === 0) {
@@ -960,7 +973,7 @@ fastify.post('/api/plan/ical', { bodyLimit: 3_000_000 }, async (request, reply) 
   if (!athleteId || typeof ics !== 'string') {
     return reply.code(400).send({ error: 'Missing: athleteId, ics' });
   }
-  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  const today = nearToday(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
     const parsed = importIcs(ics, today, typeof timeZone === 'string' ? timeZone : undefined);
     if (parsed.rows.length === 0) {
@@ -994,7 +1007,7 @@ fastify.post('/api/plan/ical', { bodyLimit: 3_000_000 }, async (request, reply) 
 fastify.get('/api/plan', async (request, reply) => {
   const { athleteId, today: clientToday } = request.query as { athleteId?: string; today?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
-  const today = isoDay(clientToday) ?? new Date().toISOString().slice(0, 10);
+  const today = nearToday(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
     const store = planStore();
     const workouts = withDescriptions((await store.workoutsBetween(athleteId, today, addDays(today, 182))).slice(0, 14), describeWorkout);
@@ -1040,9 +1053,7 @@ fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {
   }
   // The app's local date, within a day of the server's (time zones), so a
   // far-future "today" cannot mark sessions still ahead.
-  const serverDay = new Date().toISOString().slice(0, 10);
-  const asked = isoDay(clientToday);
-  const today = asked && asked >= addDays(serverDay, -1) && asked <= addDays(serverDay, 1) ? asked : serverDay;
+  const today = nearToday(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
     const ok = await planStore().markCompleted(String(athleteId), id, status === 'done', today);
     return ok ? reply.send({ id, status }) : reply.code(404).send({ error: 'No such session on your plan, or it is still ahead.' });
@@ -1081,8 +1092,8 @@ fastify.get('/api/plan/block', async (request, reply) => {
   if (!generationEnabled()) return reply.code(404).send({ error: 'Not found' });
   const { athleteId, today: clientToday } = request.query as { athleteId?: string; today?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
-  const today = isoDay(clientToday);
-  if (!today) return reply.code(400).send({ error: 'Missing: today (YYYY-MM-DD, local)' });
+  const today = nearToday(clientToday);
+  if (!today) return reply.code(400).send({ error: 'Missing: today (YYYY-MM-DD, local, within a day of now)' });
   try {
     const store = adaptStore();
     if (await store.hasActiveCoachPlan(athleteId)) return reply.send({ block: null });
@@ -1100,8 +1111,8 @@ fastify.post('/api/plan/generate', async (request, reply) => {
   if (!body.athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   // The athlete's local date decides which sessions are still ahead; the
   // server's UTC day would drop today's for a US evening request.
-  const today = isoDay(body.today);
-  if (!today) return reply.code(400).send({ error: 'Missing: today (YYYY-MM-DD, local)' });
+  const today = nearToday(body.today);
+  if (!today) return reply.code(400).send({ error: 'Missing: today (YYYY-MM-DD, local, within a day of now)' });
   try {
     _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
     const req = parseGenerateRequest(body);
@@ -1140,7 +1151,7 @@ fastify.get('/api/plan/prediction', async (request, reply) => {
     } catch {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
-    const today = isoDay(clientToday) ?? athleteLocalToday(activities);
+    const today = nearToday(clientToday) ?? athleteLocalToday(activities);
     return reply.send({ prediction: predictRace(activities, race, today) });
   } catch (e) {
     fastify.log.error(`Prediction failed: ${e instanceof Error ? e.message : e}`);
@@ -1262,17 +1273,18 @@ fastify.post('/api/weekly', async (request, reply) => {
       return reply.code(401).send({ error: 'Strava token invalid or expired' });
     }
 
+    // The 7 complete days before the athlete's today: a Monday-morning push
+    // must not count this morning's run, and the plan driver reads the same days.
+    const today = nearToday((request.body as any)?.today) ?? athleteLocalToday(activities);
+
     let ouraSummary = null;
     try {
       const ouraToken = await getValidOuraToken(athleteId);
-      ouraSummary = await fetchOuraSummary(ouraToken, { localToday: isoDay((request.body as any)?.today) ?? athleteLocalToday(activities) });
+      ouraSummary = await fetchOuraSummary(ouraToken, { localToday: today });
     } catch {
       // Oura optional — weekly read works on Strava alone.
     }
 
-    // The 7 complete days before the athlete's today: a Monday-morning push
-    // must not count this morning's run, and the plan driver reads the same days.
-    const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
     const { stats, drivers, hasData } = buildWeeklySummary(activities, ouraSummary, today);
 
     // The athlete's plan over the same 7 days, if they have one: the review

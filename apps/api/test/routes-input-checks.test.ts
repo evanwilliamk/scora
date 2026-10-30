@@ -1,0 +1,104 @@
+// Route input checks (night fixes 10-30): the client's "today" only within a
+// day of the server's, HealthKit when Oura comes back empty, range-checked
+// HealthKit numbers, the chat message shape, the chat quota day from the
+// stored time zone, a reconnect 401 for a missing Strava token, and the APNs
+// device token shape. Supabase is a local fake (helpers/fake-rest); outside
+// hosts go through helpers/fetch-guard.
+
+import { test, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { fakeRest, type FakeRest } from './helpers/fake-rest';
+import { blankEnv } from './helpers/test-env';
+import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
+
+blankEnv();
+
+let app: any;
+let rest: FakeRest;
+let guard: FetchGuard;
+before(async () => {
+  rest = await fakeRest();
+  guard = installFetchGuard(rest.url);
+  process.env.SUPABASE_URL = rest.url;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role';
+  app = (await import('../src/index')).default;
+  await app.ready();
+});
+after(async () => {
+  await app.close();
+  guard.restore();
+  await rest.close();
+});
+beforeEach(() => {
+  rest.reset();
+  guard.reset();
+});
+
+const DAY = 86400000;
+const now = Date.now();
+const T = new Date(now).toISOString().slice(0, 10);
+const addDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+const post = (url: string, payload: unknown) => app.inject({ method: 'POST', url, payload });
+const get = (url: string) => app.inject({ method: 'GET', url });
+const llmCalls = () => guard.calls.filter((c) => c.host === 'api.openai.com');
+const run = (daysAgo: number, mins: number) => {
+  const at = new Date(now - daysAgo * DAY).toISOString();
+  return { type: 'Run', sport_type: 'Run', start_date: at, start_date_local: at, distance: mins * 170, moving_time: mins * 60, elapsed_time: mins * 60, average_heartrate: 140 };
+};
+const steady = () => Array.from({ length: 4 }, (_, w) => [run(w * 7 + 1, 50), run(w * 7 + 3, 50), run(w * 7 + 4, 50), run(w * 7 + 6, 100)]).flat();
+const connected = (extra: Record<string, unknown> = {}) => rest.answer('athletes', {
+  body: [{ strava_access_token: 'tok-a1', strava_refresh_token: 'ref-a1', strava_expires_at: Math.floor(now / 1000) + 3600, ...extra }],
+});
+const ouraRow = { body: [{ oura_access_token: 'oura-tok', oura_refresh_token: 'oura-ref', oura_expires_at: Math.floor(now / 1000) + 3600 }] };
+const CLEAN = 'Training has been even across the last four weeks. Nothing in the record stands out this morning.';
+
+// 1. The client's today.
+
+test('read: a "today" a month ahead does not steer the plan query', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const r = await post('/api/read', { athleteId: '42', today: addDays(T, 30) });
+  assert.equal(r.statusCode, 200, r.body);
+  const q = rest.requests.find((x) => x.table === 'scheduled_workouts')!;
+  const [from, to] = q.params.getAll('scheduled_date');
+  assert.ok(from.slice(4) <= addDays(T, 1), `plan read from ${from}`);
+  assert.ok(to.slice(4) <= addDays(T, 8), `plan read to ${to}`);
+});
+
+test('manual plan: a far-off "today" falls back to the server day', async () => {
+  guard.openAi(JSON.stringify({ workouts: [] }));
+  const r = await post('/api/plan/manual', { athleteId: 'a1', text: 'Tue: 45 min tempo', today: addDays(T, 30) });
+  assert.equal(r.statusCode, 422);
+  const prompt = JSON.stringify(llmCalls()[0].body.messages);
+  assert.ok(prompt.includes(`TODAY: ${T}`), prompt);
+  assert.ok(!prompt.includes(addDays(T, 30)));
+});
+
+test('calendar import: a far-future "today" cannot skip upcoming sessions as past', async () => {
+  process.env.ICAL_IMPORT = 'on';
+  try {
+    const d = addDays(T, 5).replace(/-/g, '');
+    rest.answer('rpc/replace_external_plan', { body: 'plan-1' });
+    const ics = `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:${d}\r\nSUMMARY:Easy run 30 min\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+    const r = await post('/api/plan/ical', { athleteId: 'a1', ics, today: addDays(T, 30) });
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().workouts.length, 1);
+  } finally {
+    delete process.env.ICAL_IMPORT;
+  }
+});
+
+test('plan generate and block: a "today" more than a day off is a 400', async () => {
+  process.env.PLAN_GENERATION = 'on';
+  try {
+    const gen = await post('/api/plan/generate', { athleteId: 'a1', today: addDays(T, 30) });
+    assert.equal(gen.statusCode, 400);
+    assert.match(gen.json().error, /today/);
+    const block = await get(`/api/plan/block?athleteId=a1&today=${addDays(T, -2)}`);
+    assert.equal(block.statusCode, 400);
+    assert.equal(rest.requests.length, 0);
+  } finally {
+    delete process.env.PLAN_GENERATION;
+  }
+});

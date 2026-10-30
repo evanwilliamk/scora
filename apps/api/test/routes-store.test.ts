@@ -41,6 +41,9 @@ const session = (date: string, intensity: string, over: Record<string, unknown> 
   athlete_completed: null, training_plans: { current_status: 'active' }, ...over,
 });
 
+// The app's day must be within a day of the server's, so these use the real one.
+const T = serverDay();
+
 test('GET /api/plan: the next 26 weeks and the last 7 days, SCORA sessions described from their steps', async () => {
   const steps = [
     { type: 'warmup', duration_min: 10, intensity: 'easy' },
@@ -48,25 +51,25 @@ test('GET /api/plan: the next 26 weeks and the last 7 days, SCORA sessions descr
     { type: 'cooldown', duration_min: 10, intensity: 'easy' },
   ];
   rest.answer('scheduled_workouts',
-    { body: [session('2026-10-29', 'tempo', { workout_structure_json: steps }), session('2026-10-30', 'easy', { planned_description: 'Easy 30 min' })] },
+    { body: [session(T, 'tempo', { workout_structure_json: steps }), session(addDays(T, 1), 'easy', { planned_description: 'Easy 30 min' })] },
     { body: [
-      session('2026-10-26', 'easy'),
-      session('2026-10-27', 'tempo', { athlete_completed: true }),
-      session('2026-10-28', 'rest'),
+      session(addDays(T, -3), 'easy'),
+      session(addDays(T, -2), 'tempo', { athlete_completed: true }),
+      session(addDays(T, -1), 'rest'),
     ] },
   );
-  const r = await get('/api/plan?athleteId=a1&today=2026-10-29');
+  const r = await get(`/api/plan?athleteId=a1&today=${T}`);
   assert.equal(r.statusCode, 200);
   const body = r.json();
-  assert.equal(body.today, '2026-10-29');
+  assert.equal(body.today, T);
   assert.match(body.workouts[0].planned_description, /^45-minute tempo\. 10 minutes easy, 25 minutes at tempo, 10 minutes easy\.$/);
   assert.equal(body.workouts[1].planned_description, 'Easy 30 min', 'pasted text is kept as written');
   assert.ok(!('training_plans' in body.workouts[0]), 'the join is not sent to the app');
   // Only unmarked, non-rest sessions wait to be acknowledged (CLAUDE.md §6.2).
-  assert.deepEqual(body.recent.map((w: any) => w.scheduled_date), ['2026-10-26']);
+  assert.deepEqual(body.recent.map((w: any) => w.scheduled_date), [addDays(T, -3)]);
   const [ahead, back] = rest.requests;
-  assert.deepEqual(range(ahead), ['gte.2026-10-29', 'lte.2027-04-29']);
-  assert.deepEqual(range(back), ['gte.2026-10-22', 'lte.2026-10-28']);
+  assert.deepEqual(range(ahead), [`gte.${T}`, `lte.${addDays(T, 182)}`]);
+  assert.deepEqual(range(back), [`gte.${addDays(T, -7)}`, `lte.${addDays(T, -1)}`]);
   for (const q of [ahead, back]) {
     assert.equal(q.params.get('athlete_id'), 'eq.a1');
     assert.equal(q.params.get('training_plans.current_status'), 'eq.active');
@@ -74,15 +77,15 @@ test('GET /api/plan: the next 26 weeks and the last 7 days, SCORA sessions descr
 });
 
 test('GET /api/plan shows at most 14 sessions ahead', async () => {
-  const many = Array.from({ length: 20 }, (_, i) => session(addDays('2026-10-29', i), 'easy'));
+  const many = Array.from({ length: 20 }, (_, i) => session(addDays(T, i), 'easy'));
   rest.answer('scheduled_workouts', { body: many });
-  const r = await get('/api/plan?athleteId=a1&today=2026-10-29');
+  const r = await get(`/api/plan?athleteId=a1&today=${T}`);
   assert.equal(r.json().workouts.length, 14);
 });
 
 test('GET /api/plan: a storage error is a 500 with a plain message, no detail', async () => {
   rest.answer('scheduled_workouts', { status: 500, body: { code: 'XX000', message: 'secret internal detail', details: null, hint: null } });
-  const r = await get('/api/plan?athleteId=a1&today=2026-10-29');
+  const r = await get(`/api/plan?athleteId=a1&today=${T}`);
   assert.equal(r.statusCode, 500);
   assert.deepEqual(r.json(), { error: 'Loading the plan failed.' });
 });
@@ -195,13 +198,13 @@ test('plan options and block: empty while a coach plan is active (CLAUDE.md §5.
 
     rest.reset();
     rest.answer('training_plans', { body: [{ id: 'coach-plan' }] });
-    const block = await get('/api/plan/block?athleteId=a1&today=2026-10-29');
+    const block = await get(`/api/plan/block?athleteId=a1&today=${serverDay()}`);
     assert.equal(block.statusCode, 200);
     assert.deepEqual(block.json(), { block: null });
 
     // No coach plan and no SCORA plan: still no block.
     rest.reset();
-    const empty = await get('/api/plan/block?athleteId=a1&today=2026-10-29');
+    const empty = await get(`/api/plan/block?athleteId=a1&today=${serverDay()}`);
     assert.deepEqual(empty.json(), { block: null });
     assert.equal(rest.requests.length, 2);
   } finally {
