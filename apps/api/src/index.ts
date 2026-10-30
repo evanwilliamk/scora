@@ -578,14 +578,22 @@ fastify.post('/api/read', async (request, reply) => {
     let recovery = ouraSummary;
     let recoverySource = 'Oura';
     let healthKitUsed = false;
-    if (!ouraConnected && health && typeof health === 'object') {
+    // fetchOuraSummary turns Oura API errors into empty values, so a connected
+    // Oura with no sleep or HRV at all (an outage) is treated like no Oura.
+    const ouraEmpty = !ouraSummary || [ouraSummary.sleepSeconds, ouraSummary.sleepScore, ouraSummary.hrvMs,
+      ouraSummary.restingHr, ouraSummary.hrvWeekAvgMs].every((v) => v == null);
+    if (ouraEmpty && health && typeof health === 'object') {
+      // Untrusted input: the same plausible ranges as parseHealthNights;
+      // anything else (a string, NaN, a negative) is null, never "NaN:NaN".
+      const hk = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null);
+      const round = (v: number | null) => (v == null ? null : Math.round(v));
       recovery = {
-        sleepSeconds: health.sleepSeconds ?? null,
+        sleepSeconds: round(hk(health.sleepSeconds, 1, 86_400)),
         sleepScore: null, // HealthKit has no Oura-style score
-        hrvMs: health.hrvMs != null ? Math.round(health.hrvMs) : null,
-        restingHr: health.restingHr != null ? Math.round(health.restingHr) : null,
+        hrvMs: round(hk(health.hrvMs, 1, 300)),
+        restingHr: round(hk(health.restingHr, 20, 200)),
         readinessScore: null,
-        hrvWeekAvgMs: health.hrvWeekAvgMs != null ? Math.round(health.hrvWeekAvgMs) : null,
+        hrvWeekAvgMs: round(hk(health.hrvWeekAvgMs, 1, 300)),
         nights: parseHealthNights(health.nights),
       };
       recoverySource = 'Apple Health';

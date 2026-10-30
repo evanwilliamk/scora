@@ -102,3 +102,32 @@ test('plan generate and block: a "today" more than a day off is a 400', async ()
     delete process.env.PLAN_GENERATION;
   }
 });
+
+// 2 and 3. Oura outage and HealthKit numbers.
+
+test('read: Oura connected but empty (an outage) falls back to HealthKit', async () => {
+  connected();
+  rest.answer('athletes', ouraRow);
+  guard.stravaActivities(steady());
+  guard.oura({ sleep: { data: [] }, daily_sleep: { data: [] }, daily_readiness: { data: [] } });
+  guard.openAi(CLEAN);
+  const r = await post('/api/read', { athleteId: '42', today: T, health: { sleepSeconds: 25_920, hrvMs: 52, restingHr: 48 } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().connections.healthKit, true);
+  assert.equal(r.json().cards.find((c: any) => c.id === 'sleep').available, true);
+  assert.ok(r.json().drivers.some((d: any) => d.value === '7:12'), 'HealthKit sleep is a driver');
+});
+
+test('read: HealthKit values that are not plausible numbers become null, never NaN', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const r = await post('/api/read', {
+    athleteId: '42', today: T,
+    health: { sleepSeconds: 'abc', hrvMs: 'x', restingHr: -5, hrvWeekAvgMs: 1e9 },
+  });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.doesNotMatch(r.body, /NaN/);
+  assert.equal(r.json().cards.find((c: any) => c.id === 'sleep').available, false);
+  assert.doesNotMatch(JSON.stringify(llmCalls()[0].body.messages), /NaN|1000000000/);
+});
