@@ -584,9 +584,10 @@ fastify.post('/api/read', async (request, reply) => {
     let recoverySource = 'Oura';
     let healthKitUsed = false;
     // fetchOuraSummary turns Oura API errors into empty values, so a connected
-    // Oura with no sleep or HRV at all (an outage) is treated like no Oura.
+    // Oura with no sleep, HRV or readiness at all (an outage) is treated like no
+    // Oura. Readiness alone still counts as Oura, so it is never dropped.
     const ouraEmpty = !ouraSummary || [ouraSummary.sleepSeconds, ouraSummary.sleepScore, ouraSummary.hrvMs,
-      ouraSummary.restingHr, ouraSummary.hrvWeekAvgMs].every((v) => v == null);
+      ouraSummary.restingHr, ouraSummary.hrvWeekAvgMs, ouraSummary.readinessScore].every((v) => v == null);
     if (ouraEmpty && health && typeof health === 'object') {
       // Untrusted input: the same plausible ranges as parseHealthNights;
       // anything else (a string, NaN, a negative) is null, never "NaN:NaN".
