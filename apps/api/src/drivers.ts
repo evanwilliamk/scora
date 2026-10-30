@@ -241,7 +241,12 @@ export interface ReadPosture {
   result: PostureResult;
   // Drivers backing the posture; added to the read's DRIVERS list.
   evidence: Driver[];
-  // One line for the read prompt. The LLM names this posture; it never picks one.
+  // True when a rule fired on real values. The default steady (no rule
+  // fired, often no usable drivers at all) has no evidence and is not backed.
+  backed: boolean;
+  // One line for the read prompt. The LLM names this posture; it never picks
+  // one. Empty when the posture is not backed, so the voice cannot call the
+  // body settled from nothing (CLAUDE.md §3.2).
   promptLine: string;
 }
 
@@ -254,10 +259,13 @@ export function postureForRead(
 ): ReadPosture {
   const record = computeDriverRecord(activities, recovery, opts);
   const result = computePosture(record.drivers, record.baselines);
+  const evidence = postureEvidence(result);
+  const backed = evidence.length > 0;
   return {
     record,
     result,
-    evidence: postureEvidence(result),
-    promptLine: `POSTURE (decided by SCORA's rules from the drivers, ${result.engine_version}): ${result.posture}`,
+    evidence,
+    backed,
+    promptLine: backed ? `POSTURE (decided by SCORA's rules from the drivers, ${result.engine_version}): ${result.posture}` : '',
   };
 }

@@ -603,14 +603,18 @@ fastify.post('/api/read', async (request, reply) => {
     // Posture is decided by rules from the driver record, not by the LLM.
     // No race source is wired yet, so race_in_next_7d stays null.
     const posture = postureForRead(activities, recovery, { localToday });
-    const postureOut = {
-      posture: posture.result.posture,
-      rule: posture.result.rule,
-      engineVersion: posture.result.engine_version,
-      completeness: posture.record.completeness,
-    };
+    // A posture no rule backed (the engine's default, empty evidence) is not
+    // shown or cited anywhere: no badge, no POSTURE line, no snapshot posture.
+    const postureOut = posture.backed
+      ? {
+          posture: posture.result.posture,
+          rule: posture.result.rule,
+          engineVersion: posture.result.engine_version,
+          completeness: posture.record.completeness,
+        }
+      : null;
 
-    readSnapshots.set(athleteId, { cards, drivers: [...drivers, ...posture.evidence], posture: posture.result.posture });
+    readSnapshots.set(athleteId, { cards, drivers: [...drivers, ...posture.evidence], posture: posture.backed ? posture.result.posture : null });
     // Plan tier: tomorrow's workout on a SCORA plan goes through the
     // deterministic adaptation rules (doc 07 v2 §6.2). Off unless
     // PLAN_ADAPTATIONS=on; never blocks or fails the read.
@@ -703,6 +707,7 @@ fastify.post('/api/read', async (request, reply) => {
     const knowledge = await knowledgeForRead(
       {
         posture: posture.result.posture,
+        postureBacked: posture.backed,
         drivers: posture.record.drivers,
         completeness: posture.record.completeness,
         scheduled: plan.scheduled,
@@ -720,7 +725,7 @@ fastify.post('/api/read', async (request, reply) => {
 HARD RULES:
 - Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep, HRV, or recovery unless present).
 - Numeric-first: reference the raw value, then say what it means.
-- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction.
+- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". ${posture.backed ? "The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction." : 'No posture is given today: name none (primed, steady, moderate, back-off, rest, taper) and do not sum up the body as settled, ready or recovered.'}
 - The athlete's plan is theirs: never suggest skipping, moving, shortening, delaying or easing a planned session, even when the posture and the plan disagree. Name both and stop.
 - Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
 
@@ -732,7 +737,7 @@ OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric li
     const userPrompt = `DRIVERS (the only values you may cite):
 ${driverBlock}
 
-${posture.promptLine}${plan.promptLine ? `\n${plan.promptLine}` : ''}${planChange.promptLine ? `\n${planChange.promptLine}` : ''}
+${[posture.promptLine, plan.promptLine, planChange.promptLine].filter(Boolean).join('\n')}
 ${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 

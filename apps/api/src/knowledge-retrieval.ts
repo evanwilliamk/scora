@@ -41,12 +41,13 @@ export interface RetrievalQuery {
 // Plain-language description of the athlete's situation, built only from
 // drivers that exist. Tags narrow retrieval to the topics in play; an empty
 // tag list searches the whole library.
+// A null posture is one no rule backed: the query then says nothing about it.
 export function buildRetrievalQuery(
-  posture: Posture,
+  posture: Posture | null,
   d: PostureDrivers,
   scheduled?: ScheduledWorkout | null
 ): RetrievalQuery {
-  const parts: string[] = [`Endurance athlete, body state reads ${posture}.`];
+  const parts: string[] = [posture ? `Endurance athlete, body state reads ${posture}.` : 'Endurance athlete.'];
   const tags = new Set<string>();
 
   if (d.acwr != null) {
@@ -116,12 +117,15 @@ export interface KnowledgeDeps {
 }
 
 export async function knowledgeForRead(
-  input: { posture: Posture; drivers: PostureDrivers; completeness: number; scheduled?: ScheduledWorkout | null },
+  // postureBacked false: the posture is the engine's default with no evidence.
+  // Nothing downstream may lean on it (no posture in the query, no pattern,
+  // since every pattern is keyed to a posture).
+  input: { posture: Posture; postureBacked?: boolean; drivers: PostureDrivers; completeness: number; scheduled?: ScheduledWorkout | null },
   deps: KnowledgeDeps
 ): Promise<ReadKnowledge> {
   if (deps.enabled && deps.embed && deps.match) {
     try {
-      const q = buildRetrievalQuery(input.posture, input.drivers, input.scheduled);
+      const q = buildRetrievalQuery(input.postureBacked === false ? null : input.posture, input.drivers, input.scheduled);
       const [embedding] = await deps.embed([q.text]);
       const close = (cs: RetrievedChunk[]) => cs.filter((c) => c.similarity >= RETRIEVAL_MIN_SIMILARITY);
       let chunks = close(await deps.match(embedding, RETRIEVAL_TOP_K, q.tags));
@@ -136,6 +140,7 @@ export async function knowledgeForRead(
     }
   }
 
+  if (input.postureBacked === false) return { mode: 'none', chunks: [], pattern: null, promptBlock: '' };
   const pattern = selectPattern(
     {
       posture: input.posture,

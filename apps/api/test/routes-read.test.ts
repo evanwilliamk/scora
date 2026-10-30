@@ -265,3 +265,16 @@ test('Oura connected: the read\'s date decides what counts as last night (review
   assert.equal(stale.json().cards.find((c: any) => c.id === 'sleep').available, false);
   assert.ok(!stale.json().drivers.some((d: any) => d.value === '7:12'), 'no stale sleep value reaches the read');
 });
+
+test('no rule fired: no POSTURE line, no posture to name, no badge (night fixes 10-30)', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const r = await read();
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().posture, null, 'an unbacked default posture is not shown');
+  const [system, user] = llmCalls()[0].body.messages;
+  assert.doesNotMatch(user.content, /POSTURE/);
+  assert.match(system.content, /No posture is given today/);
+  assert.doesNotMatch(system.content, /The POSTURE line is already decided/);
+});
