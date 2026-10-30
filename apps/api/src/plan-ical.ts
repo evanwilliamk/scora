@@ -146,6 +146,9 @@ export function eventDate(e: Pick<IcsEvent, 'dtstart'> & Partial<Pick<IcsEvent, 
   if (!m) return null;
   const [, y, mo, d, h, mi, s, z] = m;
   const source = h === undefined || z ? null : knownZone(e.dtstartParams?.TZID);
+  // Same zone as the athlete: the written date is already local (and stays
+  // right for a midnight that DST skips, e.g. America/Santiago in September).
+  if (source && source === validZone(timeZone)) return `${y}-${mo}-${d}`;
   if (z || source) {
     const wall = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:${s ?? '00'}Z`);
     if (Number.isNaN(wall)) return null;

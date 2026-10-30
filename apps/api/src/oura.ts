@@ -82,6 +82,8 @@ async function refreshOuraToken(refreshToken: string, fetchImpl: typeof fetch = 
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
+    // Callers for this athlete share one refresh; a hung one must not hold them all.
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

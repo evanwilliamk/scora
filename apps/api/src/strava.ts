@@ -101,6 +101,8 @@ async function refreshStravaToken(refreshToken: string, fetchImpl: typeof fetch 
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
     }),
+    // Callers for this athlete share one refresh; a hung one must not hold them all.
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
