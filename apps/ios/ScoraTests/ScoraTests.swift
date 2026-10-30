@@ -271,6 +271,18 @@ final class ScoraTests: XCTestCase {
         ])
     }
 
+    func testLastNightHRVAndRestingHRAreTodaysOnly() {
+        let nights = [
+            HealthNight(day: "2026-10-15", sleepSeconds: 7 * 3600, hrvMs: 61, restingHr: 47),
+            HealthNight(day: "2026-10-18", sleepSeconds: 6 * 3600, hrvMs: 54, restingHr: 48),
+        ]
+        XCTAssertEqual(HealthNights.lastNightHRV(nights, today: "2026-10-18"), 54)
+        XCTAssertEqual(HealthNights.lastNightRestingHR(nights, today: "2026-10-18"), 48)
+        // Three days without a sample: stale values are not sent as last night's.
+        XCTAssertNil(HealthNights.lastNightHRV(nights, today: "2026-10-21"))
+        XCTAssertNil(HealthNights.lastNightRestingHR(nights, today: "2026-10-21"))
+    }
+
     func testHealthNightsCountOverlapsOnceAndIgnoreNaps() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/New_York")!
