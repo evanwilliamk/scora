@@ -73,6 +73,13 @@ test('writtenMinutes: h:mm:ss, paces in min/mi and zones are not durations', () 
   assert.deepEqual(writtenMinutes('3x8 min at threshold'), [8]);
 });
 
+test('unit numbers right after a colon, comma or period still count', () => {
+  assert.deepEqual(writtenMinutes('WU:10 min, Tempo:20min'), [10, 20]);
+  assert.deepEqual(writtenDistances('Long run:16km'), { km: [16], mi: [] });
+  assert.deepEqual(writtenDistances('8km,10km'), { km: [8, 10], mi: [] });
+  assert.deepEqual(writtenMinutes('Run 5k.10 min cooldown'), [10]);
+});
+
 test('writtenDistances: race paces and all-caps words are not distances', () => {
   assert.deepEqual(writtenDistances('Tue: 6x800m at 5k pace'), { km: [], mi: [] });
   assert.deepEqual(writtenDistances('10 mi at half marathon pace, 1M pace finish'), { km: [], mi: [10] });

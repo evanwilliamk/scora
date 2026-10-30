@@ -67,7 +67,7 @@ const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
 // Not the minutes of a clock time ("7:30 min/mi") and not a zone ("Z2 HR").
 // `after` adds a lookahead, e.g. to skip a race pace ("5k pace").
 function withUnit(text: string, units: string, flags = 'gi', after = ''): number[] {
-  const re = new RegExp(`(?<![\\d:.,zZ])${NUM}[\\s-]*(?:${units})(?![a-zA-Z])${after}`, flags);
+  const re = new RegExp(`(?<![\\dzZ])(?<!\\d[:.,])${NUM}[\\s-]*(?:${units})(?![a-zA-Z])${after}`, flags);
   return [...text.matchAll(re)].map((m) => num(m[1]));
 }
 const NOT_PACE = String.raw`(?!\s*pace)`;
