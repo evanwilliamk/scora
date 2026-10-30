@@ -271,6 +271,18 @@ final class ScoraTests: XCTestCase {
         ])
     }
 
+    func testLastNightHRVAndRestingHRAreTodaysOnly() {
+        let nights = [
+            HealthNight(day: "2026-10-15", sleepSeconds: 7 * 3600, hrvMs: 61, restingHr: 47),
+            HealthNight(day: "2026-10-18", sleepSeconds: 6 * 3600, hrvMs: 54, restingHr: 48),
+        ]
+        XCTAssertEqual(HealthNights.lastNightHRV(nights, today: "2026-10-18"), 54)
+        XCTAssertEqual(HealthNights.lastNightRestingHR(nights, today: "2026-10-18"), 48)
+        // Three days without a sample: stale values are not sent as last night's.
+        XCTAssertNil(HealthNights.lastNightHRV(nights, today: "2026-10-21"))
+        XCTAssertNil(HealthNights.lastNightRestingHR(nights, today: "2026-10-21"))
+    }
+
     func testHealthNightsCountOverlapsOnceAndIgnoreNaps() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/New_York")!
@@ -599,6 +611,54 @@ final class ScoraTests: XCTestCase {
         let r = try JSONDecoder().decode(PlanListResponse.self, from: Data(json.utf8))
         XCTAssertEqual(r.recent?.first?.rowId, "3f1c2a4e-0000-4000-8000-000000000001")
         XCTAssertNil(try JSONDecoder().decode(PlanListResponse.self, from: Data(#"{"workouts":[]}"#.utf8)).recent)
+    }
+
+    func testPastedRowsWithBlankDescriptionsKeepTheirOwnIds() throws {
+        let json = #"{"workouts":[{"date":"2026-10-20","type":"run","description":""},{"date":"2026-10-20","type":"run","description":""}],"rejected":[]}"#
+        let rows = try JSONDecoder().decode(PlanSaveResponse.self, from: Data(json.utf8)).workouts
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertNotEqual(rows[0].id, rows[1].id)
+        XCTAssertEqual(rows[0].id, rows[0].id, "the id is made once, not per read")
+        var stored = rows[0]
+        stored.rowId = "w1"
+        XCTAssertEqual(stored.id, "w1")
+    }
+
+    func testBuildAsksBeforeReplacingAPlanThatDidNotLoad() {
+        let w = PlanWorkout(date: "2026-10-20", type: "run", intensity: nil, durationMin: nil, distanceKm: nil, description: nil)
+        XCTAssertTrue(PlanSheet.buildReplaces(loaded: false, workouts: []), "a failed load is not an empty plan")
+        XCTAssertTrue(PlanSheet.buildReplaces(loaded: true, workouts: [w]))
+        XCTAssertFalse(PlanSheet.buildReplaces(loaded: true, workouts: []))
+        XCTAssertFalse(PlanSheet.loadFailed.contains("!"))
+    }
+
+    func testANewPlanClearsTheOldPlansExtras() throws {
+        var extras = PlanExtras()
+        extras.unmarked = [PlanWorkout(date: "2026-10-20", type: "run", intensity: nil, durationMin: nil, distanceKm: nil, description: nil)]
+        extras.changes = [PlanAdaptation(id: "a", type: "moved", reason: "One.", triggeredAt: "2026-10-21T06:00:00.000Z")]
+        extras.changesOn = true
+        extras.prediction = try XCTUnwrap(try? JSONDecoder().decode(RacePrediction.self, from: Data(#"{"ok":true,"race":"half","low_s":5400,"high_s":5700}"#.utf8)))
+        extras.clearForNewPlan()
+        XCTAssertTrue(extras.unmarked.isEmpty)
+        XCTAssertTrue(extras.changes.isEmpty)
+        XCTAssertNil(extras.prediction)
+        XCTAssertTrue(extras.changesOn, "the endpoint is still on")
+    }
+
+    func testRowRequestsGuardAndKeepErrorsWithTheirRow() {
+        var r = PlanRowRequests()
+        XCTAssertTrue(r.begin("a"))
+        XCTAssertFalse(r.begin("a"), "a second tap waits for the first")
+        XCTAssertTrue(r.isPending("a"))
+        XCTAssertTrue(r.begin("b"))
+        r.finish("a", error: PlanSheet.markFailed)
+        XCTAssertFalse(r.isPending("a"))
+        XCTAssertEqual(r.error(for: "a"), PlanSheet.markFailed)
+        XCTAssertNil(r.error(for: "b"))
+        XCTAssertTrue(r.begin("a"))
+        XCTAssertNil(r.error(for: "a"), "a retry clears the old message")
+        r.finish("a", error: nil)
+        XCTAssertNil(r.error(for: "a"))
     }
 
     func testCalendarFeedText() {

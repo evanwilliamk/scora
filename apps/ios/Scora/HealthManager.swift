@@ -78,6 +78,17 @@ enum HealthNights {
     nights.first { $0.day == today }?.sleepSeconds
   }
 
+  // Last night's HRV and resting HR come from the same night, never from the
+  // newest sample ever: the API reads them as last night's, so a value from
+  // days ago is sent as nil.
+  static func lastNightHRV(_ nights: [HealthNight], today: String) -> Double? {
+    nights.first { $0.day == today }?.hrvMs
+  }
+
+  static func lastNightRestingHR(_ nights: [HealthNight], today: String) -> Double? {
+    nights.first { $0.day == today }?.restingHr
+  }
+
   // The nights in the 7 days before the newest one, one value per night: the
   // baseline the API compares last night's HRV with (oura.ts does the same).
   static func weekAverageHRV(_ nights: [HealthNight]) -> Double? {
@@ -131,13 +142,12 @@ final class HealthManager {
   // caller can simply omit the summary and fall back to connect prompts.
   func fetchSummary() async -> HealthSummary? {
     guard HKHealthStore.isHealthDataAvailable() else { return nil }
-    async let hrv = latestHRV()
-    async let rhr = latestRestingHR()
     let nights = await recentNights()
+    let today = HealthNights.localToday()
     let summary = HealthSummary(
-      sleepSeconds: HealthNights.lastNightSleep(nights ?? [], today: HealthNights.localToday()),
-      hrvMs: await hrv,
-      restingHr: await rhr,
+      sleepSeconds: HealthNights.lastNightSleep(nights ?? [], today: today),
+      hrvMs: HealthNights.lastNightHRV(nights ?? [], today: today),
+      restingHr: HealthNights.lastNightRestingHR(nights ?? [], today: today),
       hrvWeekAvgMs: HealthNights.weekAverageHRV(nights ?? []),
       nights: nights
     )
@@ -148,21 +158,6 @@ final class HealthManager {
   }
 
   // MARK: - Queries
-
-  private func latestQuantity(_ id: HKQuantityTypeIdentifier, unit: HKUnit) async -> Double? {
-    guard let type = HKObjectType.quantityType(forIdentifier: id) else { return nil }
-    let sort = [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]
-    return await withCheckedContinuation { continuation in
-      let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: sort) { _, samples, _ in
-        guard let sample = samples?.first as? HKQuantitySample else {
-          continuation.resume(returning: nil)
-          return
-        }
-        continuation.resume(returning: sample.quantity.doubleValue(for: unit))
-      }
-      store.execute(query)
-    }
-  }
 
   // The last 28 days, grouped into dated nights (HealthNights.group).
   private func recentNights(days: Double = 28) async -> [HealthNight]? {
@@ -192,13 +187,5 @@ final class HealthManager {
     let rhr = (await samples(rhrType)).compactMap { $0 as? HKQuantitySample }.map { (date: $0.endDate, value: $0.quantity.doubleValue(for: bpm)) }
     let nights = HealthNights.group(sleep: asleep.map { (start: $0.startDate, end: $0.endDate) }, hrv: hrv, restingHr: rhr)
     return nights.isEmpty ? nil : nights
-  }
-
-  private func latestHRV() async -> Double? {
-    await latestQuantity(.heartRateVariabilitySDNN, unit: HKUnit.secondUnit(with: .milli))
-  }
-
-  private func latestRestingHR() async -> Double? {
-    await latestQuantity(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()))
   }
 }

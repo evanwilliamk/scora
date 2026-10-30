@@ -88,7 +88,7 @@ struct DriverChartView: View {
       if let latest = series.latest {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(DriverSeries.format(latest.value, unit: series.unit))
-            .font(.system(size: 28, weight: .regular, design: .serif))
+            .scaledSerif(28, relativeTo: .title)
             .foregroundColor(.white)
           if let b = series.baseline {
             Text("\(series.baselineLabel ?? "average before"): \(DriverSeries.format(b, unit: series.unit))")

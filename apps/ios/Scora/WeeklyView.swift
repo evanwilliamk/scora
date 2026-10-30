@@ -107,7 +107,7 @@ struct WeeklyView: View {
 
       if let read {
         Text(read.voice)
-          .font(.system(size: 19, weight: .regular, design: .serif))
+          .scaledSerif(19)
           .foregroundColor(.white)
           .fixedSize(horizontal: false, vertical: true)
       } else if isLoading {
