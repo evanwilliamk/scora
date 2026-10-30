@@ -265,10 +265,15 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
 fastify.post('/api/cdv', async (request, reply) => {
   try {
     const body = request.body as any;
-    const { message, athleteId } = body;
-
+    const { athleteId } = body;
+    // A string of 1 to 1000 characters, checked before the quota or any
+    // outside call: an object would reach the model as "[object Object]".
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
     if (!message || !athleteId) {
       return reply.code(400).send({ error: 'Missing: message, athleteId' });
+    }
+    if (message.length > 1000) {
+      return reply.code(400).send({ error: 'Message is too long (1000 characters at most).' });
     }
 
     // Resolve a valid token from storage, auto-refreshing if expired.

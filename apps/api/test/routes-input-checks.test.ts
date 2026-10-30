@@ -131,3 +131,14 @@ test('read: HealthKit values that are not plausible numbers become null, never N
   assert.equal(r.json().cards.find((c: any) => c.id === 'sleep').available, false);
   assert.doesNotMatch(JSON.stringify(llmCalls()[0].body.messages), /NaN|1000000000/);
 });
+
+// 4. Chat message.
+
+test('chat: a non-string, blank or over-long message is a 400 before the quota or any outside call', async () => {
+  for (const message of [{ text: 'hi' }, ['a'], 42, '   ', 'x'.repeat(1001)]) {
+    const r = await post('/api/cdv', { athleteId: '42', message, today: T });
+    assert.equal(r.statusCode, 400, JSON.stringify(message).slice(0, 40));
+    assert.equal(rest.requests.length, 0);
+    assert.equal(guard.calls.length, 0);
+  }
+});
