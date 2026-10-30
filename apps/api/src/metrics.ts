@@ -283,17 +283,33 @@ export interface WeeklySummary {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// YYYY-MM-DD shifted by n calendar days.
+const shiftDay = (date: string, n: number) => {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// The athlete's local calendar day of an activity.
+const localDay = (a: any) => String(a.start_date_local || a.start_date).slice(0, 10);
+
 // Reduce the last 7 days (vs the prior 7) into a weekly review: the stats the
 // weekly view shows and the drivers the weekly read is allowed to cite. Same
 // discipline as buildDashboard — every number is real; Oura fields only appear
-// when a summary is passed.
-export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null): WeeklySummary {
+// when a summary is passed. With the athlete's `today`, the week is the 7
+// complete local days [today-7, today-1], the same days the weekly plan
+// driver reads; without it, the last 7x24 hours.
+export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null, today?: string | null): WeeklySummary {
   const now = Date.now();
   const day = 86400000;
   const runs = activities.filter(isRun);
 
-  const thisWeek = runs.filter((a) => inWindow(a, now - 7 * day, now));
-  const lastWeek = runs.filter((a) => inWindow(a, now - 14 * day, now - 7 * day));
+  const inDays = (a: any, from: number, to: number) => {
+    const d = localDay(a);
+    return d >= shiftDay(today!, from) && d <= shiftDay(today!, to);
+  };
+  const thisWeek = runs.filter((a) => (today ? inDays(a, -7, -1) : inWindow(a, now - 7 * day, now)));
+  const lastWeek = runs.filter((a) => (today ? inDays(a, -14, -8) : inWindow(a, now - 14 * day, now - 7 * day)));
 
   const stats: WeeklyStat[] = [];
   const drivers: Driver[] = [];
@@ -317,9 +333,7 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null)
   drivers.push({ metric: 'Load', value: `${min} min`, trend: loadTrend });
 
   // Distinct days trained.
-  const days = new Set(
-    thisWeek.map((a) => String(a.start_date_local || a.start_date).slice(0, 10))
-  ).size;
+  const days = new Set(thisWeek.map(localDay)).size;
   stats.push({ label: 'Days run', value: `${days}/7` });
   drivers.push({ metric: 'Days trained', value: `${days} of 7` });
 

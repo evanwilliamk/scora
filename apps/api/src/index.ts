@@ -1234,7 +1234,10 @@ fastify.post('/api/weekly', async (request, reply) => {
       // Oura optional — weekly read works on Strava alone.
     }
 
-    const { stats, drivers, hasData } = buildWeeklySummary(activities, ouraSummary);
+    // The 7 complete days before the athlete's today: a Monday-morning push
+    // must not count this morning's run, and the plan driver reads the same days.
+    const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
+    const { stats, drivers, hasData } = buildWeeklySummary(activities, ouraSummary, today);
 
     // The athlete's plan over the same 7 days, if they have one: the review
     // may name how the week tracked against it, never what to do about it.
@@ -1242,7 +1245,6 @@ fastify.post('/api/weekly', async (request, reply) => {
       try {
         // The 7 complete days before today: a Sunday-morning review must not
         // count Sunday's long run as missed.
-        const today = isoDay((request.body as any)?.today) ?? athleteLocalToday(activities);
         const from = addDays(today, -7);
         const to = addDays(today, -1);
         const planDriverWeek = weeklyPlanDriver(await planStore().workoutsBetween(String(athleteId), from, to), activities, from, to);
