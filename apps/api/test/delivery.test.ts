@@ -278,3 +278,35 @@ test('claim is single-winner and release restores the previous date', async () =
   assert.equal((await s.get('c1')).last_daily_sent_on, null);
   assert.equal(await s.claim('c1', 'daily', '2026-10-19'), true);
 });
+
+test('a release that throws is retried on a later tick, and the read then goes out', async () => {
+  // Real store: the claim sticks when the release fails.
+  let column: string | null = '2026-10-19';
+  let releaseFails = true;
+  let tries = 0;
+  const errors: string[] = [];
+  const deps = {
+    listAthletes: async () => ['a'],
+    prefs: {
+      getMany: async () => new Map([['a', { athlete_id: 'a', onboarded_at: null, ...prefs({ last_daily_sent_on: column, last_weekly_sent_on: '2026-10-20' }) }]]),
+      claim: async (_id: string, _k: string, date: string) => { if (column === date) return false; column = date; return true; },
+      release: async (_id: string, _k: string, date: string, previous: string | null) => {
+        if (releaseFails) throw new Error('503');
+        if (column === date) column = previous;
+      },
+    },
+    deliver: async () => { tries++; return tries > 1; },
+    log: { info() {}, warn() {}, error: (m: string) => errors.push(m) },
+    failedAt: new Map<string, number>(),
+    pendingReleases: new Map(),
+  };
+  const at = (min: number) => new Date(Date.UTC(2026, 9, 20, 10, min));
+  await runTick(at(0), deps);
+  assert.equal(column, '2026-10-20', 'claim stuck after the failed release');
+  assert.equal(errors.length, 1);
+  releaseFails = false;
+  await runTick(at(15), deps);
+  assert.equal(tries, 2, 'the released read was tried again');
+  assert.equal(column, '2026-10-20');
+  assert.equal(deps.pendingReleases.size, 0);
+});
