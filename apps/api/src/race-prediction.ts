@@ -46,7 +46,9 @@ export type Prediction =
 export const riegel = (timeS: number, fromM: number, toM: number) => timeS * (toM / fromM) ** PREDICTION.riegel;
 
 export function predictRace(activities: any[], race: string, today: string): Prediction {
-  const distance = RACE_DISTANCES_M[race];
+  // Own keys only: `race` comes from the query string, and 'toString' or
+  // '__proto__' must not resolve through the prototype.
+  const distance = Object.prototype.hasOwnProperty.call(RACE_DISTANCES_M, race) ? RACE_DISTANCES_M[race] : 0;
   if (!distance) return { ok: false, race, reason: 'unknown_race' };
   const from = new Date(Date.parse(`${today}T00:00:00Z`) - (PREDICTION.windowDays - 1) * 86_400_000).toISOString().slice(0, 10);
 

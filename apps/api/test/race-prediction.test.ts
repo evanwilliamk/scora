@@ -65,6 +65,9 @@ test('no data, no claim: too few runs, no long run, unknown race', () => {
   const m = predictRace(noLong, 'marathon', TODAY);
   assert.deepEqual(m, { ok: false, race: 'marathon', reason: 'no_long_run', needed: 'a run of at least 22 km in the last 8 weeks' });
   assert.equal((predictRace(training, 'ultra', TODAY) as any).reason, 'unknown_race');
+  for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty']) {
+    assert.deepEqual(predictRace(training, name, TODAY), { ok: false, race: name, reason: 'unknown_race' });
+  }
 });
 
 test('only the last 8 weeks and only runs count', () => {
