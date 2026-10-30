@@ -220,6 +220,16 @@ test('a fired posture brings its evidence as citable drivers; steady brings none
   assert.deepEqual(postureForRead(steadyWeeks(), null, { now }).evidence, []);
 });
 
+test('an unbacked default posture gives the prompt no POSTURE line (night fixes 10-30)', () => {
+  const none = postureForRead([], null, { now });
+  assert.equal(none.result.rule, 'default');
+  assert.equal(none.backed, false);
+  assert.equal(none.promptLine, '');
+  const spike = postureForRead([...steadyWeeks(), run(0, 120, 140), run(2, 120, 140)], null, { now });
+  assert.equal(spike.backed, true);
+  assert.match(spike.promptLine, /^POSTURE/);
+});
+
 test('days since long effort counts calendar days on the athlete\'s clock (review 10-29)', () => {
   // A 100-minute run at 18:00 local yesterday; now is 08:00 local, 14 hours later.
   const lastNight = { type: 'Run', start_date: new Date(now - 14 * 3600000).toISOString(), start_date_local: '2026-10-16T18:00:00Z', distance: 17000, moving_time: 6000, average_heartrate: 145 };
@@ -233,4 +243,13 @@ test('virtual runs count toward load (review 10-29)', () => {
   const virtual = computeDriverRecord(asVirtual, null, { now }).drivers;
   assert.equal(virtual.load_7d, real.load_7d);
   assert.ok((virtual.load_7d ?? 0) > 0);
+});
+
+test('raceWithinWeek: 0 to 7 days ahead on the athlete\'s calendar (night fixes 10-30)', async () => {
+  const { raceWithinWeek } = await import('../src/drivers');
+  assert.equal(raceWithinWeek('2026-10-30', '2026-10-30'), true);
+  assert.equal(raceWithinWeek('2026-11-06', '2026-10-30'), true);
+  assert.equal(raceWithinWeek('2026-11-07', '2026-10-30'), false);
+  assert.equal(raceWithinWeek('2026-10-29', '2026-10-30'), false);
+  assert.equal(raceWithinWeek(null, '2026-10-30'), null);
 });

@@ -41,14 +41,28 @@ const questionCounts = (q: string) =>
 // seconds would vouch for any number from 0 to 59 ("HRV 47 ms").
 const timesWhole = (t: string) => t.replace(/\b(\d{1,2}):([0-5]\d)\b/g, '$1.$2');
 
+// TREND is a short direction, never a posture: postures are decided by
+// SCORA's rules, and the chat has none to cite. A METRIC line that puts one
+// there is dropped; any other long-form trend is cut back to nothing.
+const POSTURE_WORD = /\b(?:primed|steady|moderate|back[\s-]?off|rest(?:ing)?|taper(?:ing)?)\b/i;
+const SHORT_TREND = /^(?:(?:up|down|flat)(?:\s+[+-]?\d+(?:\.\d+)?\s?%)?|[+-]?\d+(?:\.\d+)?\s?%(?:\s+(?:up|down))?)(?:\s+(?:wk|week|w\/w|vs last week|on the week))?$/i;
+export function trendIssue(trend: string | undefined): 'posture' | 'long' | null {
+  if (!trend) return null;
+  if (POSTURE_WORD.test(trend)) return 'posture';
+  return SHORT_TREND.test(trend.trim()) ? null : 'long';
+}
+
 export function checkCdvReply(voice: string, metricLines: Driver[], data: unknown, question: string): CdvChecked {
   const source: Driver[] = [
     { metric: '', value: timesWhole(dataValues(data).join(' ')) },
     { metric: '', value: questionCounts(question) },
   ];
   // A METRIC line is shown to the athlete as a driver, so its name, value and
-  // trend must all be in the data. Posture words and "flat" carry no numbers.
-  const drivers = metricLines.filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).unbackedNumbers.length === 0);
+  // trend must all be in the data.
+  const drivers = metricLines
+    .filter((d) => trendIssue(d.trend) !== 'posture')
+    .map((d) => (trendIssue(d.trend) === 'long' ? { metric: d.metric, value: d.value } : d))
+    .filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).unbackedNumbers.length === 0);
   const v = validateVoice(timesWhole(voice), source);
   // Folding makes "8:47" read as 8.47, so a decimal the voice writes as a
   // decimal is backed only by a decimal in the data, never by a clock time

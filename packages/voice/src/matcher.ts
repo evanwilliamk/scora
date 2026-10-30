@@ -17,6 +17,32 @@ function rule(src: string) {
   return c;
 }
 
+// The driver(s) each numeric slot is filled from; any one present backs it.
+// A slot not listed here is filled from the driver of the same name. Some
+// slots have no exact driver in the record yet (days to race, sleep as
+// hours:minutes, long distance), so the closest recorded driver stands in:
+// without it there is certainly nothing to fill the slot with.
+export const NUMERIC_SLOT_SOURCES: Record<string, string[]> = {
+  hrv_pct_change: ['hrv_7d_avg_delta'],
+  days_to_race: ['race_in_next_7d'],
+  sleep_hours_minutes: ['sleep_last_night_score', 'sleep_7d_avg_delta'],
+  long_distance_km: ['days_since_long_effort'],
+};
+
+// Numeric-first (CLAUDE.md §3.3): a pattern whose numbers have no driver
+// cannot be rendered honestly, so it does not fire.
+function numericSlotsBacked(entry: PatternEntry, ctx: MatchContext): boolean {
+  for (const slot of entry.numeric_slots ?? []) {
+    const sources = NUMERIC_SLOT_SOURCES[slot] ?? [slot];
+    const present = sources.some((k) => {
+      const v = (ctx.drivers as Record<string, unknown>)[k];
+      return v !== null && v !== undefined && v !== false;
+    });
+    if (!present) return false;
+  }
+  return true;
+}
+
 function passes(entry: PatternEntry, ctx: MatchContext): boolean {
   const context = ctx.context ?? 'daily';
   const tier = ctx.tier ?? 'free';
@@ -41,6 +67,8 @@ function passes(entry: PatternEntry, ctx: MatchContext): boolean {
 
   // driver_rule is evaluated over the numeric/boolean driver record.
   if (entry.driver_rule && !rule(entry.driver_rule).evaluate(ctx.drivers)) return false;
+
+  if (!numericSlotsBacked(entry, ctx)) return false;
 
   return true;
 }

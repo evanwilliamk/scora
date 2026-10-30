@@ -176,3 +176,17 @@ test('coach message acknowledgement fires in the daily read for Coach tier only'
 test('strong-adherence week never fires on 0 of 0', () => {
   assert.equal(pick({ posture: 'steady', context: 'weekly', drivers: { workouts_completed_this_week: 0, workouts_planned_this_week: 0 } }), null);
 });
+
+test('a pattern does not fire when a numeric slot has no driver behind it (night fixes 10-30)', () => {
+  // The cornerstone needs {{hrv_pct_change}}: a sleep-led back-off with HRV
+  // missing passes the driver_rule but has no number to fill the slot with.
+  const ctx: MatchContext = {
+    posture: 'back-off',
+    scheduledWorkout: { planned_intensity: 'threshold' },
+    drivers: { acwr: 1.3, hrv_7d_avg_delta: null, sleep_7d_avg_delta: -5, consecutive_hard_days: 1 },
+  };
+  assert.notEqual(pick(ctx), 'plan-says-hard-body-says-back-off-v1');
+  assert.equal(pick({ ...ctx, drivers: { ...ctx.drivers, hrv_7d_avg_delta: -6 } }), 'plan-says-hard-body-says-back-off-v1');
+  // Same with the sleep slot: HRV alone does not back "Sleep {{sleep_hours}}".
+  assert.notEqual(pick({ ...ctx, drivers: { acwr: 1.3, hrv_7d_avg_delta: -6, consecutive_hard_days: 1 } }), 'plan-says-hard-body-says-back-off-v1');
+});

@@ -175,3 +175,14 @@ test('end to end: an athlete short on sleep retrieves the sleep passage', async 
   assert.equal(k.chunks[0].text, 'Sleep debt blunts what training can build.');
   assert.ok(!k.chunks.some((c) => c.text.startsWith('A taper')), 'tag filter keeps taper out');
 });
+
+test('an unbacked posture is left out of the query and picks no pattern (night fixes 10-30)', async () => {
+  const { buildRetrievalQuery, knowledgeForRead } = await import('../src/knowledge-retrieval');
+  assert.doesNotMatch(buildRetrievalQuery(null, {}).text, /body state/);
+  const k = await knowledgeForRead(
+    { posture: 'steady', postureBacked: false, drivers: { hrv_7d_avg_delta: 5, consecutive_hard_days: 0, sleep_7d_avg_delta: 0 }, completeness: 1, scheduled: { planned_intensity: 'intervals' } },
+    { enabled: false },
+  );
+  assert.equal(k.mode, 'none');
+  assert.equal(k.promptBlock, '');
+});

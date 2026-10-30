@@ -107,3 +107,23 @@ test('reason checks see through curly apostrophes and odd spaces (review 10-29)'
   const t = 'You’ll  want to rest on Wednesday.';
   assert.notDeepEqual(reasonIssues(t, moved, evidence), []);
 });
+
+test('a unitless driver number does not back a time or distance claim (night fixes 10-30)', () => {
+  const scored: Driver[] = [...evidence, { metric: 'Sleep score', value: '62' }];
+  const issues = reasonIssues("Tuesday's intervals moved to Thursday, 62 minutes shorter.", moved, scored);
+  assert.ok(issues.some((i) => /unbacked measure 62 min/.test(i)), issues.join(', '));
+  assert.ok(issues.includes('says shortened for a move'), issues.join(', '));
+  assert.ok(reasonIssues("Tuesday's intervals moved to Thursday. Sleep score was 62, 8 km under.", moved, [...scored, { metric: 'Load', value: '8' }])
+    .some((i) => /unbacked measure 8 km/.test(i)));
+  // The change's own duration and a driver's own unit still pass.
+  assert.deepEqual(reasonIssues("Tuesday's intervals are now steady at the same 60 minutes. Sleep score was 62.", downgraded, scored), []);
+  assert.deepEqual(reasonIssues("Tuesday's intervals moved to Thursday. Sleep was 5:40 last night.", moved, scored), []);
+  assert.ok(reasonIssues("Tuesday's intervals moved to Thursday and were cut.", moved, evidence).includes('says shortened for a move'));
+});
+
+test('every number word is caught, thirteen to nineteen, seventy, eighty and zero included (night fixes 10-30)', () => {
+  for (const word of ['thirteen', 'fourteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'seventy', 'eighty', 'zero']) {
+    const issues = reasonIssues(`Tuesday's intervals moved to Thursday after ${word} days of short sleep.`, moved, evidence);
+    assert.ok(issues.includes('number in words'), `${word} -> ${issues.join(', ')}`);
+  }
+});

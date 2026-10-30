@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
-import { athleteLocalToday, postureForRead } from './drivers';
+import { athleteLocalToday, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
@@ -399,7 +399,7 @@ fastify.post('/api/cdv', async (request, reply) => {
       todaySignal,
     };
 
-    const systemPrompt = `You are SCORA, a voice layer for endurance athletes. You READ and NAME patterns using postures: primed, steady, moderate, back-off, rest, taper.
+    const systemPrompt = `You are SCORA, a voice layer for endurance athletes. You READ and NAME patterns in the athlete's data. Posture is decided by rules elsewhere; never label one here.
 HARD RULES:
 - Every claim must be backed by a specific number in the data provided. Never invent data.
 - Write every number exactly as it appears in the data (18.4, not "about 18"); do not add, average or convert numbers yourself. Name days by weekday, not by date. Replies with any other number are replaced.
@@ -416,7 +416,7 @@ PATTERN-AWARENESS (allowed, NOT prescription):
 
 OUTPUT FORMAT (exactly):
 - Line 1: one-sentence voice read that directly answers the question (may include a pattern observation if relevant).
-- Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <primed|steady|moderate|back-off|rest|taper OR short trend like +12% / flat / down>
+- Then 2-4 metric lines, each: METRIC: <name> | VALUE: <number+unit> | TREND: <short trend only: up, down or flat, with a percent from the data if there is one, like +12% / down 5% / flat>. Never a posture word in TREND.
 - Last line: CHART: <kind>, the one chart that best shows the data behind your answer. SCORA draws it from the real data; you only pick the kind:
 ${CHART_MENU}
 Only cite metrics that exist in the data.`;
@@ -601,16 +601,31 @@ fastify.post('/api/read', async (request, reply) => {
     );
 
     // Posture is decided by rules from the driver record, not by the LLM.
-    // No race source is wired yet, so race_in_next_7d stays null.
-    const posture = postureForRead(activities, recovery, { localToday });
-    const postureOut = {
-      posture: posture.result.posture,
-      rule: posture.result.rule,
-      engineVersion: posture.result.engine_version,
-      completeness: posture.record.completeness,
-    };
+    // race_in_next_7d comes from the active SCORA plan's race date (the same
+    // plan /api/plan/block shows); no plan or no date leaves it null. Never
+    // blocks the read.
+    let raceInNext7d: boolean | null = null;
+    if (generationEnabled()) {
+      try {
+        const active = await withTimeout(adaptStore().activeScoraPlan(String(athleteId)), 2000);
+        raceInNext7d = raceWithinWeek(active?.goal_race_date, localToday);
+      } catch (e) {
+        fastify.log.warn(`Race date not loaded for read: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    const posture = postureForRead(activities, recovery, { localToday, raceInNext7d });
+    // A posture no rule backed (the engine's default, empty evidence) is not
+    // shown or cited anywhere: no badge, no POSTURE line, no snapshot posture.
+    const postureOut = posture.backed
+      ? {
+          posture: posture.result.posture,
+          rule: posture.result.rule,
+          engineVersion: posture.result.engine_version,
+          completeness: posture.record.completeness,
+        }
+      : null;
 
-    readSnapshots.set(athleteId, { cards, drivers: [...drivers, ...posture.evidence], posture: posture.result.posture });
+    readSnapshots.set(athleteId, { cards, drivers: [...drivers, ...posture.evidence], posture: posture.backed ? posture.result.posture : null });
     // Plan tier: tomorrow's workout on a SCORA plan goes through the
     // deterministic adaptation rules (doc 07 v2 §6.2). Off unless
     // PLAN_ADAPTATIONS=on; never blocks or fails the read.
@@ -703,6 +718,7 @@ fastify.post('/api/read', async (request, reply) => {
     const knowledge = await knowledgeForRead(
       {
         posture: posture.result.posture,
+        postureBacked: posture.backed,
         drivers: posture.record.drivers,
         completeness: posture.record.completeness,
         scheduled: plan.scheduled,
@@ -720,7 +736,7 @@ fastify.post('/api/read', async (request, reply) => {
 HARD RULES:
 - Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep, HRV, or recovery unless present).
 - Numeric-first: reference the raw value, then say what it means.
-- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction.
+- Non-prescriptive: never tell the athlete what workout to do, never use "you should / you need to / do a / go for". ${posture.backed ? "The POSTURE line is already decided by SCORA's rules. You may name that posture as an observation, never a different one, and never as an instruction." : 'No posture is given today: name none (primed, steady, moderate, back-off, rest, taper) and do not sum up the body as settled, ready or recovered.'}
 - The athlete's plan is theirs: never suggest skipping, moving, shortening, delaying or easing a planned session, even when the posture and the plan disagree. Name both and stop.
 - Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
 
@@ -732,7 +748,7 @@ OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric li
     const userPrompt = `DRIVERS (the only values you may cite):
 ${driverBlock}
 
-${posture.promptLine}${plan.promptLine ? `\n${plan.promptLine}` : ''}${planChange.promptLine ? `\n${planChange.promptLine}` : ''}
+${[posture.promptLine, plan.promptLine, planChange.promptLine].filter(Boolean).join('\n')}
 ${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 

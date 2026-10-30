@@ -265,3 +265,52 @@ test('Oura connected: the read\'s date decides what counts as last night (review
   assert.equal(stale.json().cards.find((c: any) => c.id === 'sleep').available, false);
   assert.ok(!stale.json().drivers.some((d: any) => d.value === '7:12'), 'no stale sleep value reaches the read');
 });
+
+test('no rule fired: no POSTURE line, no posture to name, no badge (night fixes 10-30)', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const r = await read();
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().posture, null, 'an unbacked default posture is not shown');
+  const [system, user] = llmCalls()[0].body.messages;
+  assert.doesNotMatch(user.content, /POSTURE/);
+  assert.match(system.content, /No posture is given today/);
+  assert.doesNotMatch(system.content, /The POSTURE line is already decided/);
+});
+
+test('the active plan\'s race date sets race_in_next_7d, so taper can fire (night fixes 10-30)', async () => {
+  process.env.PLAN_GENERATION = 'on';
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { parse } = await import('yaml');
+    const template = parse(readFileSync(new URL('../../../packages/plan-engine/test/fixtures/four-week.yaml', import.meta.url), 'utf8'));
+    const plan = (race: string) => rest.answer('training_plans', {
+      body: [{ id: 'plan-1', start_date: '2026-01-05', goal_race_date: race,
+        plan_templates: { slug: 'four-week', version: 1, structure_json: template } }],
+    });
+    // Four even weeks with the long run two days ago: load holds, long effort recent.
+    const acts = Array.from({ length: 4 }, (_, w) => [run(w * 7 + 1, 50), run(w * 7 + 2, 100, 145), run(w * 7 + 4, 50), run(w * 7 + 6, 50)]).flat();
+    const inDays = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+
+    connected();
+    plan(inDays(4));
+    guard.stravaActivities(acts);
+    guard.openAi(CLEAN);
+    const r = await read();
+    assert.equal(r.statusCode, 200, r.body);
+    assert.ok(rest.requests.some((q) => q.table === 'training_plans'), 'the active plan was read');
+    assert.equal(r.json().posture?.posture, 'taper');
+    assert.ok(r.json().drivers.some((d: any) => d.metric === 'Race within 7 days'));
+
+    rest.reset(); guard.reset();
+    connected();
+    plan(inDays(20));
+    guard.stravaActivities(acts);
+    guard.openAi(CLEAN);
+    const far = await read();
+    assert.notEqual(far.json().posture?.posture, 'taper');
+  } finally {
+    delete process.env.PLAN_GENERATION;
+  }
+});
