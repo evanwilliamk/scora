@@ -68,6 +68,7 @@ test('a UTC start time is placed on the athlete\'s own calendar day', () => {
   assert.equal(eventDate({ dtstart: '20261024T030000Z' }, 'America/New_York'), '2026-10-23');
   assert.equal(eventDate({ dtstart: '20261024T030000Z' }, 'Europe/Berlin'), '2026-10-24');
   assert.equal(eventDate({ dtstart: '20261024T030000Z' }, 'Not/AZone'), '2026-10-24'); // unknown zone: UTC
+  assert.equal(eventDate({ dtstart: '20260906T001500', dtstartParams: { TZID: 'America/Santiago' } }, 'America/Santiago'), '2026-09-06'); // midnight skipped by DST
   assert.equal(eventDate({ dtstart: '20261024T060000' }, 'America/New_York'), '2026-10-24'); // floating keeps its date
   assert.equal(eventDate({ dtstart: 'garbage' }, 'UTC'), null);
 });
