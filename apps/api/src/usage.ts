@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { isValidTimezone, localClock } from './delivery';
 
 // Daily CDV quota. Free tier = 3 chat-driven-viz queries/day (CLAUDE.md §5.1).
 // When a subscription/tier concept lands, FREE_CDV_DAILY_LIMIT is the seam:
@@ -49,6 +50,30 @@ export function quotaDay(clientDay: string | null | undefined, now: Date = new D
   const t = Date.parse(`${clientDay}T00:00:00Z`);
   if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== clientDay) return utc;
   return Math.abs(t - Date.parse(`${utc}T00:00:00Z`)) <= 86_400_000 ? clientDay : utc;
+}
+
+// The quota day for one athlete: their local date now, from the time zone
+// stored in athlete_preferences, so the client cannot pick it. Only with no
+// zone stored (or the lookup failing) does the app's date decide, through
+// quotaDay. `supabase` is injectable for tests.
+export async function athleteQuotaDay(
+  athleteId: string,
+  clientDay: string | null | undefined,
+  now: Date = new Date(),
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from('athlete_preferences')
+      .select('timezone')
+      .eq('athlete_id', String(athleteId))
+      .maybeSingle();
+    const tz = !error && data ? (data as { timezone?: unknown }).timezone : null;
+    if (isValidTimezone(tz)) return localClock(now, tz).date;
+  } catch {
+    // Fall through to the app's date.
+  }
+  return quotaDay(clientDay, now);
 }
 
 // Check the athlete's CDV usage for today and, if under the limit, count this
