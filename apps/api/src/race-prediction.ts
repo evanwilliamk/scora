@@ -4,7 +4,7 @@
 // the range is built from is returned with it, so the number is backed.
 //
 // v1 uses current fitness only: Riegel's projection (T2 = T1 x (D2/D1)^1.06)
-// from the best recent efforts, races first. Plan progression and body-state
+// from the best recent efforts, races and training runs pooled together. Plan progression and body-state
 // trend (also in §5.B.6) are not in yet. Off unless RACE_PREDICTIONS=on.
 
 import { isOutdoorRun } from './activity-types';
@@ -46,7 +46,9 @@ export type Prediction =
 export const riegel = (timeS: number, fromM: number, toM: number) => timeS * (toM / fromM) ** PREDICTION.riegel;
 
 export function predictRace(activities: any[], race: string, today: string): Prediction {
-  const distance = RACE_DISTANCES_M[race];
+  // Own keys only: `race` comes from the query string, and 'toString' or
+  // '__proto__' must not resolve through the prototype.
+  const distance = Object.prototype.hasOwnProperty.call(RACE_DISTANCES_M, race) ? RACE_DISTANCES_M[race] : 0;
   if (!distance) return { ok: false, race, reason: 'unknown_race' };
   const from = new Date(Date.parse(`${today}T00:00:00Z`) - (PREDICTION.windowDays - 1) * 86_400_000).toISOString().slice(0, 10);
 
@@ -74,17 +76,21 @@ export function predictRace(activities: any[], race: string, today: string): Pre
         projected_s: Math.round(riegel(time, a.distance, distance)),
       };
     });
-  const races = efforts.filter((e) => e.race);
-  const pool = (races.length > 0 ? races : efforts).sort((a, b) => a.projected_s - b.projected_s);
+  // Races and training runs share one pool: a race weeks ago must not hide a
+  // stronger recent run, and one race alone is not enough to name a range.
+  // Races are preferred only on a tie in projection.
+  const pool = efforts.sort((a, b) => a.projected_s - b.projected_s || Number(b.race) - Number(a.race));
   const best = pool.slice(0, PREDICTION.efforts);
-  if (races.length === 0 && best.length < PREDICTION.efforts) {
+  if (best.length < PREDICTION.efforts) {
     return { ok: false, race, reason: 'not_enough_runs', needed: `${PREDICTION.efforts} runs of 3 km or more in the last 8 weeks` };
   }
 
+  // used_races: every effort behind the range is a race (the app then says
+  // "your recent races"); a mix reads as the best runs, which races are too.
   let low = best[0].projected_s;
   let high = best[best.length - 1].projected_s;
   const mid = (low + high) / 2;
   low = Math.min(low, Math.round(mid * (1 - PREDICTION.minSpread)));
   high = Math.max(high, Math.round(mid * (1 + PREDICTION.minSpread)));
-  return { ok: true, race, distance_m: distance, low_s: low, high_s: high, efforts: best, used_races: races.length > 0, version: PREDICTION.version };
+  return { ok: true, race, distance_m: distance, low_s: low, high_s: high, efforts: best, used_races: best.every((e) => e.race), version: PREDICTION.version };
 }
