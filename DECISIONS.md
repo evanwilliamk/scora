@@ -555,7 +555,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Branch: claude/estimates-fixes
 - Context: when any race existed, only races counted, so one old 5K outweighed a strong 22 km run last week and the 3-effort floor was skipped.
 - Choice: one pool of races and qualifying training runs, races win ties, 3-effort floor for all; "your recent races" wording only when all three are races. Alternative: races only, with a recency cutoff.
-- To reverse: restore the races-only branch in race-prediction.ts.
+- To reverse: restore the races-only branch in race-prediction.ts. Known edge: training runs are timed by moving time and races by elapsed time, so a run with long stops can read slightly fast; switch training runs to elapsed time if ranges look optimistic.
 
 ### 2026-10-30: Calories use the running equation for every run; walks and hikes get the walking one
 - Status: DECIDED
