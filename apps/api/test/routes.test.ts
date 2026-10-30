@@ -148,3 +148,18 @@ test('error replies carry a plain message, never the internal error text', async
   assert.equal(dev.statusCode, 500);
   assert.deepEqual(dev.json(), { error: 'Failed to register device' });
 });
+
+test('Strava callback: a denial or a missing code hands back to the app, no emoji', async () => {
+  const get = (url: string) => app.inject({ method: 'GET', url });
+  const denied = await get('/api/auth/strava/callback?error=access_denied');
+  assert.equal(denied.statusCode, 200);
+  assert.match(denied.body, /href="scora:\/\/auth\/failed\?reason=cancelled"/);
+  assert.match(denied.body, /Access was not granted\./);
+  const missing = await get('/api/auth/strava/callback');
+  assert.equal(missing.statusCode, 400);
+  assert.match(missing.body, /scora:\/\/auth\/failed\?reason=missing/);
+  for (const r of [denied, missing]) assert.doesNotMatch(r.body, /\p{Extended_Pictographic}/u);
+  // The raw error value never reaches the page.
+  const crafted = await get('/api/auth/strava/callback?error=' + encodeURIComponent('<b>call 555-0100</b>'));
+  assert.doesNotMatch(crafted.body, /555-0100/);
+});

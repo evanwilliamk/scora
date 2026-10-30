@@ -39,5 +39,6 @@ test('result pages carry no exclamation points or emoji (CLAUDE.md 3.7)', () => 
 test('OAuth error codes map to fixed copy; anything else never echoes', () => {
   assert.equal(oauthErrorMessage('access_denied'), 'Access was not granted.');
   assert.match(oauthErrorMessage('server_error'), /try again/i);
+  assert.match(oauthErrorMessage('server_error', 'Strava'), /^Strava is having trouble/);
   assert.equal(oauthErrorMessage('Your account is locked, call 555-0100'), 'The connection did not complete.');
 });

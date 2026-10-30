@@ -97,16 +97,28 @@ fastify.get('/api/auth/strava', async (request, reply) => {
 });
 
 fastify.get('/api/auth/strava/callback', async (request, reply) => {
-  const { code } = request.query as { code?: string };
+  const { code, error: oauthError } = request.query as { code?: string; error?: string };
 
-  if (!code) {
-    return reply.type('text/html').send(`
-      <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f5f5;">
-        <div style="text-align: center;"><h1>⚠️ Missing Authorization</h1><p>No authorization code received. Please try again.</p></div>
-      </body></html>
-    `);
+  // A denial (?error=access_denied, no code) or a missing code still hands
+  // back to the app, like the Oura callback.
+  if (oauthError) {
+    return reply.type('text/html').send(resultPage({
+      title: 'Strava not connected',
+      lines: [oauthErrorMessage(oauthError, 'Strava')],
+      deepLink: 'scora://auth/failed?reason=cancelled',
+      buttonLabel: 'Back to SCORA',
+    }));
   }
-  
+  if (!code) {
+    return reply.code(400).type('text/html').send(resultPage({
+      title: 'Strava not connected',
+      lines: ['No authorization came back from Strava.'],
+      deepLink: 'scora://auth/failed?reason=missing',
+      buttonLabel: 'Back to SCORA',
+    }));
+  }
+
+
   try {
     const tokenResponse = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
