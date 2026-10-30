@@ -399,7 +399,7 @@ fastify.post('/api/cdv', async (request, reply) => {
       todaySignal,
     };
 
-    const systemPrompt = `You are SCORA, a voice layer for endurance athletes. You READ and NAME patterns using postures: primed, steady, moderate, back-off, rest, taper.
+    const systemPrompt = `You are SCORA, a voice layer for endurance athletes. You READ and NAME patterns in the athlete's data. Posture is decided by rules elsewhere; never label one here.
 HARD RULES:
 - Every claim must be backed by a specific number in the data provided. Never invent data.
 - Write every number exactly as it appears in the data (18.4, not "about 18"); do not add, average or convert numbers yourself. Name days by weekday, not by date. Replies with any other number are replaced.
