@@ -32,6 +32,22 @@ test('daily is due from the delivery minute, once per local day, within the late
   assert.equal(dueDeliveries({ ...p, last_daily_sent_on: '2026-10-19' }, at(7, 0)).daily, true);
 });
 
+test('a late delivery time keeps its window past local midnight, once per day', () => {
+  const p = prefs({ delivery_minute: 23 * 60 + 30 }); // 23:30 New York
+  // 04:05 UTC on Wed Oct 21 is 00:05 in New York (EDT); the read is Tuesday's.
+  const after = new Date(Date.UTC(2026, 9, 21, 4, 5));
+  assert.deepEqual(dueDeliveries({ ...p, last_daily_sent_on: '2026-10-19' }, after), { daily: true, weekly: false, localDate: '2026-10-20' });
+  assert.equal(dueDeliveries({ ...p, last_daily_sent_on: '2026-10-20' }, after).daily, false, 'yesterday already sent');
+  assert.equal(dueDeliveries({ ...p, last_daily_sent_on: '2026-10-21' }, after).daily, false, 'never behind a later day');
+  // Monday 23:30 running into Tuesday 00:05 still brings Monday's weekly.
+  assert.deepEqual(dueDeliveries(p, new Date(Date.UTC(2026, 9, 20, 4, 5))), { daily: true, weekly: true, localDate: '2026-10-19' });
+  // 01:30 is exactly 120 minutes late: skipped.
+  assert.equal(dueDeliveries(p, new Date(Date.UTC(2026, 9, 21, 5, 30))).daily, false);
+  assert.equal(dueDeliveries(p, new Date(Date.UTC(2026, 9, 21, 5, 29))).daily, true);
+  // An early time never reaches back into the previous day.
+  assert.equal(dueDeliveries(prefs(), new Date(Date.UTC(2026, 9, 21, 4, 5))).daily, false);
+});
+
 test('weekly is due only on local Monday', () => {
   const p = prefs(); // 06:00 New York
   const monday = new Date(Date.UTC(2026, 9, 19, 10, 15)); // 06:15 EDT Monday
