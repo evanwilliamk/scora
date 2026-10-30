@@ -509,6 +509,17 @@ final class ScoraTests: XCTestCase {
         XCTAssertFalse(WatchSend.canSend(type: "swim", steps: steps, date: "2026-10-23", today: "2026-10-22"))
     }
 
+    func testSendToWatchCountsDaysAcrossTheDSTChange() {
+        // New York leaves DST on Nov 1 2026; Nov 9 is 8 days after Nov 1, not 7.
+        let saved = NSTimeZone.default
+        NSTimeZone.default = TimeZone(identifier: "America/New_York")!
+        defer { NSTimeZone.default = saved }
+        let steps = [PlanStep(type: "steady", durationMin: 30, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        XCTAssertFalse(WatchSend.canSend(type: "run", steps: steps, date: "2026-11-09", today: "2026-11-01"), "8 days out")
+        XCTAssertTrue(WatchSend.canSend(type: "run", steps: steps, date: "2026-11-08", today: "2026-11-01"), "7 days out")
+        XCTAssertTrue(WatchSend.canSend(type: "run", steps: steps, date: "2026-11-01", today: "2026-11-01"), "today")
+    }
+
     func testPlanWorkoutReadsItsStructure() throws {
         let json = #"{"scheduled_date":"2026-10-23","planned_type":"run","planned_intensity":"tempo","planned_duration_min":40,"planned_distance_km":null,"planned_description":null,"workout_structure_json":[{"type":"steady","duration_min":40,"intensity":"tempo"}]}"#
         let w = try JSONDecoder().decode(PlanWorkout.self, from: Data(json.utf8))

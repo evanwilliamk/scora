@@ -72,6 +72,25 @@ test('a UTC start time is placed on the athlete\'s own calendar day', () => {
   assert.equal(eventDate({ dtstart: 'garbage' }, 'UTC'), null);
 });
 
+test('a TZID start time is moved from its own zone to the athlete\'s', () => {
+  const at = (dtstart: string, TZID: string, tz: string) => eventDate({ dtstart, dtstartParams: { TZID } }, tz);
+  // 01:00 UTC on Nov 3 is 18:00 on Nov 2 in Los Angeles.
+  assert.equal(at('20261103T010000', 'Etc/UTC', 'America/Los_Angeles'), '2026-11-02');
+  // 22:00 in New York on Oct 23 is already Oct 24 in Berlin.
+  assert.equal(at('20261023T220000', 'America/New_York', 'Europe/Berlin'), '2026-10-24');
+  // Across the US DST change (Nov 1): 23:30 New York on Nov 1 is 04:30 UTC Nov 2.
+  assert.equal(at('20261101T233000', 'America/New_York', 'UTC'), '2026-11-02');
+  // Same zone as the athlete: the written date.
+  assert.equal(at('20261023T060000', 'America/New_York', 'America/New_York'), '2026-10-23');
+  // Unknown TZID: the written date, as before.
+  assert.equal(at('20261103T010000', 'Not/AZone', 'America/Los_Angeles'), '2026-11-03');
+  // An all-day date keeps its date whatever the zone.
+  assert.equal(eventDate({ dtstart: '20261103', dtstartParams: { VALUE: 'DATE', TZID: 'Etc/UTC' } }, 'America/Los_Angeles'), '2026-11-03');
+  // Through the import itself.
+  const r = importIcs(cal(ev('UID:t', 'DTSTART;TZID=Etc/UTC:20261103T010000', 'SUMMARY:Easy run 30 min')), TODAY, 'America/Los_Angeles');
+  assert.equal(r.rows[0].date, '2026-11-02');
+});
+
 test('repeating, cancelled and undated events are left out with a reason', () => {
   const r = importIcs(cal(
     ev('UID:r', 'DTSTART;VALUE=DATE:20261023', 'RRULE:FREQ=WEEKLY;COUNT=4', 'SUMMARY:Easy run 30 min'),
