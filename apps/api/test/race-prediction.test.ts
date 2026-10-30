@@ -26,15 +26,36 @@ test('a range from the three best projections, every effort returned with it', (
   assert.equal(p.used_races, false);
 });
 
-test('a Strava race wins over training runs and is timed start to finish', () => {
+test('a Strava race joins the pool with training runs and is timed start to finish', () => {
+  // Was 'a Strava race wins over training runs': races alone were used, so the
+  // range came from one race. Now the race is pooled with training runs.
   const acts = [...training, run('2026-09-27', 10, 44, { workout_type: 1 })];
   const p = predictRace(acts, '10k', TODAY);
   assert.equal(p.ok, true);
   if (!p.ok) return;
-  assert.equal(p.used_races, true);
-  assert.deepEqual(p.efforts.map((e) => e.time_s), [44 * 60 + 30]);
-  // One race still gives a range, never a single number.
-  assert.ok(p.high_s - p.low_s >= Math.round(p.efforts[0].projected_s * 2 * PREDICTION.minSpread) - 2);
+  assert.equal(p.efforts.length, 3);
+  assert.equal(p.efforts[0].race, true);
+  assert.equal(p.efforts[0].time_s, 44 * 60 + 30);
+  assert.ok(p.efforts.slice(1).every((e) => !e.race));
+  assert.equal(p.used_races, false); // a mix, not races only
+  const races = [10, 10, 10].map((km, i) => run(`2026-10-0${i + 1}`, km, 44, { workout_type: 1 }));
+  const r = predictRace([...races, run('2026-10-11', 22, 125)], '10k', TODAY);
+  assert.ok(r.ok && r.used_races);
+});
+
+test('one old race does not hide stronger recent training, and races keep the 3-effort floor', () => {
+  // 5K race 7 weeks ago, 22 km at a strong pace last week.
+  const race = run('2026-08-30', 5, 25, { workout_type: 1, elapsed_time: 25 * 60 });
+  const long = run('2026-10-11', 22, 105);
+  const two = predictRace([race, long], 'half_marathon', TODAY);
+  assert.equal(two.ok, false);
+  assert.equal(!two.ok && two.reason, 'not_enough_runs');
+  const p = predictRace([race, long, run('2026-10-04', 10, 50), run('2026-10-08', 8, 40)], 'half_marathon', TODAY);
+  assert.equal(p.ok, true);
+  if (!p.ok) return;
+  assert.equal(p.efforts[0].date, '2026-10-11');
+  assert.equal(p.efforts[0].projected_s, Math.round(riegel(105 * 60, 22000, 21097.5)));
+  assert.ok(p.low_s <= p.efforts[0].projected_s);
 });
 
 test('no data, no claim: too few runs, no long run, unknown race', () => {
