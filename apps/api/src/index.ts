@@ -1129,8 +1129,9 @@ fastify.post('/api/plan/generate', async (request, reply) => {
   const today = nearToday(body.today);
   if (!today) return reply.code(400).send({ error: 'Missing: today (YYYY-MM-DD, local, within a day of now)' });
   try {
-    _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
+    // Refuse a bad request (a race date like 2026-02-30) before any loading.
     const req = parseGenerateRequest(body);
+    _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
     planStore(); // same env check and client
     const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(_planSb!));
     return reply.send({

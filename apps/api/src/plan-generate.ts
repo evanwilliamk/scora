@@ -50,7 +50,13 @@ export interface CreatePlanPayload {
 }
 
 const DAY = 86_400_000;
-const isoDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+// A real calendar day: Date.parse rolls 2026-02-30 over to March 2, so the
+// parsed day must print back as the same string.
+const isoDay = (v: unknown): v is string => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
+};
 const mondayOf = (d: string) => {
   const t = Date.parse(`${d}T00:00:00Z`);
   return new Date(t - ((new Date(t).getUTCDay() + 6) % 7) * DAY).toISOString().slice(0, 10);

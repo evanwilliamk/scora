@@ -43,8 +43,18 @@ test('request parsing names the bad field', () => {
     [{ sport: 'rowing' }, /sport/], [{ goal_type: '' }, /goal_type/], [{ experience_level: 'elite' }, /experience_level/],
     [{ current_weekly_km: -1 }, /current_weekly_km/], [{ current_weekly_km: 'lots' }, /current_weekly_km/],
     [{ goal_race_date: '11/15/2026' }, /goal_race_date/],
+    [{ goal_race_date: '2026-02-30' }, /goal_race_date/], [{ goal_race_date: '2026-13-01' }, /goal_race_date/],
+    [{ goal_race_date: '2026-04-31' }, /goal_race_date/], [{ goal_race_date: '2026-02-29' }, /goal_race_date/],
+    [{ goal_race_date: '2026-00-10' }, /goal_race_date/], [{ goal_race_date: '2026-11-00' }, /goal_race_date/],
   ] as const) {
     assert.throws(() => parseGenerateRequest({ ...base, ...over }), (e: unknown) => e instanceof GenerateError && field.test(e.message));
+  }
+});
+
+test('request parsing keeps real dates, leap day included', () => {
+  const base = { sport: 'run', goal_type: '10k', experience_level: 'regular', current_weekly_km: 35 };
+  for (const d of ['2028-02-29', '2026-12-31', '2027-01-01']) {
+    assert.equal(parseGenerateRequest({ ...base, goal_race_date: d }).goal_race_date, d);
   }
 });
 

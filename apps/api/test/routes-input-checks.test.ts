@@ -103,6 +103,23 @@ test('plan generate and block: a "today" more than a day off is a 400', async ()
   }
 });
 
+test('plan generate: an impossible race date is a 400 before anything is read or stored', async () => {
+  process.env.PLAN_GENERATION = 'on';
+  try {
+    for (const goal_race_date of ['2026-02-30', '2026-13-01']) {
+      const r = await post('/api/plan/generate', {
+        athleteId: 'a1', today: T, sport: 'run', goal_type: '10k', experience_level: 'regular', current_weekly_km: 35, goal_race_date,
+      });
+      assert.equal(r.statusCode, 400, r.body);
+      assert.equal(r.json().code, 'bad_request');
+      assert.match(r.json().error, /goal_race_date/);
+    }
+    assert.equal(rest.requests.length, 0);
+  } finally {
+    delete process.env.PLAN_GENERATION;
+  }
+});
+
 // 2 and 3. Oura outage and HealthKit numbers.
 
 test('read: Oura connected but empty (an outage) falls back to HealthKit', async () => {
