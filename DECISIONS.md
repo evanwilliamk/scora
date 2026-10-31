@@ -591,3 +591,73 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: a pattern needing an HRV change could fire with no HRV.
 - Choice: each numeric slot needs a non-null driver; days to race, sleep hours and long-run distance have no exact driver yet, so the race flag, sleep score or 7-day sleep change, and days since long effort stand in. Pattern cooldowns (exclude_if_recently_fired) still do nothing: reads do not store which pattern fired (needs a column).
 - To reverse: remove numericSlotsBacked from packages/voice/src/matcher.ts.
+
+### 2026-10-31: WhatsApp reply "unstop" resumes the doorbell
+- Status: DECIDED
+- Branch: claude/whatsapp-workoutkit-review
+- Context: Twilio treats UNSTOP as the opt-in word after a STOP; the parser sent it the help text. Nothing is sent or stored yet (Q29).
+- Choice: "unstop" maps to resume, like "start" and "resume". Alternative: only "start" resumes after a stop.
+- To reverse: drop 'unstop' from the resume check in apps/api/src/whatsapp.ts.
+
+### 2026-10-31: Polite opt-outs stop ("please cancel", "cancel my subscription")
+- Status: DECIDED
+- Branch: claude/whatsapp-workoutkit-review
+- Context: a stop word with filler around it got the help text; a missed opt-out is worse than a false one.
+- Choice: a stop word plus only words from a short filler list stops. "end of week was good" still does not.
+- To reverse: remove STOP_FILLER in apps/api/src/whatsapp.ts.
+
+### 2026-10-31: The doorbell refuses to compose unvalidated or over-long text
+- Status: DECIDED
+- Branch: claude/whatsapp-workoutkit-review
+- Context: composeDoorbell took any string; Twilio rejects bodies over 1,600 characters.
+- Choice: it runs validateVoice against the read's drivers and throws on failure; a long read is cut at its last full sentence, numbers, Today and link kept whole. Alternative: cut the link first.
+- To reverse: revert the two commits on the branch.
+
+### 2026-10-31: Templates may not label threshold or tempo blocks as moderate or steady
+- Status: DECIDED
+- Branch: claude/plan-engine-review
+- Context: a mislabelled hard block escaped the rest move, the back-off downgrade and the no-clustering check.
+- Choice: the loader refuses the template. Stricter check; no real template exists yet.
+- To reverse: remove the intensity/type consistency rule in packages/plan-engine/src/template-loader.ts.
+
+### 2026-10-31: A worded downgrade reason must name the new session
+- Status: DECIDED
+- Branch: claude/plan-engine-review
+- Context: gpt-4o-mini could word a downgrade as only its cause, so the athlete was not told the session changed (CLAUDE.md §6.2: never silent).
+- Choice: the LLM line must name the new session type or the fixed sentence is stored.
+- To reverse: drop the session-type check in apps/api/src/adaptation-reason.ts.
+
+### 2026-10-31: Card expansions may not name a posture the read did not decide
+- Status: DECIDED
+- Branch: claude/expansion-chart-review
+- Context: an expansion could say "primed" or "taper" on a steady day.
+- Choice: primed, back-off and taper must match the read's posture or the plain driver read is used. "steady", "moderate" and "rest" are not checked (everyday words).
+- To reverse: remove the posture check in apps/api/src/card-expand.ts.
+
+### 2026-10-31: Chat weekday chart counts the same 42 local days as the voice
+- Status: DECIDED
+- Branch: claude/expansion-chart-review
+- Context: the chart used 42 x 24 h from now while the voice line used six local weeks, so they could disagree.
+- Choice: both use 42 local days in the athlete's zone.
+- To reverse: revert the cdv-chart.ts commit.
+
+### 2026-10-31: Inline-chart HRV and resting HR baselines are whole numbers
+- Status: DECIDED
+- Branch: claude/expansion-chart-review
+- Context: the chart said 48.3 while the read and card said 48 ms.
+- Choice: round the baselines to integers like the read. Note: with INLINE_CHARTS=on, Free athletes also get inline charts until tier gating lands (Q30).
+- To reverse: revert the driver-links.ts commit.
+
+### 2026-10-31: A partial first plan week measures against its stored sessions
+- Status: DECIDED
+- Branch: claude/plan-first-week
+- Context: a plan made mid-week stores nothing before that day, so the 10% guard compared week 1 with the full template call and blocked every displacement, falling back to a downgrade with an untrue reason.
+- Choice: the adapt job passes the earliest stored week-1 session as first_day_on_plan; that week's baseline is its stored minutes. Rest days are not stored, so a full week 1 opening on a rest day also uses stored minutes (equal to the template call until a move). Alternative: store the plan's creation date and prorate the template by day.
+- To reverse: drop first_day_on_plan in apps/api/src/plan-adapt.ts.
+
+### 2026-10-31: Impossible race dates get the 400 refusal
+- Status: DECIDED
+- Branch: claude/plan-first-week
+- Context: /api/plan/generate accepted 2026-02-30 and failed deeper in.
+- Choice: calendar-checked up front with the route's existing sentence.
+- To reverse: revert the plan-generate.ts commit.

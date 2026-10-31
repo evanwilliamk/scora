@@ -22,6 +22,27 @@ struct WeeklyResponse: Decodable {
   let read: DailyRead
   let stats: [WeeklyStat]
   let generatedAt: String?
+
+  enum CodingKeys: String, CodingKey { case read, stats, generatedAt }
+
+  // The read is required; a missing or malformed stats list shows the read
+  // without tiles instead of failing the screen.
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    read = try c.decode(DailyRead.self, forKey: .read)
+    stats = (try? c.decodeIfPresent([WeeklyStat].self, forKey: .stats)) ?? []
+    generatedAt = try? c.decodeIfPresent(String.self, forKey: .generatedAt)
+  }
+}
+
+enum WeeklyText {
+  static let unreadable = "This week's review came back unreadable. Pull to try again."
+
+  // A network error reads as the system's own sentence; a body that did not
+  // decode never shows the decoder's message.
+  static func failure(_ error: Error) -> String {
+    error is DecodingError ? unreadable : error.localizedDescription
+  }
 }
 
 // MARK: - View
@@ -71,12 +92,13 @@ struct WeeklyView: View {
               }
             }
           }
-          if let errorText, read == nil {
+          // Shown under an older read too, so a failed pull to refresh is not silent.
+          if let errorText {
             Text(errorText)
               .font(.subheadline)
               .foregroundColor(.gray)
               .frame(maxWidth: .infinity, alignment: .center)
-              .padding(.top, 40)
+              .padding(.top, read == nil ? 40 : 0)
           }
         }
         .padding()
@@ -126,19 +148,23 @@ struct WeeklyView: View {
       Text(stat.label)
         .font(.caption.bold())
         .foregroundColor(.gray)
+      // Scales with Dynamic Type; a long value wraps instead of clipping.
       Text(stat.value)
-        .font(.system(size: 24, weight: .semibold))
+        .font(.title2.weight(.semibold))
         .foregroundColor(.white)
+        .fixedSize(horizontal: false, vertical: true)
       if let trend = stat.trend, !trend.isEmpty {
         Text(trend)
           .font(.caption)
           .foregroundColor(.orange)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
     .padding(14)
     .background(Color(white: 0.11))
     .cornerRadius(12)
+    .accessibilityElement(children: .combine)
   }
 
   private func loadWeekly() async {
@@ -166,7 +192,7 @@ struct WeeklyView: View {
         isLoading = false
       }
     } catch {
-      await MainActor.run { errorText = error.localizedDescription; isLoading = false }
+      await MainActor.run { errorText = WeeklyText.failure(error); isLoading = false }
     }
   }
 }

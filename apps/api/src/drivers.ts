@@ -227,7 +227,7 @@ const EVIDENCE: Record<string, (v: number | boolean) => Driver> = {
   consecutive_hard_days: (v) => ({ metric: 'Hard days in a row', value: String(v) }),
   sleep_last_night_score: (v) => ({ metric: 'Sleep score', value: String(v) }),
   sleep_7d_avg_delta: (v) => ({ metric: 'Sleep score vs week', value: `${Number(v) > 0 ? '+' : ''}${v} pts` }),
-  consecutive_low_sleep_nights: (v) => ({ metric: 'Short-sleep nights in a row', value: String(v) }),
+  consecutive_low_sleep_nights: (v) => ({ metric: 'Low sleep score nights in a row', value: String(v) }),
   hrv_7d_avg_delta: (v) => ({ metric: 'HRV vs week', value: `${Number(v) > 0 ? '+' : ''}${v}%` }),
   rhr_7d_avg_delta: (v) => ({ metric: 'Resting HR vs week', value: `${Number(v) > 0 ? '+' : ''}${v} bpm` }),
   days_since_long_effort: (v) => ({ metric: 'Days since long effort', value: String(v) }),
@@ -278,4 +278,23 @@ export function postureForRead(
     backed,
     promptLine: backed ? `POSTURE (decided by SCORA's rules from the drivers, ${result.engine_version}): ${result.posture}` : '',
   };
+}
+
+// The read may name only the posture the rules decided (null: none). The
+// words that are not everyday English count anywhere; "steady", "moderate"
+// and "rest" also describe numbers, so they count only tied to "posture".
+// Returns one hit per posture claimed that is not the decided one.
+const POSTURE_WORDS: { posture: string; re: RegExp }[] = [
+  { posture: 'primed', re: /\bprimed\b/i },
+  { posture: 'back-off', re: /\bback[\s-]?off\b/i },
+  // A taper the plan schedules ("the plan's taper starts Monday", "taper
+  // phase") is the plan, not the posture, so it does not count.
+  { posture: 'taper', re: /^(?!.*\b(?:plan|phase|block)\b[^.]{0,24}\btaper).*\btaper(?:s|ed|ing)?\b(?!\s+(?:phase|block))/is },
+  { posture: 'steady', re: /\bposture\b[^.]{0,24}\bsteady\b/i },
+  { posture: 'moderate', re: /\bposture\b[^.]{0,24}\bmoderate\b/i },
+  { posture: 'rest', re: /\bposture\b[^.]{0,24}\brest\b/i },
+];
+
+export function postureClaimHits(voice: string, posture: string | null): string[] {
+  return POSTURE_WORDS.filter((w) => w.posture !== posture && w.re.test(voice)).map((w) => `posture ${w.posture}`);
 }

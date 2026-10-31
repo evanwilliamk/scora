@@ -253,3 +253,36 @@ test('raceWithinWeek: 0 to 7 days ahead on the athlete\'s calendar (night fixes 
   assert.equal(raceWithinWeek('2026-10-29', '2026-10-30'), false);
   assert.equal(raceWithinWeek(null, '2026-10-30'), null);
 });
+
+// The daily read may name only the posture SCORA's rules decided (review 10-31).
+import { postureClaimHits } from '../src/drivers';
+
+test('postureClaimHits: a posture the rules did not decide is a hit; the decided one is not', () => {
+  assert.deepEqual(postureClaimHits('Load is high and the body reads back-off this morning.', 'back-off'), []);
+  assert.deepEqual(postureClaimHits('The body reads primed this morning.', 'back-off'), ['posture primed']);
+  assert.deepEqual(postureClaimHits('Taper week shows in the load.', 'steady'), ['posture taper']);
+  // No backed posture: no posture word may be claimed at all.
+  assert.deepEqual(postureClaimHits('Body reads primed.', null), ['posture primed']);
+  // Everyday words count only when tied to the posture.
+  assert.deepEqual(postureClaimHits('Load has been steady and sleep moderate.', 'back-off'), []);
+  assert.deepEqual(postureClaimHits("Today's posture reads moderate.", 'back-off'), ['posture moderate']);
+  assert.deepEqual(postureClaimHits("Today's posture reads moderate.", 'moderate'), []);
+  assert.deepEqual(postureClaimHits('Posture is steady.', null), ['posture steady']);
+});
+
+import { postureEvidence } from '../src/drivers';
+test('low sleep-score nights are named as scores, not as short sleep (review 10-31)', () => {
+  const ev = postureEvidence({
+    posture: 'back-off', rule: 'back-off', engine_version: 'test',
+    reasoning: [{ rule: 'back-off', met: true, clauses: [{ driver: 'consecutive_low_sleep_nights', value: 3, op: '>=', threshold: 2, met: true }] }],
+  } as any);
+  assert.equal(ev.length, 1);
+  assert.doesNotMatch(ev[0].metric, /short/i);
+  assert.match(ev[0].metric, /sleep score/i);
+});
+
+test("postureClaimHits: the plan's own taper is the plan, not a posture claim", () => {
+  assert.deepEqual(postureClaimHits("Your plan's taper starts Monday, and the body is settled.", 'steady'), []);
+  assert.deepEqual(postureClaimHits('Two weeks out, the taper phase is next on the plan.', 'steady'), []);
+  assert.deepEqual(postureClaimHits('Load has come down and the body reads like a taper.', 'steady'), ['posture taper']);
+});

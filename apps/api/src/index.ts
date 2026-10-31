@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
-import { athleteLocalToday, postureForRead, raceWithinWeek } from './drivers';
+import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion, checkCardPosture } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
@@ -775,6 +775,7 @@ Write today's read using only these drivers.`;
         drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers", surface: 'daily',
+        check: (v) => postureClaimHits(v, posture.backed ? posture.result.posture : null),
         log: fastify.log,
       });
       voice = result.voice;

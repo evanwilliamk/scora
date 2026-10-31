@@ -745,4 +745,54 @@ final class ScoraTests: XCTestCase {
         XCTAssertTrue(html.contains("\\u003c"))
     }
 
+
+    // MARK: - Onboarding, chat and weekly review (correctness pass)
+
+    func testOnboardingAdvancesOnlyFromTheStepThatAsked() {
+        // A second tap on "Allow Apple Health" must not skip the plan step.
+        XCTAssertEqual(OnboardingStep.health.advanced(from: .health), .plan)
+        XCTAssertEqual(OnboardingStep.plan.advanced(from: .health), .plan)
+        XCTAssertEqual(OnboardingStep.done.advanced(from: .done), .done)
+    }
+
+    func testOnboardingProgressHasASpokenLabel() {
+        XCTAssertEqual(OnboardingStep.oura.progressLabel, "Step 1 of 5")
+        XCTAssertEqual(OnboardingStep.done.progressLabel, "Step 5 of 5")
+    }
+
+    func testChatLimitPlaceholderUsesNoDash() {
+        XCTAssertFalse(ChatCopy.limitPlaceholder.contains("\u{2014}"))
+        XCTAssertFalse(ChatCopy.limitPlaceholder.contains("\u{2013}"))
+        XCTAssertFalse(ChatCopy.limitPlaceholder.contains("!"))
+    }
+
+    func testCDVResponseWithoutDriversDecodes() throws {
+        let r = try decode(#"{"voice":"Load is steady."}"#)
+        XCTAssertTrue(r.drivers.isEmpty)
+    }
+
+    func testDriverWithNumericValueDecodes() throws {
+        let r = try decode(#"{"voice":"x","drivers":[{"metric":"HRV","value":52}]}"#)
+        XCTAssertEqual(r.drivers.first?.value, "52")
+    }
+
+    func testMalformedCDVReplyShowsAFixedLine() {
+        let html = CDVReply.message(from: Data("<html>502</html>".utf8))
+        XCTAssertFalse(html.isUser)
+        XCTAssertEqual(html.text, CDVReply.unreadable)
+        XCTAssertEqual(CDVReply.message(from: Data(#"{"voice":"  ","drivers":[]}"#.utf8)).text, CDVReply.unreadable)
+        XCTAssertEqual(CDVReply.message(from: Data(#"{"voice":"Load is steady."}"#.utf8)).text, "Load is steady.")
+    }
+
+    func testWeeklyResponseWithoutStatsDecodes() throws {
+        let r = try JSONDecoder().decode(WeeklyResponse.self, from: Data(#"{"read":{"voice":"A steady week."}}"#.utf8))
+        XCTAssertTrue(r.stats.isEmpty)
+    }
+
+    func testWeeklyDecodeFailureIsNotShownRaw() {
+        let err = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "bad"))
+        XCTAssertEqual(WeeklyText.failure(err), WeeklyText.unreadable)
+        XCTAssertEqual(WeeklyText.failure(URLError(.notConnectedToInternet)), URLError(.notConnectedToInternet).localizedDescription)
+    }
+
 }

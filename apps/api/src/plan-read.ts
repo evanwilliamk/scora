@@ -25,7 +25,8 @@ export function todaysWorkout(rows: StoredWorkout[], today: string): StoredWorko
 
 // "tempo, 45 min" / "long, 25.8 km" / "rest". Only stored values.
 export function planDriver(w: StoredWorkout): Driver {
-  const parts: string[] = [w.planned_intensity ?? w.planned_type];
+  // In words: the voice and the fallback quote this value as is.
+  const parts: string[] = [(w.planned_intensity ?? w.planned_type).replace(/_/g, ' ')];
   if (w.planned_duration_min != null) parts.push(`${w.planned_duration_min} min`);
   if (w.planned_distance_km != null) parts.push(`${Number(w.planned_distance_km)} km`);
   return { metric: 'Plan today', value: parts.join(', ') };
@@ -99,7 +100,7 @@ export function readNamesPlan(voice: string, driver: Driver | null): boolean {
     const unit = m[2] === 'min' ? 'min(?:ute)?s?' : 'k(?:m|ilomet(?:er|re)s?)';
     if (new RegExp(`(?<![\\d.])${m[1].replace('.', '\\.')}(?:\\s|-)?${unit}\\b`, 'i').test(voice)) return true;
   }
-  const k = kind.replace(/_/g, '[ -]?');
+  const k = kind.replace(/[_ ]/g, '[ -]?');
   return new RegExp(`\\btoday(?:'s)?\\b[^.]{0,40}\\b${k}\\b|\\b${k}\\b[^.]{0,40}\\btoday\\b`, 'i').test(voice);
 }
 

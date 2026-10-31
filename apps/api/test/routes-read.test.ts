@@ -314,3 +314,14 @@ test('the active plan\'s race date sets race_in_next_7d, so taper can fire (nigh
     delete process.env.PLAN_GENERATION;
   }
 });
+
+test('the read naming a posture the rules did not decide is caught (review 10-31)', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi('Training has been even. The body reads primed this morning.', 'Training has been even. Body is primed.');
+  const r = await read();
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().posture, null);
+  assert.equal(llmCalls().length, 2, 'the posture claim is fed back for one retry');
+  assert.doesNotMatch(r.json().read.voice, /primed/i);
+});

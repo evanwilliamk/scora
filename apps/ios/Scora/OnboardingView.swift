@@ -10,6 +10,17 @@ enum OnboardingStep: Int, CaseIterable {
   case oura, health, plan, delivery, done
 
   var next: OnboardingStep? { OnboardingStep(rawValue: rawValue + 1) }
+
+  // The step after `expected`, but only while this is still that step. A
+  // second tap, a late network reply or a sheet dismissing after the athlete
+  // already moved on leaves the flow where it is instead of skipping a screen.
+  func advanced(from expected: OnboardingStep) -> OnboardingStep {
+    guard self == expected, let next else { return self }
+    return next
+  }
+
+  // VoiceOver reads the progress bar as one element.
+  var progressLabel: String { "Step \(rawValue + 1) of \(OnboardingStep.allCases.count)" }
 }
 
 enum OnboardingState {
@@ -51,6 +62,7 @@ struct OnboardingView: View {
   @State private var deliveryTime = OnboardingState.defaultDeliveryTime()
   @State private var isSaving = false
   @State private var errorText: String?
+  @State private var requestingHealth = false
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -64,12 +76,12 @@ struct OnboardingView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)
     .preferredColorScheme(.dark)
-    .sheet(isPresented: $showPlan, onDismiss: { advance() }) {
+    .sheet(isPresented: $showPlan, onDismiss: { advance(from: .plan) }) {
       PlanView(tokenManager: tokenManager)
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
       ouraConnected = true
-      if step == .oura { advance() }
+      advance(from: .oura)
     }
   }
 
@@ -81,6 +93,8 @@ struct OnboardingView: View {
           .frame(height: 3)
       }
     }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(step.progressLabel)
   }
 
   @ViewBuilder
@@ -91,13 +105,13 @@ struct OnboardingView: View {
         title: "Got an Oura ring? Add it.",
         body: "Oura's sleep and HRV signal makes every read sharper. Free tier, no extra cost.",
         primary: ("Connect Oura", connectOura),
-        secondary: ("Skip for now", advance)
+        secondary: ("Skip for now", { advance(from: .oura) })
       )
     case .health:
       screen(
         title: "Apple Health",
         body: "SCORA reads sleep, HRV and resting heart rate from Apple Health. Without Oura, this is where the Sleep and Recovery cards come from.",
-        primary: ("Allow Apple Health", { Task { _ = await HealthManager.shared.requestAuthorization(); advance() } }),
+        primary: ("Allow Apple Health", requestHealth),
         secondary: nil
       )
     case .plan:
@@ -105,7 +119,7 @@ struct OnboardingView: View {
         title: "Have a training plan?",
         body: "Paste your plan and SCORA reads it alongside your body.",
         primary: ("Paste a plan", { showPlan = true }),
-        secondary: ("Skip", advance)
+        secondary: ("Skip", { advance(from: .plan) })
       )
     case .delivery:
       VStack(alignment: .leading, spacing: 16) {
@@ -122,10 +136,15 @@ struct OnboardingView: View {
         if let errorText {
           Text(errorText).font(.footnote).foregroundColor(.gray)
         }
-        primaryButton(isSaving ? "Saving..." : "Continue") { Task { await saveDelivery() } }
+        primaryButton(isSaving ? "Saving..." : "Continue") {
+          // Set before the task starts, so a quick second tap cannot send twice.
+          guard !isSaving else { return }
+          isSaving = true
+          Task { await saveDelivery() }
+        }
           .disabled(isSaving)
         if errorText != nil {
-          Button("Skip for now", action: advance)
+          Button("Skip for now") { advance(from: .delivery) }
             .font(.subheadline)
             .foregroundColor(.gray)
             .frame(maxWidth: .infinity)
@@ -176,9 +195,23 @@ struct OnboardingView: View {
 
   // MARK: Actions
 
-  private func advance() {
+  private func advance(from expected: OnboardingStep) {
     withAnimation(.easeInOut(duration: 0.2)) {
-      if let next = step.next { step = next }
+      step = step.advanced(from: expected)
+    }
+  }
+
+  // One permission request at a time: a double tap used to advance twice and
+  // skip the plan screen.
+  private func requestHealth() {
+    guard !requestingHealth else { return }
+    requestingHealth = true
+    Task {
+      _ = await HealthManager.shared.requestAuthorization()
+      await MainActor.run {
+        requestingHealth = false
+        advance(from: .health)
+      }
     }
   }
 
@@ -213,7 +246,7 @@ struct OnboardingView: View {
     }
     await MainActor.run {
       isSaving = false
-      if ok { advance() } else { errorText = "Could not save the time. The read still arrives at 6:00 until it is set." }
+      if ok { advance(from: .delivery) } else { errorText = "Could not save the time. The read still arrives at 6:00 until it is set." }
     }
   }
 }
