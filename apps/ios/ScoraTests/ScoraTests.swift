@@ -701,6 +701,101 @@ final class ScoraTests: XCTestCase {
         XCTAssertFalse(TokenManager().needsOnboarding)
     }
 
+    // Signing out and back in: the API already has onboarded_at, so the
+    // athlete goes straight to the dashboard. No real network: the transport
+    // is a stub.
+    func testSignInSkipsOnboardingWhenTheAPISaysItIsDone() async {
+        let saved = OnboardingSync.transport
+        defer { OnboardingSync.transport = saved; OnboardingSync.pending = nil; OnboardingState.needsOnboarding = false }
+        OnboardingSync.pending = nil
+        var asked: [URLRequest] = []
+        var answer: (Int, Data)? = (200, Data(#"{"timezone":"America/New_York","deliveryMinute":390,"onboarded":true}"#.utf8))
+        OnboardingSync.transport = { req in asked.append(req); return answer }
+
+        OnboardingState.needsOnboarding = true
+        let tm = TokenManager()
+        await tm.refreshOnboarding(athleteId: "a1")
+        XCTAssertFalse(tm.needsOnboarding, "finished on the server: no second onboarding")
+        XCTAssertFalse(OnboardingState.needsOnboarding)
+        XCTAssertEqual(asked.last?.httpMethod ?? "GET", "GET")
+        XCTAssertEqual(asked.last?.url?.path, "/api/preferences")
+        XCTAssertTrue(asked.last?.url?.query?.contains("athleteId=a1") ?? false)
+
+        // A new athlete, or no answer at all, still goes through onboarding.
+        for reply in [(200, Data(#"{"onboarded":false}"#.utf8)), nil, (500, Data())] as [(Int, Data)?] {
+            answer = reply
+            OnboardingState.needsOnboarding = true
+            let fresh = TokenManager()
+            await fresh.refreshOnboarding(athleteId: "a1")
+            XCTAssertTrue(fresh.needsOnboarding)
+            XCTAssertFalse(fresh.checkingOnboarding)
+        }
+
+        // People already past onboarding are never asked about.
+        asked = []
+        OnboardingState.needsOnboarding = false
+        await TokenManager().refreshOnboarding(athleteId: "a1")
+        XCTAssertTrue(asked.isEmpty)
+    }
+
+    // "Skip for now" after a failed save: the choice stays on the phone and is
+    // sent again until the API takes it.
+    func testSkippedOnboardingChoiceIsKeptUntilTheAPIAcceptsIt() async throws {
+        let saved = OnboardingSync.transport
+        defer { OnboardingSync.transport = saved; OnboardingSync.pending = nil; OnboardingState.needsOnboarding = false; TimeZoneSync.forget() }
+        var sent: [URLRequest] = []
+        var status: Int? = nil
+        OnboardingSync.transport = { req in sent.append(req); return status.map { ($0, Data()) } }
+
+        OnboardingSync.keep(PendingOnboarding(athleteId: "a1", timezone: "Europe/London", deliveryMinute: 420))
+        XCTAssertEqual(OnboardingSync.pending?.deliveryMinute, 420)
+
+        let offline = await OnboardingSync.flush(athleteId: "a1")
+        XCTAssertFalse(offline)
+        status = 503
+        let down = await OnboardingSync.flush(athleteId: "a1")
+        XCTAssertFalse(down)
+        XCTAssertNotNil(OnboardingSync.pending, "kept while the API is unreachable")
+
+        // While it waits, signing in again does not repeat onboarding.
+        OnboardingState.needsOnboarding = true
+        let tm = TokenManager()
+        await tm.refreshOnboarding(athleteId: "a1")
+        XCTAssertFalse(tm.needsOnboarding)
+
+        status = 200
+        sent = []
+        let ok = await OnboardingSync.flush(athleteId: "a1")
+        XCTAssertTrue(ok)
+        XCTAssertNil(OnboardingSync.pending)
+        let req = try XCTUnwrap(sent.first)
+        XCTAssertEqual(req.httpMethod, "PUT")
+        XCTAssertEqual(req.url?.path, "/api/preferences")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any])
+        XCTAssertEqual(body["athleteId"] as? String, "a1")
+        XCTAssertEqual(body["timezone"] as? String, "Europe/London")
+        XCTAssertEqual(body["deliveryMinute"] as? Int, 420)
+        XCTAssertEqual(body["onboarded"] as? Bool, true)
+        XCTAssertFalse(TimeZoneSync.needsSync(current: "Europe/London"), "the zone sent is remembered")
+
+        // Nothing waiting: nothing sent.
+        sent = []
+        _ = await OnboardingSync.flush(athleteId: "a1")
+        XCTAssertTrue(sent.isEmpty)
+
+        // Another athlete signing in on this phone never sends the first one's choice.
+        OnboardingSync.keep(PendingOnboarding(athleteId: "a1", timezone: "Europe/London", deliveryMinute: 420))
+        _ = await OnboardingSync.flush(athleteId: "b2")
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertNil(OnboardingSync.pending)
+
+        // A refusal for good (400) is dropped, not retried forever.
+        OnboardingSync.keep(PendingOnboarding(athleteId: "a1", timezone: "Europe/London", deliveryMinute: 420))
+        status = 400
+        _ = await OnboardingSync.flush(athleteId: "a1")
+        XCTAssertNil(OnboardingSync.pending)
+    }
+
     // MARK: - CDV chart
 
     private func decode(_ json: String) throws -> CDVResponse {
