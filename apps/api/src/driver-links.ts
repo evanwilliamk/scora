@@ -13,7 +13,7 @@ import { computeDriverRecord } from './drivers';
 export const inlineChartsEnabled = () => process.env.INLINE_CHARTS === 'on';
 
 export type SeriesKey =
-  | 'load' | 'volume' | 'sleep' | 'hrv' | 'resting_hr'
+  | 'load' | 'volume' | 'sleep' | 'sleep_score' | 'hrv' | 'resting_hr'
   | 'acwr' | 'hard_days' | 'days_since_long_effort' | 'peak_hr';
 
 export interface SeriesPoint {
@@ -47,6 +47,8 @@ export interface DriverLink {
 export const METRIC_KEYS: Record<string, SeriesKey> = {
   'Sleep': 'sleep',
   'Sleep (last night)': 'sleep',
+  'Sleep score': 'sleep_score',
+  'Sleep score vs week': 'sleep_score',
   'Load': 'load',
   'Load (7d)': 'load',
   'Weekly volume': 'volume',
@@ -64,11 +66,10 @@ export const METRIC_KEYS: Record<string, SeriesKey> = {
 // linked; the reason says why, so a new driver has to land in one map or the
 // other (test/driver-links.test.ts checks every driver in the source).
 export const NOT_CHARTABLE: Record<string, string> = {
-  // oura.ts keeps sleep scores undated (sleepScoreHistory), so there is no
-  // dated series to draw. The Sleep card shows last night's score.
-  'Sleep score': 'no dated nightly sleep scores',
-  'Sleep score vs week': 'no dated nightly sleep scores',
-  'Low sleep score nights in a row': 'no dated nightly sleep scores',
+  // Nights in a row below the 25th percentile of the 28 nights before each
+  // one: the fetch holds ~30 nights, so only the newest points would have
+  // their own baseline. The Sleep score chart shows the scores themselves.
+  'Low sleep score nights in a row': '28-night baseline, not enough fetched history for 28 points',
   // Longest run in the 30 days before each day: the fetch holds 35 days, so
   // only the newest few points would cover their window.
   'Long effort': '30-day window, not enough fetched history for 28 points',
@@ -87,7 +88,9 @@ export const isChartable = (metric: string): boolean => metric in METRIC_KEYS;
 
 // Words the voice uses for a driver when it does not quote the number.
 const NAMES: Record<SeriesKey, RegExp> = {
-  sleep: /\bsle(?:pt|ep)\b/i,
+  // Not the "sleep" of "sleep score", which is the score's own chart.
+  sleep: /\bsle(?:pt|ep)\b(?! score)/i,
+  sleep_score: /\b(?:sleep|Oura) score\b/i,
   load: /\bload\b/i,
   volume: /\b(?:volume|mileage)\b/i,
   hrv: /\bHRV\b/,
@@ -220,6 +223,27 @@ export function buildDriverSeries(
   if (sleep.length >= 2) out.sleep = series('sleep', 'Hours slept', 'h', sleep, 2);
   if (hrv.length >= 2) out.hrv = series('hrv', 'HRV, nightly average', 'ms', hrv, 0);
   if (rhr.length >= 2) out.resting_hr = series('resting_hr', 'Resting heart rate', 'bpm', rhr, 0);
+
+  // Oura daily sleep score, 0-100. The newest point must be the score the
+  // read cites (oura.ts sleepScore); if it is not, there is no chart. The
+  // baseline is what "Sleep score vs week" compares with (drivers.ts
+  // sleep_7d_avg_delta): the mean of the 7 scored nights before, by count,
+  // when there are at least 3. Two decimals so newest minus baseline rounds
+  // to the read's delta.
+  const seen = new Set<string>();
+  const scores = (oura?.sleepScoreNights ?? [])
+    .filter((n) => n.day >= first && n.day <= today && !seen.has(n.day) && seen.add(n.day))
+    .map((n) => ({ date: n.day, value: n.score }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const cited = oura?.sleepScore;
+  if (scores.length >= 2 && (cited == null || scores[scores.length - 1].value === cited)) {
+    const prior7 = (oura?.sleepScoreHistory ?? []).slice(0, 7);
+    out.sleep_score = {
+      key: 'sleep_score', label: 'Oura sleep score', unit: 'pts', points: scores,
+      baseline: prior7.length >= 3 ? round(prior7.reduce((s, v) => s + v, 0) / prior7.length, 2) : null,
+      baselineLabel: 'average of the 7 nights before',
+    };
+  }
   return out;
 }
 

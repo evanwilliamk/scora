@@ -233,7 +233,54 @@ test('every driver the read can cite has a series or an explicit not-chartable e
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
   const nights = Array.from({ length: 5 }, (_, i) => ({ day: new Date(now - i * 86_400_000).toISOString().slice(0, 10), sleepSeconds: 25000 + i, hrvMs: 50 + i, restingHr: 48 + i }));
-  const built = buildDriverSeries(fiveWeeks(now), { sleepSeconds: null, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null, nights }, today, 28, now);
+  const sleepScoreNights = nights.map((n, i) => ({ day: n.day, score: 80 + i }));
+  const built = buildDriverSeries(fiveWeeks(now), { sleepSeconds: null, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null, nights, sleepScoreNights }, today, 28, now);
   const unbuilt = [...new Set(Object.values(METRIC_KEYS))].filter((k) => !built[k]);
   assert.deepEqual(unbuilt, []);
+});
+
+test('sleep score: the newest point is the score the read cites, the baseline is what "vs week" compares (Oura dates by morning)', async () => {
+  const realFetch = globalThis.fetch;
+  const { fetchOuraSummary } = await import('../src/oura');
+  const { computeDriverRecord } = await import('../src/drivers');
+  const today = '2026-10-18';
+  const d = (k: number) => new Date(Date.parse(`${today}T00:00:00Z`) - k * 86_400_000).toISOString().slice(0, 10);
+  // Last night is dated today. Night 3 is missing (ring off); a nap day has no score.
+  const scores = [84, 79, 81, null, 77, 90, 72, 80, 83, 75, 78];
+  const daily = scores.flatMap((score, k) => (score == null ? [] : [{ day: d(k), score }]));
+  const sleep = [0, 1, 2].map((k) => ({ day: d(k), type: 'long_sleep', total_sleep_duration: 26000, average_hrv: 50, lowest_heart_rate: 48 }));
+  globalThis.fetch = (async (url: string) => {
+    const body = url.includes('/daily_sleep?') ? { data: daily } : url.includes('/sleep?') ? { data: sleep } : { data: [] };
+    return new Response(JSON.stringify(body), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const oura = await fetchOuraSummary('token', { localToday: today });
+    assert.equal(oura.sleepScore, 84);
+    assert.equal(oura.sleepScoreNights![0].day, today);
+    const s = buildDriverSeries([], oura, today).sleep_score!;
+    assert.equal(s.unit, 'pts');
+    assert.equal(s.points.length, 10);
+    assert.deepEqual(s.points.at(-1), { date: today, value: oura.sleepScore });
+    assert.ok(!s.points.some((p) => p.date === d(3)), 'the missing night stays a gap');
+    // The read's "Sleep score vs week" is newest minus this baseline.
+    const rec = computeDriverRecord([], oura, { localToday: today, now: Date.parse(`${today}T12:00:00Z`) }).drivers;
+    assert.equal(rec.sleep_last_night_score, s.points.at(-1)!.value);
+    assert.equal(Math.round((s.points.at(-1)!.value - s.baseline!) * 10) / 10, rec.sleep_7d_avg_delta);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('sleep score: a chart whose newest point is not the cited score is not built; links by name', () => {
+  const base = { sleepSeconds: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null };
+  const sleepScoreNights = [{ day: '2026-10-18', score: 84 }, { day: '2026-10-17', score: 79 }];
+  assert.ok(buildDriverSeries([], { ...base, sleepScore: 84, sleepScoreNights }, '2026-10-18').sleep_score);
+  assert.equal(buildDriverSeries([], { ...base, sleepScore: 70, sleepScoreNights }, '2026-10-18').sleep_score, undefined);
+  const voice = 'Sleep came in at 7:12 and the sleep score held at 84, three points over the week.';
+  const links = linkDrivers(voice, [
+    { metric: 'Sleep', value: '7:12' },
+    { metric: 'Sleep score', value: '84' },
+    { metric: 'Sleep score vs week', value: '+3 pts' },
+  ], new Set<SeriesKey>(['sleep', 'sleep_score']));
+  assert.deepEqual(links.map((l) => [l.key, span(voice, l)]), [['sleep', '7:12'], ['sleep_score', 'sleep score']]);
 });
