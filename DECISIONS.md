@@ -647,3 +647,17 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: the chart said 48.3 while the read and card said 48 ms.
 - Choice: round the baselines to integers like the read. Note: with INLINE_CHARTS=on, Free athletes also get inline charts until tier gating lands (Q30).
 - To reverse: revert the driver-links.ts commit.
+
+### 2026-10-31: A partial first plan week measures against its stored sessions
+- Status: DECIDED
+- Branch: claude/plan-first-week
+- Context: a plan made mid-week stores nothing before that day, so the 10% guard compared week 1 with the full template call and blocked every displacement, falling back to a downgrade with an untrue reason.
+- Choice: the adapt job passes the earliest stored week-1 session as first_day_on_plan; that week's baseline is its stored minutes. Rest days are not stored, so a full week 1 opening on a rest day also uses stored minutes (equal to the template call until a move). Alternative: store the plan's creation date and prorate the template by day.
+- To reverse: drop first_day_on_plan in apps/api/src/plan-adapt.ts.
+
+### 2026-10-31: Impossible race dates get the 400 refusal
+- Status: DECIDED
+- Branch: claude/plan-first-week
+- Context: /api/plan/generate accepted 2026-02-30 and failed deeper in.
+- Choice: calendar-checked up front with the route's existing sentence.
+- To reverse: revert the plan-generate.ts commit.
