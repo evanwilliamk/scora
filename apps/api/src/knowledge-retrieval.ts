@@ -204,7 +204,8 @@ export function libraryClaimHits(voice: string, chunks: RetrievedChunk[], driver
   const backed = numbersIn(driverValues.join(' '));
   for (const m of voice.toLowerCase().matchAll(/\b([a-z]+)\b/g)) {
     const n = NUMBER_WORDS[m[1]];
-    if (n !== undefined && fromLibrary.has(n) && !backed.has(n)) hits.push(`library number ${m[1]}`);
+    // "one" is everyday English ("one of the nights", "no one"), not a lifted number.
+    if (n !== undefined && n !== 1 && fromLibrary.has(n) && !backed.has(n)) hits.push(`library number ${m[1]}`);
   }
   return [...new Set(hits)];
 }

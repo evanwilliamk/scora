@@ -241,3 +241,8 @@ test('a query embedding of the wrong size falls back to patterns with a clear wa
   assert.notEqual(r.mode, 'library');
   assert.match(warns[0], /3 dims, expected 1536/);
 });
+
+test('library number check leaves the everyday word "one" alone', () => {
+  const chunks = [chunk({ text: 'One hard day a week is the floor, three the ceiling.' })];
+  assert.deepEqual(libraryClaimHits('ACWR is 1.4, one of the higher reads this month.', chunks, ['1.4']), []);
+});
