@@ -145,6 +145,10 @@ function numberTokens(text: string): string[] {
 // A day window as driver names and the voice write it: "7d", "(28d)",
 // "7-day", "7 days", "last 7 full days".
 const WINDOW_PHRASE = /(?<![\d.:,])(\d+)(?:\s?d\b|[\s-]days?\b|\s+full\s+days?\b)/gi;
+// The voice may also say a day window's average in nights ("the 7-night
+// average", "7-night baseline"), but never a count of nights ("7 nights in
+// a row"), which is a claim and must be backed.
+const VOICE_NIGHT_AVERAGE = /(?<![\d.:,])(\d+)[\s-]nights?\s+(?:average|avg|baseline|mean)\b/gi;
 
 // What the checks read: the model's typography folded to plain text, so a
 // curly apostrophe ("I’m your coach"), a doubled or non-breaking space
@@ -223,7 +227,8 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
     }
   }
   const windows = new Set(drivers.flatMap((d) => [...d.metric.matchAll(WINDOW_PHRASE)].map((m) => String(parseFloat(m[1])))));
-  const numberText = windows.size ? voice.replace(WINDOW_PHRASE, (w, n: string) => (windows.has(String(parseFloat(n))) ? ' ' : w)) : voice;
+  const dropWindow = (w: string, n: string) => (windows.has(String(parseFloat(n))) ? ' ' : w);
+  const numberText = windows.size ? voice.replace(WINDOW_PHRASE, dropWindow).replace(VOICE_NIGHT_AVERAGE, dropWindow) : voice;
   const unbackedNumbers = [...new Set(numberTokens(numberText))].filter((n) => !allowed.has(n));
   for (const w of wordNumbers(voice)) if (!allowed.has(w.value)) unbackedNumbers.push(w.word);
   // A driver number cited with a unit must carry a unit the driver has:

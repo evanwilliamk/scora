@@ -151,3 +151,14 @@ test('driver-existence: the window a driver name states may be quoted as a windo
   const fb = buildFallbackVoice([...named, { metric: 'Race within 7 days', value: 'yes' }]);
   assert.equal(validateVoice(fb, [...named, { metric: 'Race within 7 days', value: 'yes' }]).ok, true, fb);
 });
+
+test('a named day window may be said as an N-night average, never as a count of nights', () => {
+  const drivers = [
+    { metric: 'HRV (7d)', value: '52ms' },
+    { metric: 'Load (7d)', value: '412' },
+  ];
+  assert.deepEqual(validateVoice('HRV is 52ms, above the 7-night average.', drivers).unbackedNumbers, []);
+  assert.deepEqual(validateVoice('HRV sits at 52ms against its 7 night baseline.', drivers).unbackedNumbers, []);
+  assert.deepEqual(validateVoice('HRV has held for 7 nights in a row.', drivers).unbackedNumbers, ['7']);
+  assert.deepEqual(validateVoice('HRV is 52ms, above the 28-night average.', drivers).unbackedNumbers, ['28']);
+});
