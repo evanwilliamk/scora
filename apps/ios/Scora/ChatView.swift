@@ -8,6 +8,26 @@ struct Driver: Identifiable, Decodable {
   let trend: String?
   
   enum CodingKeys: String, CodingKey { case metric, value, trend }
+
+  init(metric: String, value: String, trend: String?) {
+    self.metric = metric
+    self.value = value
+    self.trend = trend
+  }
+
+  // The value is text, but a number from the API still shows ("52", "7.5").
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    metric = try c.decode(String.self, forKey: .metric)
+    if let s = try? c.decode(String.self, forKey: .value) {
+      value = s
+    } else if let n = try? c.decode(Double.self, forKey: .value) {
+      value = n.rounded() == n && abs(n) < 1e15 ? String(Int(n)) : String(n)
+    } else {
+      value = ""
+    }
+    trend = try? c.decodeIfPresent(String.self, forKey: .trend)
+  }
 }
 
 struct CDVResponse: Decodable {
@@ -17,6 +37,40 @@ struct CDVResponse: Decodable {
   let limit: Int?
   // Optional Vega-Lite spec for the answer's chart. Older API builds omit it.
   let chart: JSONValue?
+
+  enum CodingKeys: String, CodingKey { case voice, drivers, remaining, limit, chart }
+
+  // Only the voice is required: a missing driver list or a malformed count
+  // leaves the answer readable instead of failing the whole reply.
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    voice = try c.decode(String.self, forKey: .voice)
+    drivers = (try? c.decodeIfPresent([Driver].self, forKey: .drivers)) ?? []
+    remaining = try? c.decodeIfPresent(Int.self, forKey: .remaining)
+    limit = try? c.decodeIfPresent(Int.self, forKey: .limit)
+    chart = try? c.decodeIfPresent(JSONValue.self, forKey: .chart)
+  }
+}
+
+// A 200 reply as a chat bubble. A body that is not the expected shape (a
+// proxy page, an empty voice) shows a fixed line, never a decoder message.
+enum CDVReply {
+  static let unreadable = "That answer came back unreadable. Try asking again."
+
+  static func decode(_ data: Data) -> CDVResponse? {
+    guard let r = try? JSONDecoder().decode(CDVResponse.self, from: data),
+          !r.voice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    return r
+  }
+
+  static func message(from data: Data) -> ChatMessage {
+    guard let r = decode(data) else { return .error(unreadable) }
+    return ChatMessage(isUser: false, text: r.voice, drivers: r.drivers, chartHTML: r.chart.flatMap(CDVChart.html(for:)))
+  }
+}
+
+enum ChatCopy {
+  static let limitPlaceholder = "Daily limit reached. It resets tomorrow."
 }
 
 // Arbitrary JSON, so a Vega-Lite spec can pass through Codable untouched.
@@ -242,7 +296,7 @@ struct ChatView: View {
           .foregroundColor(.white)
         Spacer()
         if let remaining {
-          Text("\(remaining) left today")
+          Text("\(max(0, remaining)) left today")
             .font(.caption)
             .foregroundColor(remaining == 0 ? .orange : .gray)
             .padding(.trailing, 8)
@@ -291,7 +345,7 @@ struct ChatView: View {
       
       // Input
       HStack(spacing: 12) {
-        TextField(limitReached ? "Daily limit reached — resets tomorrow" : "Message", text: $input)
+        TextField(limitReached ? ChatCopy.limitPlaceholder : "Message", text: $input)
           .padding(12)
           .background(Color(white: 0.15))
           .foregroundColor(.white)
@@ -344,12 +398,16 @@ struct ChatView: View {
             .frame(height: 220)
             .background(Color(white: 0.1))
             .cornerRadius(12)
+            // The WebView's SVG has no spoken text; the answer above carries it.
+            .accessibilityElement()
+            .accessibilityLabel("Chart for this answer")
           if let card = msg.shareImage {
             ShareLink(item: ShareCard(image: card), preview: SharePreview("SCORA chart", image: Image(uiImage: card))) {
               Label("Share", systemImage: "square.and.arrow.up")
                 .font(.caption.bold())
                 .foregroundColor(.gray)
             }
+            .accessibilityLabel("Share this answer and chart")
           }
         }
         
@@ -372,6 +430,7 @@ struct ChatView: View {
           .padding(.vertical, 8)
           .background(Color(white: 0.1))
           .cornerRadius(8)
+          .accessibilityElement(children: .combine)
         }
       }
     }
@@ -422,16 +481,13 @@ struct ChatView: View {
         return
       }
 
-      let decoded = try JSONDecoder().decode(CDVResponse.self, from: data)
+      let decoded = CDVReply.decode(data)
       await MainActor.run {
-        messages.append(ChatMessage(
-          isUser: false,
-          text: decoded.voice,
-          drivers: decoded.drivers,
-          chartHTML: decoded.chart.flatMap(CDVChart.html(for:))
-        ))
-        remaining = decoded.remaining
-        limitReached = (decoded.remaining ?? 1) <= 0
+        messages.append(CDVReply.message(from: data))
+        if let decoded {
+          remaining = decoded.remaining
+          limitReached = (decoded.remaining ?? 1) <= 0
+        }
         isLoading = false
       }
     } catch {
