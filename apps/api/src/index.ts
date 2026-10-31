@@ -6,7 +6,7 @@ import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion, checkCardPosture } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec } from './cdv-chart';
-import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
+import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations, citedChunks, libraryClaimHits } from './knowledge-retrieval';
 import {
   buildOuraAuthorizeUrl,
   exchangeOuraCode,
@@ -768,6 +768,7 @@ ${knowledge.promptBlock ? `\n${knowledge.promptBlock}\n` : ''}
 Write today's read using only these drivers.`;
 
     let voice: string;
+    let usedFallback = false;
     try {
       const result = await generateValidatedVoice({
         systemPrompt,
@@ -775,10 +776,15 @@ Write today's read using only these drivers.`;
         drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers", surface: 'daily',
-        check: (v) => postureClaimHits(v, posture.backed ? posture.result.posture : null),
+        // Library mode: no advice relayed from a passage, no number lifted from one.
+        check: (v) => [
+          ...postureClaimHits(v, posture.backed ? posture.result.posture : null),
+          ...(knowledge.mode === 'library' ? libraryClaimHits(v, knowledge.chunks, readDrivers.map((d) => `${d.value} ${d.trend ?? ''}`)) : []),
+        ],
         log: fastify.log,
       });
       voice = result.voice;
+      usedFallback = result.usedFallback;
       if (plan.driver && plan.workout?.planned_intensity !== 'rest') {
         fastify.log.info(readPlanLine({ athleteId, localDate: today, named: readNamesPlan(voice, plan.driver) }));
       }
@@ -790,8 +796,10 @@ Write today's read using only these drivers.`;
     }
 
     const generatedAt = new Date().toISOString();
-    if (knowledge.mode === 'library' && knowledgeDeps.sb) {
-      recordCitations(knowledgeDeps.sb, athleteId, generatedAt, knowledge.chunks).catch((e) =>
+    // Only the chunks the emitted read drew on (none when it fell back).
+    const cited = citedChunks(knowledge, { usedFallback });
+    if (cited.length > 0 && knowledgeDeps.sb) {
+      recordCitations(knowledgeDeps.sb, athleteId, generatedAt, cited).catch((e) =>
         fastify.log.warn(`read_citations insert failed: ${e instanceof Error ? e.message : e}`)
       );
     }

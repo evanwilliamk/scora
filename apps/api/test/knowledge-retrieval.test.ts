@@ -7,7 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import {
   buildRetrievalQuery, knowledgeForRead, knowledgeRetrievalEnabled, libraryPromptBlock,
-  supabaseChunkMatcher, recordCitations, RETRIEVAL_MIN_SIMILARITY,
+  supabaseChunkMatcher, recordCitations, RETRIEVAL_MIN_SIMILARITY, citedChunks, libraryClaimHits,
 } from '../src/knowledge-retrieval';
 import type { ChunkMatcher, RetrievedChunk } from '../src/knowledge-retrieval';
 import { ingest, parseExport, sqlStore, EMBEDDING_DIMS } from '../src/knowledge-ingest';
@@ -201,4 +201,43 @@ test('HealthKit-only athlete (sleep hours, no score) still gets the back-off pat
   // No sleep at all: nothing fills "Sleep {{sleep_hours}}", so it stays off.
   const noSleep = await knowledgeForRead({ ...input, sleepSeconds: null }, { enabled: false });
   assert.notEqual(noSleep.pattern?.id, 'plan-says-hard-body-says-back-off-v1');
+});
+
+// ---- review 2026-10-31 ----
+
+test('citations are recorded only when the read actually used the library (review finding)', () => {
+  const lib = { mode: 'library' as const, chunks: [chunk(), chunk({ id: 'c2' })], pattern: null, promptBlock: 'x' };
+  assert.deepEqual(citedChunks(lib, { usedFallback: false }).map((c) => c.id), ['c1', 'c2']);
+  // The deterministic fallback is built from drivers alone: no chunk was used.
+  assert.deepEqual(citedChunks(lib, { usedFallback: true }), []);
+  assert.deepEqual(citedChunks({ mode: 'pattern', chunks: [], pattern: null, promptBlock: '' }, { usedFallback: false }), []);
+});
+
+test('library mode catches advice relayed through a source, and numbers lifted from a passage (review finding)', () => {
+  const chunks = [chunk({ text: 'Pfitzinger caps a block at three hard days, then rests.' })];
+  const drivers = ['1.4', '6:10'];
+  // Advice by attribution: the validator alone lets these through.
+  for (const v of [
+    'ACWR sits at 1.4. Per the library, an easy day is the right call here.',
+    'ACWR is 1.4. Daniels would cut the next session to recover.',
+    'ACWR is 1.4, so it is worth backing off for a few days.',
+    'ACWR is 1.4. The book recommends easing off.',
+  ]) assert.ok(libraryClaimHits(v, chunks, drivers).includes('library advice'), v);
+  // A number word the passage carries and no driver backs.
+  assert.deepEqual(libraryClaimHits('ACWR is 1.4. Blocks tend to cap at three hard days.', chunks, drivers), ['library number three']);
+  // Clean interpretation passes; a number word the drivers back passes.
+  assert.deepEqual(libraryClaimHits('ACWR is 1.4, well above the recent norm. Load like that tends to arrive before fatigue does.', chunks, drivers), []);
+  assert.deepEqual(libraryClaimHits('Three hard days in a row, ACWR 1.4.', chunks, ['1.4', '3']), []);
+});
+
+test('a query embedding of the wrong size falls back to patterns with a clear warning (review finding)', async () => {
+  const warns: string[] = [];
+  let matched = false;
+  const r = await knowledgeForRead(
+    { posture: 'back-off', drivers: backOffDrivers, completeness: 1 },
+    { enabled: true, embed: async () => [[1, 2, 3]], match: async () => { matched = true; return [chunk()]; }, log: { warn: (m) => warns.push(m) } }
+  );
+  assert.equal(matched, false);
+  assert.notEqual(r.mode, 'library');
+  assert.match(warns[0], /3 dims, expected 1536/);
 });

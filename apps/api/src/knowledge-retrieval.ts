@@ -11,7 +11,7 @@ import type { PostureDrivers, Posture } from '../../../packages/posture/src/inde
 import { getPatterns, selectPattern } from '../../../packages/voice/src/index';
 import type { PatternEntry, ScheduledWorkout } from '../../../packages/voice/src/index';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { openAiEmbedder } from './knowledge-ingest';
+import { openAiEmbedder, EMBEDDING_DIMS } from './knowledge-ingest';
 import type { Embedder } from './knowledge-ingest';
 
 export const RETRIEVAL_TOP_K = 4;
@@ -129,6 +129,9 @@ export async function knowledgeForRead(
     try {
       const q = buildRetrievalQuery(input.postureBacked === false ? null : input.posture, input.drivers, input.scheduled);
       const [embedding] = await deps.embed([q.text]);
+      if (!Array.isArray(embedding) || embedding.length !== EMBEDDING_DIMS) {
+        throw new Error(`Query embedding has ${Array.isArray(embedding) ? embedding.length : 'no'} dims, expected ${EMBEDDING_DIMS}`);
+      }
       const close = (cs: RetrievedChunk[]) => cs.filter((c) => c.similarity >= RETRIEVAL_MIN_SIMILARITY);
       let chunks = close(await deps.match(embedding, RETRIEVAL_TOP_K, q.tags));
       // Tags can be too narrow for a young library: retry unfiltered when the
@@ -158,6 +161,52 @@ export async function knowledgeForRead(
   );
   if (pattern) return { mode: 'pattern', chunks: [], pattern, promptBlock: patternPromptBlock(pattern) };
   return { mode: 'none', chunks: [], pattern: null, promptBlock: '' };
+}
+
+// The chunks a finished read actually drew on. The deterministic fallback is
+// built from drivers alone, so it cites nothing (spec §3: citations say why
+// SCORA said something, and must not point at passages it did not use).
+export function citedChunks(k: ReadKnowledge, voice: { usedFallback: boolean }): RetrievedChunk[] {
+  return k.mode === 'library' && !voice.usedFallback ? k.chunks : [];
+}
+
+// Library-mode checks on top of the validators (spec §5). A passage may
+// describe workouts; the read may relay its substance, never its advice, and
+// never its numbers. Labels only, no passage text or athlete values, so the
+// hits are safe to log. Fed to generateValidatedVoice as an extra check.
+const LIBRARY_ADVICE = new RegExp(
+  String.raw`\b(?:worth (?:backing|easing|cutting|holding|taking|skipping|resting|keeping|dropping|shortening)` +
+  String.raw`|the (?:right|smart|safe|wise) (?:call|move|choice|play)` +
+  String.raw`|(?:recommends?|suggests?|advises?|urges?) (?:cutting|easing|skipping|resting|backing|holding|taking|dropping|shortening|keeping|an? (?:easy|rest|recovery|light|short))` +
+  String.raw`|would (?:cut|skip|drop|shorten|rest|back off|ease off|hold back|pull back|swap)` +
+  String.raw`|(?:better|safer|wiser) to (?:ease|rest|skip|back|hold|cut|wait|take|keep|go))\b`,
+  'i'
+);
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, ninety: 90,
+};
+const numbersIn = (t: string): Set<number> => {
+  const out = new Set<number>();
+  for (const m of t.toLowerCase().matchAll(/\b(\d+(?:\.\d+)?|[a-z]+)\b/g)) {
+    const n = /^\d/.test(m[1]) ? Number(m[1]) : NUMBER_WORDS[m[1]];
+    if (n !== undefined) out.add(n);
+  }
+  return out;
+};
+
+export function libraryClaimHits(voice: string, chunks: RetrievedChunk[], driverValues: string[]): string[] {
+  const hits: string[] = [];
+  if (LIBRARY_ADVICE.test(voice)) hits.push('library advice');
+  // Digits are the validator's job. Number words it lets through ("three hard
+  // days") are caught here when a passage carries that number and no driver does.
+  const fromLibrary = numbersIn(chunks.map((c) => `${c.text} ${c.take ?? ''}`).join(' '));
+  const backed = numbersIn(driverValues.join(' '));
+  for (const m of voice.toLowerCase().matchAll(/\b([a-z]+)\b/g)) {
+    const n = NUMBER_WORDS[m[1]];
+    if (n !== undefined && fromLibrary.has(n) && !backed.has(n)) hits.push(`library number ${m[1]}`);
+  }
+  return [...new Set(hits)];
 }
 
 // supabase-js rpc over match_knowledge_chunks (migration 20261017000000).
