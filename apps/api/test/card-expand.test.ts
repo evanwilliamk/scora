@@ -96,3 +96,11 @@ test('a card reply naming a posture the read did not decide falls back to the dr
   const plain = 'HRV 52ms has held steady, with a moderate load behind it.';
   assert.equal(checkCardPosture(plain, null, drivers, 'Recovery Signal'), plain);
 });
+
+test('checkCardPosture: the plan\'s taper is not a posture claim, as in the read (review 10-31 pass 2)', () => {
+  const drivers = relatedDrivers('recovery_signal', withOura.drivers);
+  const text = "The plan's taper starts Monday, and HRV 52ms sits above the week.";
+  assert.equal(checkCardPosture(text, 'steady', drivers, 'Recovery Signal'), text);
+  // And a posture word the read did not decide still falls back.
+  assert.match(checkCardPosture('HRV 52ms. Posture is rest.', 'steady', drivers, 'Recovery Signal'), /^Recovery Signal: HRV 52ms/);
+});

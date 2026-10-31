@@ -9,6 +9,7 @@
 
 import type { Card, Driver } from './metrics';
 import { buildFallbackVoice } from './validator';
+import { postureClaimHits } from './drivers';
 
 export interface ReadSnapshot {
   cards: Card[];
@@ -95,17 +96,10 @@ Interpret the ${card.title} card.`;
 }
 
 // Postures are decided by SCORA's rules, so a reply may name only the one the
-// read decided. Only the posture words that are not everyday English are
-// checked ("steady", "moderate" and "rest" also describe numbers).
-const POSTURE_CLAIMS: { re: RegExp; posture: string }[] = [
-  { re: /\bprimed\b/i, posture: 'primed' },
-  { re: /\bback[\s-]?off\b/i, posture: 'back-off' },
-  { re: /\btaper(?:s|ed|ing)?\b/i, posture: 'taper' },
-];
+// read decided: the same check as the daily read (drivers.ts postureClaimHits).
 
 // The validated reply, or the plain driver read when it names a posture the
 // read did not decide.
 export function checkCardPosture(reply: string, posture: string | null, drivers: Driver[], leadIn: string): string {
-  const unbacked = POSTURE_CLAIMS.some(({ re, posture: p }) => p !== posture && re.test(reply));
-  return unbacked ? buildFallbackVoice(drivers, leadIn) : reply;
+  return postureClaimHits(reply, posture).length > 0 ? buildFallbackVoice(drivers, leadIn) : reply;
 }
