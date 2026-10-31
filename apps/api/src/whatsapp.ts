@@ -136,11 +136,38 @@ export function twilioSignature(authToken: string, url: string, params: Record<s
   return crypto.createHmac('sha1', authToken).update(data, 'utf8').digest('base64');
 }
 
+// Twilio may sign the URL with or without the scheme's default port
+// (":443"), so, like twilio-node's validateRequest, both forms are tried.
+// Every candidate is compared in constant time; any other port or host fails.
+function portVariants(url: string): string[] {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return [url];
+  }
+  const port = u.protocol === 'https:' ? '443' : u.protocol === 'http:' ? '80' : '';
+  if (!port) return [url];
+  const auth = u.username ? `${u.username}${u.password ? `:${u.password}` : ''}@` : '';
+  // Path, query and fragment exactly as written (URL would re-encode them).
+  const start = url.indexOf('//') + 2;
+  const end = url.slice(start).search(/[/?#]/);
+  const tail = end === -1 ? '' : url.slice(start + end);
+  const host = u.hostname; // IPv6 keeps its brackets
+  const bare = `${u.protocol}//${auth}${host}${tail}`;
+  const ported = `${u.protocol}//${auth}${host}:${port}${tail}`;
+  return [...new Set([url, bare, ported])];
+}
+
 export function verifyTwilioSignature(authToken: string, url: string, params: Record<string, string | string[]>, signature: string | undefined): boolean {
-  if (!authToken || !signature) return false;
-  const expected = Buffer.from(twilioSignature(authToken, url, params));
+  if (!authToken || typeof signature !== 'string' || !signature) return false;
   const given = Buffer.from(signature);
-  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
+  let ok = false;
+  for (const candidate of portVariants(url)) {
+    const expected = Buffer.from(twilioSignature(authToken, candidate, params));
+    if (expected.length === given.length && crypto.timingSafeEqual(expected, given)) ok = true;
+  }
+  return ok;
 }
 
 // 'why' and 'more' replies (doc 08 §5 and §6): LLM expansions of the morning

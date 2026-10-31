@@ -130,3 +130,14 @@ test('review 6: Twilio opt-out words with polite filler still stop; UNSTOP resum
   for (const s of ['end of week was good', 'cancel that', 'quit early yesterday']) assert.deepEqual(parseReply(s), { cmd: 'unknown' }, s);
   assert.deepEqual(parseReply('UNSTOP'), { cmd: 'resume' });
 });
+
+test('review 6: a signature over the URL with or without the default port verifies, as twilio-node does', () => {
+  const params = { Body: 'stop', From: 'whatsapp:+14155550100' };
+  const withPort = twilioSignature('tok', 'https://api.scora.app:443/whatsapp?x=1', params);
+  const without = twilioSignature('tok', 'https://api.scora.app/whatsapp?x=1', params);
+  assert.equal(verifyTwilioSignature('tok', 'https://api.scora.app/whatsapp?x=1', params, withPort), true);
+  assert.equal(verifyTwilioSignature('tok', 'https://api.scora.app:443/whatsapp?x=1', params, without), true);
+  // A different port or host is a different URL.
+  assert.equal(verifyTwilioSignature('tok', 'https://api.scora.app/whatsapp?x=1', params, twilioSignature('tok', 'https://api.scora.app:8443/whatsapp?x=1', params)), false);
+  assert.equal(verifyTwilioSignature('tok', 'https://api.scora.app/whatsapp?x=1', params, twilioSignature('tok', 'https://evil.test/whatsapp?x=1', params)), false);
+});
