@@ -143,6 +143,27 @@ test('review fixes: easy labels cannot hide quality work, all-rest weeks and bad
   rejects((t) => { Object.assign(t, { status: 'reviewed', reviewed_by: 'A Coach', reviewed_on: '2026-02-30' }); }, 'bad_value', /reviewed_on/);
 });
 
+test('moderate and steady-state labels cannot hide quality work either', () => {
+  // Neither label is hard to the adaptation engine, so a threshold block under
+  // one would dodge the rest move, the back-off downgrade and the hard-day
+  // adjacency check.
+  for (const label of ['moderate', 'steady_state']) {
+    rejects((t) => {
+      t.workout_definitions.easy_run.intensity = label;
+      t.workout_definitions.easy_run.structure.push({ type: 'interval', reps: 3, work_duration_min: 8, work_intensity: 'threshold', rest_duration_min: 3, rest_intensity: 'easy' });
+    }, 'intensity_mismatch', /easy_run/);
+    rejects((t) => {
+      t.workout_definitions.easy_run.intensity = label;
+      t.workout_definitions.easy_run.structure[0].intensity = 'tempo';
+    }, 'intensity_mismatch', /tempo/);
+  }
+  // A plain moderate or steady session is fine.
+  const ok = raw();
+  ok.workout_definitions.easy_run.intensity = 'steady_state';
+  ok.workout_definitions.easy_run.structure[0].intensity = 'steady';
+  assert.doesNotThrow(() => validateTemplate(ok, 'fixture.yaml', draftsOk));
+});
+
 test('two versions of one slug load side by side; the same version twice does not', () => {
   const all = loadTemplates(here('./fixtures-versions/'), draftsOk);
   assert.deepEqual(all.map((t) => t.version).sort(), ['0.0.1', '0.0.2']);

@@ -42,8 +42,9 @@ export class TemplateError extends Error {
 // CLAUDE.md §4.3: weekly volume never jumps more than 10%. Measured against
 // the highest earlier week, so a cutback week can return to where it was.
 export const MAX_WEEKLY_INCREASE = 0.1;
-// Workouts labelled easy may not hide quality work.
-const EASY_LABELS: readonly Intensity[] = ['recovery', 'easy', 'endurance'];
+// Workouts the adaptation engine does not treat as hard may not hide quality
+// work: moderate and steady-state are not hard either (constants.ts).
+const EASY_LABELS: readonly Intensity[] = ['recovery', 'easy', 'endurance', 'moderate', 'steady_state'];
 const HARD_STEP_INTENSITIES: readonly StepIntensity[] = ['tempo', 'threshold', 'vo2max'];
 // An authored total_duration_est_min may round, but not disagree.
 export const DURATION_ESTIMATE_TOLERANCE_MIN = 5;
@@ -195,7 +196,7 @@ export function validateTemplate(raw: unknown, file: string, opts: ValidateOptio
       }
       return fail('bad_step', `${at} type is "${String(s.type)}" (allowed: warmup, steady, interval, cooldown)`);
     });
-    // An easy-labelled session must be easy: the adaptation engine reads only
+    // A non-hard label must be honest: the adaptation engine reads only
     // the label, so a hidden threshold block would dodge the hard-day rules.
     // Strides (sprint steps) are allowed.
     if (EASY_LABELS.includes(intensity)) {
