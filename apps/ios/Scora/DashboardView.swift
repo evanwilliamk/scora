@@ -25,6 +25,42 @@ struct DashboardCard: Decodable, Identifiable {
   let trend: String?
   let source: String?
   let cta: String?
+  // The API's explicit connect flag. `.absent` means an older API that does
+  // not send it; `.none` means the source is linked (or not needed).
+  var connect: ConnectFlag = .absent
+
+  enum ConnectFlag: Equatable {
+    case absent
+    case none
+    case source(String) // "oura", "strava", "healthkit"
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, title, available, value, unit, translation, trend, source, cta, connect
+  }
+}
+
+extension DashboardCard {
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    title = try c.decode(String.self, forKey: .title)
+    available = try c.decode(Bool.self, forKey: .available)
+    value = try c.decodeIfPresent(String.self, forKey: .value)
+    unit = try c.decodeIfPresent(String.self, forKey: .unit)
+    translation = try c.decodeIfPresent(String.self, forKey: .translation)
+    trend = try c.decodeIfPresent(String.self, forKey: .trend)
+    source = try c.decodeIfPresent(String.self, forKey: .source)
+    cta = try c.decodeIfPresent(String.self, forKey: .cta)
+    if !c.contains(.connect) {
+      connect = .absent
+    } else if try c.decodeNil(forKey: .connect) {
+      connect = .none
+    } else {
+      // An unknown value from a newer API is read as no connect action.
+      connect = (try? c.decode(String.self, forKey: .connect)).map { .source($0) } ?? .none
+    }
+  }
 }
 
 extension DashboardCard {
@@ -36,9 +72,17 @@ extension DashboardCard {
   // Only a card that asks the athlete to connect Oura offers the link. With
   // Oura already linked, a night with no data says so ("No sleep recorded
   // last night.") and is not a reason to sign in again.
+  // The API's `connect` flag decides when it is sent; an older API without
+  // it falls back to reading the prompt text.
   var offersOuraConnect: Bool {
-    guard !available, source?.contains("Oura") ?? false else { return false }
-    return cta.map { $0.hasPrefix("Connect") } ?? true
+    guard !available else { return false }
+    switch connect {
+    case .source(let s): return s == "oura"
+    case .none: return false
+    case .absent:
+      guard source?.contains("Oura") ?? false else { return false }
+      return cta.map { $0.hasPrefix("Connect") } ?? true
+    }
   }
 
   var tapKind: TapKind {

@@ -26,6 +26,38 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertFalse(card("sleep", value: "7:12", unit: "hrs", source: "Oura").offersOuraConnect)
   }
 
+  private func decode(_ json: String) throws -> DashboardCard {
+    try JSONDecoder().decode(DashboardCard.self, from: Data(json.utf8))
+  }
+
+  // The API's explicit connect flag decodes in three states.
+  func testConnectFlagDecode() throws {
+    let base = #""id":"sleep","title":"Sleep","available":false,"source":"Oura / Apple Health""#
+    XCTAssertEqual(try decode("{\(base),\"connect\":\"oura\"}").connect, .source("oura"))
+    XCTAssertEqual(try decode("{\(base),\"connect\":null}").connect, .none)
+    XCTAssertEqual(try decode("{\(base)}").connect, .absent)
+    XCTAssertEqual(try decode("{\(base),\"connect\":7}").connect, .none)
+  }
+
+  // The flag wins over the prompt text; an older API falls back to the text.
+  func testConnectFlagDecidesOuraConnect() throws {
+    let flagged = try decode(#"{"id":"sleep","title":"Sleep","available":false,"source":"Oura / Apple Health","cta":"Connect Oura or Apple Health to read your sleep.","connect":"oura"}"#)
+    XCTAssertTrue(flagged.offersOuraConnect)
+    XCTAssertEqual(flagged.tapKind, .connectOura)
+    // Linked, no data tonight: null, even if the text were to start with "Connect".
+    let linked = try decode(#"{"id":"sleep","title":"Sleep","available":false,"source":"Oura","cta":"Connect later.","connect":null}"#)
+    XCTAssertFalse(linked.offersOuraConnect)
+    // Flag set although the text no longer starts with "Connect".
+    let reworded = try decode(#"{"id":"recovery_signal","title":"Recovery Signal","available":false,"source":"Oura","cta":"Link Oura to read HRV.","connect":"oura"}"#)
+    XCTAssertTrue(reworded.offersOuraConnect)
+    XCTAssertFalse(try decode(#"{"id":"training_load","title":"Training Load","available":false,"source":"Strava","connect":"strava"}"#).offersOuraConnect)
+    // Older API: no flag, text check.
+    let legacy = try decode(#"{"id":"sleep","title":"Sleep","available":false,"source":"Oura","cta":"Connect Oura to read HRV."}"#)
+    XCTAssertTrue(legacy.offersOuraConnect)
+    let legacyLinked = try decode(#"{"id":"sleep","title":"Sleep","available":false,"source":"Oura","cta":"No sleep recorded last night."}"#)
+    XCTAssertFalse(legacyLinked.offersOuraConnect)
+  }
+
   // Long Effort run today comes with an empty unit: nothing is drawn for it.
   func testEmptyUnitIsNotShown() {
     XCTAssertNil(card("long_effort", value: "Today", unit: "").shownUnit)
