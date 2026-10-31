@@ -196,6 +196,22 @@ test('card expand: a generated expansion is validated like the read', async () =
   assert.ok(before >= 1);
 });
 
+test('card expand: a posture the read did not decide is retried, like the read (review 10-31 pass 2)', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const cards: any[] = (await read()).json().cards;
+  const card = cards.find((c) => c.id === 'training_load');
+  assert.ok(card && card.available, 'training_load card is available');
+  const second = 'Training has held even across the weeks on this card.';
+  guard.openAi('The body reads primed this morning.', second);
+  const before = llmCalls().length;
+  const e = await expand(card.id);
+  assert.equal(e.statusCode, 200);
+  assert.equal(llmCalls().length - before, 2, 'the rejected draft is fed back once');
+  assert.equal(e.json().reply, second);
+});
+
 test('card expand: the model down falls back to the card\'s own line', async () => {
   connected();
   guard.stravaActivities(steady());

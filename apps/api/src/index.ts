@@ -859,6 +859,9 @@ fastify.post('/api/card-expand', async (request, reply) => {
       drivers: plan.drivers,
       maxTokens: 150,
       leadIn: card.title, surface: 'card',
+      // As on the read: a posture the read did not decide is retried, then
+      // falls back (checkCardPosture below stays as the last guard).
+      check: (v) => postureClaimHits(v, snapshot.posture),
       log: fastify.log,
     });
     return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: true });
