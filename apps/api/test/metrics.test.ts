@@ -214,3 +214,33 @@ test('weekly summary with today counts the 7 local days before it, never 8 of 7'
   assert.equal(w.stats.find((s) => s.label === 'Volume')!.value, '34.8 mi');
   assert.equal(w.drivers.find((d) => d.metric === 'Load')!.trend, '+1020% wk');
 });
+
+test('connect flag: Oura not linked asks to connect Oura, text unchanged', () => {
+  const { cards } = buildDashboard(activities, conn);
+  const sleep = cards.find((c) => c.id === 'sleep')!;
+  const recovery = cards.find((c) => c.id === 'recovery_signal')!;
+  assert.equal(sleep.connect, 'oura');
+  assert.equal(recovery.connect, 'oura');
+  assert.equal(sleep.cta, 'Connect Oura or Apple Health to read your sleep.');
+  assert.equal(recovery.cta, 'Connect Oura to read HRV and resting heart rate.');
+});
+
+test('connect flag: Oura linked with no data tonight is null', () => {
+  const { cards } = buildDashboard(activities, { strava: true, oura: true, healthKit: false }, null);
+  const sleep = cards.find((c) => c.id === 'sleep')!;
+  const recovery = cards.find((c) => c.id === 'recovery_signal')!;
+  assert.equal(sleep.available, false);
+  assert.equal(sleep.connect, null);
+  assert.equal(recovery.connect, null);
+  assert.equal(sleep.cta, 'No sleep recorded last night.');
+  assert.equal(recovery.cta, 'No HRV recorded last night.');
+});
+
+test('connect flag: absent on available cards, strava only when unlinked', () => {
+  const { cards } = buildDashboard(activities, { strava: true, oura: true, healthKit: false }, oura);
+  for (const c of cards) assert.equal(c.connect, undefined, c.id);
+  const unlinked = buildDashboard([], { strava: false, oura: true, healthKit: false }, oura).cards;
+  assert.equal(unlinked.find((c) => c.id === 'training_load')!.connect, 'strava');
+  const linked = buildDashboard([], { strava: true, oura: true, healthKit: false }, oura).cards;
+  assert.equal(linked.find((c) => c.id === 'training_load')!.connect, null);
+});
