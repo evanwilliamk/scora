@@ -513,7 +513,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     }
     // The model picks a chart kind; the spec and its data come from the activities.
     const chartKind = parseChartKind(final.raw);
-    const chart = chartKind ? buildChartSpec(chartKind, activities, now) : null;
+    const chart = chartKind ? buildChartSpec(chartKind, activities, now, todayLocal) : null;
 
     return reply.send({
       voice: checked.voice,

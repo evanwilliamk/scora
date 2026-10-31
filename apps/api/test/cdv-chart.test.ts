@@ -149,3 +149,13 @@ test('pace reads as m:ss on the axis and in the tooltip, never 8.5 or 7:60 (revi
   // Heart rate keeps its plain axis.
   assert.equal((buildChartSpec('recent_hr', acts, now) as any).encoding.y.axis, undefined);
 });
+
+test("weekday_runs spans the athlete's last 42 local days, so no weekday counts 7 times (review 10-31)", () => {
+  // now is Sat Oct 17 12:00; a run every Saturday from Sep 5 to Oct 17.
+  const sats = Array.from({ length: 7 }, (_, i) => {
+    const t = Date.UTC(2026, 8, 5 + i * 7, i === 6 ? 8 : 15);
+    return { type: 'Run', start_date: new Date(t).toISOString(), start_date_local: new Date(t).toISOString(), distance: 8000, moving_time: 2400 };
+  });
+  const spec: any = buildChartSpec('weekday_runs', sats, now, '2026-10-17');
+  assert.equal(spec.data.values.find((x: any) => x.day === 'Sat').runs, 6);
+});

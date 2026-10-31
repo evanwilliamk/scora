@@ -63,7 +63,9 @@ const base = (title: string) => ({
   background: 'transparent',
 });
 
-export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.now()): Record<string, unknown> | null {
+// `todayLocal` (YYYY-MM-DD) is the athlete's date, the same one the chat's
+// weekday patterns count from.
+export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.now(), todayLocal?: string): Record<string, unknown> | null {
   const runs = activities
     .filter((a) => isRun(a) && Number.isFinite(startMs(a)) && startMs(a) <= now)
     .sort((a, b) => startMs(b) - startMs(a)); // newest first
@@ -138,8 +140,14 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
     };
   }
 
-  // weekday_runs
-  const six = runs.filter((a) => startMs(a) > now - 42 * DAY);
+  // weekday_runs: with the athlete's date, the 42 local days the chat's
+  // weekday patterns read (exactly six of each weekday); a rolling 42 x 24h
+  // window would reach into a seventh.
+  const localDay = (a: any) => String(a.start_date_local || a.start_date).slice(0, 10);
+  const from = todayLocal ? new Date(Date.parse(`${todayLocal}T00:00:00Z`) - 42 * DAY).toISOString().slice(0, 10) : null;
+  const six = from
+    ? runs.filter((a) => localDay(a) > from && localDay(a) <= todayLocal!)
+    : runs.filter((a) => startMs(a) > now - 42 * DAY);
   if (six.length < 2) return null;
   const counts = WEEKDAYS.map((day, i) => ({
     day, order: i, runs: six.filter((a) => localDate(a).getUTCDay() === i).length,
