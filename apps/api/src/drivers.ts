@@ -287,7 +287,9 @@ export function postureForRead(
 const POSTURE_WORDS: { posture: string; re: RegExp }[] = [
   { posture: 'primed', re: /\bprimed\b/i },
   { posture: 'back-off', re: /\bback[\s-]?off\b/i },
-  { posture: 'taper', re: /\btaper(?:s|ed|ing)?\b/i },
+  // A taper the plan schedules ("the plan's taper starts Monday", "taper
+  // phase") is the plan, not the posture, so it does not count.
+  { posture: 'taper', re: /^(?!.*\b(?:plan|phase|block)\b[^.]{0,24}\btaper).*\btaper(?:s|ed|ing)?\b(?!\s+(?:phase|block|week))/is },
   { posture: 'steady', re: /\bposture\b[^.]{0,24}\bsteady\b/i },
   { posture: 'moderate', re: /\bposture\b[^.]{0,24}\bmoderate\b/i },
   { posture: 'rest', re: /\bposture\b[^.]{0,24}\brest\b/i },

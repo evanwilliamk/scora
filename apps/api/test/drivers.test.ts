@@ -280,3 +280,9 @@ test('low sleep-score nights are named as scores, not as short sleep (review 10-
   assert.doesNotMatch(ev[0].metric, /short/i);
   assert.match(ev[0].metric, /sleep score/i);
 });
+
+test("postureClaimHits: the plan's own taper is the plan, not a posture claim", () => {
+  assert.deepEqual(postureClaimHits("Your plan's taper starts Monday, and the body is settled.", 'steady'), []);
+  assert.deepEqual(postureClaimHits('Two weeks out, the taper phase is next on the plan.', 'steady'), []);
+  assert.deepEqual(postureClaimHits('Load has come down and the body reads like a taper.', 'steady'), ['posture taper']);
+});
