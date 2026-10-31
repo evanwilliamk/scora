@@ -149,13 +149,17 @@ test('a pasted plan session gets no Today line (Free tier reads it in the voice)
   assert.ok(!('today' in r.json().read));
 });
 
-test('the model failing is a 500, never an unvalidated read', async () => {
+test('the model failing is the validated fallback read, never an unvalidated one', async () => {
   connected();
   guard.stravaActivities(steady());
   guard.openAi({ status: 503, body: { error: { message: 'overloaded' } } });
   const r = await read();
-  assert.equal(r.statusCode, 500);
-  assert.equal(r.json().error, 'Read generation failed');
+  assert.equal(r.statusCode, 200, r.body);
+  const { read: out, drivers } = r.json();
+  assert.equal(llmCalls().length, 1, 'no retry into an outage');
+  assert.match(out.voice, /^Today's numbers: /);
+  assert.ok(out.numbers);
+  assert.ok(validateVoice(out.voice, drivers).ok, out.voice);
 });
 
 // Card tap-to-expand reads the snapshot the last read left (10 min).

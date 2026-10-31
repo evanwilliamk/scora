@@ -64,13 +64,49 @@ test('a failed retry call still ends in the fallback, not an error', async () =>
   stubOpenAI(['HRV is 99ms.', new Error('socket hang up')]);
   const errors: string[] = [];
   const r = await generateValidatedVoice({ ...params, log: { warn() {}, error: (m) => errors.push(m) } });
-  assert.equal(r.usedFallback, true);
-  assert.match(errors[0], /socket hang up/);
+  assert.deepEqual([r.usedFallback, r.llmError], [true, true]);
+  assert.match(errors[0], /^voice_llm_error .*"attempt":2.*"kind":"network"/);
+  assert.doesNotMatch(errors[0], /socket hang up/, 'the error text stays out of the log');
 });
 
-test('a failed first call propagates so the route can return 500', async () => {
+test('a failed first call propagates when the caller has no fallback', async () => {
   stubOpenAI([503]);
   await assert.rejects(generateValidatedVoice(params), /OpenAI 503/);
+});
+
+test('an outage on the first call ends in the validated fallback when the caller opts in', async () => {
+  for (const failure of [503, 429, new Error('fetch failed'), Object.assign(new Error('aborted'), { name: 'TimeoutError' })]) {
+    const calls = stubOpenAI([failure]);
+    const errors: string[] = [];
+    const r = await generateValidatedVoice({ ...params, fallbackOnLlmError: true, surface: 'daily', leadIn: "Today's numbers", log: { warn() {}, error: (m) => errors.push(m) } });
+    assert.equal(calls.length, 1, 'no second call into an outage');
+    assert.deepEqual([r.usedFallback, r.llmError], [true, true]);
+    assert.equal(r.voice, "Today's numbers: Load 412 min (+8% wk). HRV 52ms.");
+    assert.equal(validateVoice(r.voice, drivers).ok, true);
+    assert.equal(errors.length, 1);
+    const line = JSON.parse(errors[0].slice('voice_llm_error '.length));
+    assert.equal(line.event, 'voice_llm_error');
+    assert.equal(line.attempt, 1);
+    assert.equal(line.surface, 'daily');
+    assert.match(line.kind, /^(http_\d{3}|timeout|network)$/);
+    assert.doesNotMatch(errors[0], /upstream error|412|52/, 'no error body, no athlete values');
+  }
+});
+
+test('a clean read is not flagged as an LLM error', async () => {
+  stubOpenAI(['HRV 52ms.']);
+  const r = await generateValidatedVoice({ ...params, fallbackOnLlmError: true });
+  assert.equal(r.llmError, false);
+});
+
+test('each OpenAI call carries a timeout signal', async () => {
+  let signal: AbortSignal | undefined;
+  globalThis.fetch = (async (_u: string, init: any) => {
+    signal = init.signal;
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'HRV 52ms.' } }] }), { status: 200 });
+  }) as typeof fetch;
+  await generateValidatedVoice(params);
+  assert.ok(signal instanceof AbortSignal);
 });
 
 test('model and token limit pass through', async () => {

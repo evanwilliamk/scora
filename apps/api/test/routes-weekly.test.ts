@@ -77,6 +77,18 @@ test('weekly: banned phrasing twice falls back to a read that passes the validat
   assert.ok(validateVoice(read.voice, drivers).ok, read.voice);
 });
 
+test('weekly: the model failing is the validated fallback review, not a 500', async () => {
+  connected();
+  guard.stravaActivities(week());
+  guard.openAi({ status: 429, body: { error: { message: 'rate limited' } } });
+  const r = await weekly();
+  assert.equal(r.statusCode, 200, r.body);
+  const { read, drivers } = r.json();
+  assert.equal(llmCalls().length, 1);
+  assert.match(read.voice, /^This week: /);
+  assert.ok(validateVoice(read.voice, drivers).ok, read.voice);
+});
+
 test('weekly: an invented number is caught and the retry is used', async () => {
   connected();
   guard.stravaActivities(week());
