@@ -222,7 +222,8 @@ export interface OuraSummary {
 // sleep score and readiness null rather than presenting old values as fresh.
 // The prior-night history and the chart series keep every night.
 export async function fetchOuraSummary(token: string, opts: { localToday?: string } = {}): Promise<OuraSummary> {
-  const auth = { headers: { Authorization: `Bearer ${token}` } };
+  // One 20s budget for the three routes: a hung Oura must not hold the read.
+  const auth = { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) };
   const day = 86400000;
   const iso = (d: number) => new Date(d).toISOString().slice(0, 10);
   // Ranges from the athlete's date when known (UTC can be a day behind it).
