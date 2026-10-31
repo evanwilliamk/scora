@@ -539,6 +539,27 @@ final class ScoraTests: XCTestCase {
         XCTAssertFalse(WatchSend.canSend(type: "swim", steps: steps, date: "2026-10-23", today: "2026-10-22"))
     }
 
+    func testSendToWatchIsNeverOfferedOnARestDay() {
+        let steps = [PlanStep(type: "steady", durationMin: 30, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        XCTAssertFalse(WatchSend.canSend(type: "run", intensity: "rest", steps: steps, date: "2026-10-23", today: "2026-10-22"))
+        XCTAssertTrue(WatchSend.canSend(type: "run", intensity: "easy", steps: steps, date: "2026-10-23", today: "2026-10-22"))
+    }
+
+    func testPlanChangesThatFailToLoadAreNotSilent() {
+        XCTAssertEqual(PlanChanges.loadOutcome(status: 200), .loaded)
+        XCTAssertEqual(PlanChanges.loadOutcome(status: 404), .off, "adaptations switched off: nothing to say")
+        XCTAssertEqual(PlanChanges.loadOutcome(status: 500), .failed)
+        XCTAssertEqual(PlanChanges.loadOutcome(status: 0), .failed, "offline")
+        XCTAssertFalse(PlanSheet.changesFailed.contains("\u{2014}"))
+    }
+
+    func testPastSessionMarkButtonsNameTheirSession() {
+        let w = PlanWorkout(date: "2026-10-20", type: "run", intensity: "tempo", durationMin: 45, distanceKm: nil, description: nil)
+        XCTAssertEqual(PlanSheet.markLabel(w, done: true), "Mark Tue Oct 20, tempo, 45 min, as completed")
+        XCTAssertEqual(PlanSheet.markLabel(w, done: false), "Mark Tue Oct 20, tempo, 45 min, as missed")
+        XCTAssertEqual(PlanSheet.watchLabel(w), "Send Tue Oct 20, tempo, 45 min, to Watch")
+    }
+
     func testSendToWatchCountsDaysAcrossTheDSTChange() {
         // New York leaves DST on Nov 1 2026; Nov 9 is 8 days after Nov 1, not 7.
         let saved = NSTimeZone.default

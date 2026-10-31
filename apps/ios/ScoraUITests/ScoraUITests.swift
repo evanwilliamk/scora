@@ -50,6 +50,8 @@ final class ScoraUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Missed"].waitForExistence(timeout: 5), "a past session can be marked")
         XCTAssertGreaterThanOrEqual(app.buttons.matching(identifier: "Send to Watch").count, 1)
         XCTAssertTrue(app.buttons["Paste or import a new plan"].exists)
+        let missed = app.buttons["Missed"]
+        XCTAssertTrue(missed.label.hasPrefix("Mark ") && missed.label.hasSuffix(", as missed"), "VoiceOver names the session: \(missed.label)")
     }
 
     func testYourPlanShowsTheBlock() throws {
