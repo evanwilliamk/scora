@@ -28,8 +28,9 @@ struct DriverSeries: Decodable, Identifiable, Equatable {
   var id: String { key }
   var latest: SeriesPoint? { points.last }
 
-  // Load and volume are per-day totals (bars); body signals are a line.
-  var isDailyTotal: Bool { key == "load" || key == "volume" }
+  // Load and volume are per-day totals and day counts are counts (bars);
+  // body signals and ratios are a line.
+  var isDailyTotal: Bool { key == "load" || key == "volume" || unit == "days" }
 
   static func localDay(_ s: String, zone: TimeZone = .current) -> Date? {
     let f = DateFormatter()
@@ -45,6 +46,9 @@ struct DriverSeries: Decodable, Identifiable, Equatable {
       let mins = Int((v * 60).rounded())
       return "\(mins / 60):\(String(format: "%02d", mins % 60))"
     }
+    // Acute:chronic load is a unitless ratio the read quotes to 2 decimals.
+    if unit == "ratio" { return String(format: "%.2f", v) }
+    if unit == "days" && v == 1 { return "1 day" }
     let n = v.rounded() == v ? String(Int(v)) : String(format: "%.1f", v)
     return "\(n) \(unit)"
   }
