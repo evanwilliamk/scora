@@ -18,6 +18,11 @@ interface GenerateParams {
   // like a banned phrase: fed back for the retry, then the fallback.
   check?: (voice: string) => string[];
   log?: { warn: (msg: string) => void; error: (msg: string) => void; info?: (msg: string) => void };
+  // When the OpenAI call itself fails (network, timeout, 429, 5xx) on the
+  // first draft, return the deterministic fallback instead of throwing. Opted
+  // into by the daily read and the weekly review so an outage still sends a
+  // validated read; other surfaces keep their own catch.
+  fallbackOnLlmError?: boolean;
 }
 
 export interface GenerateResult {
@@ -25,6 +30,25 @@ export interface GenerateResult {
   validation: ValidationResult;
   usedFallback: boolean;
   attempts: number;
+  // True when an OpenAI call failed outright (not a validator rejection).
+  llmError: boolean;
+}
+
+// Per-call cap on the OpenAI request. Two calls at most per read, so a hung
+// upstream costs the route at most twice this before the fallback.
+const OPENAI_TIMEOUT_MS = 20_000;
+
+class OpenAIHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`OpenAI ${status}`);
+  }
+}
+
+// What kind of failure, for logs: never the error body or message.
+function llmErrorKind(e: unknown): string {
+  if (e instanceof OpenAIHttpError) return `http_${e.status}`;
+  if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) return 'timeout';
+  return 'network';
 }
 
 async function callOpenAI(
@@ -48,9 +72,12 @@ async function callOpenAI(
       max_tokens: maxTokens,
       temperature: 0.5,
     }),
+    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
   });
   if (!res.ok) {
-    throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+    // The body can echo the prompt (athlete values); it stays out of the error.
+    await res.body?.cancel().catch(() => {});
+    throw new OpenAIHttpError(res.status);
   }
   const json: any = await res.json();
   return (json.choices?.[0]?.message?.content || '').trim();
@@ -81,7 +108,10 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     surface,
     log,
     check,
+    fallbackOnLlmError = false,
   } = params;
+  const llmFailed = (attempt: number, e: unknown) =>
+    log?.error(`voice_llm_error ${JSON.stringify({ event: 'voice_llm_error', surface: surface ?? null, attempt, kind: llmErrorKind(e) })}`);
   const validate = (text: string): ValidationResult => {
     const v = validateVoice(text, drivers);
     const extra = check ? check(text) : [];
@@ -99,12 +129,21 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
   };
   const note = (v: ValidationResult) => { seen.push(...v.bannedHits); unbacked += v.unbackedNumbers.length; };
 
-  // Attempt 1. A hard failure here propagates so the endpoint can 500 (matches
-  // the prior inline behaviour).
-  const first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens);
+  // Attempt 1. A hard failure propagates unless the caller opted into the
+  // fallback; then no retry, since a second call into an outage only adds
+  // latency before the same fallback.
+  let first: string;
+  try {
+    first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens);
+  } catch (e) {
+    if (!fallbackOnLlmError) throw e;
+    llmFailed(1, e);
+    const voice = buildFallbackVoice(drivers, leadIn);
+    return done({ voice, validation: validate(voice), usedFallback: true, attempts: 1, llmError: true });
+  }
   let validation = validate(first);
   if (validation.ok) {
-    return done({ voice: first, validation, usedFallback: false, attempts: 1 });
+    return done({ voice: first, validation, usedFallback: false, attempts: 1, llmError: false });
   }
   note(validation);
 
@@ -112,6 +151,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
 
   // Attempt 2 — feed the violations back. A hard failure here falls through to
   // the deterministic fallback rather than 500ing on an already-bad draft.
+  let llmError = false;
   try {
     const retryUser = `${userPrompt}
 
@@ -120,13 +160,14 @@ Rewrite it. Use ONLY the driver values above, reference no number that isn't a d
     const second = await callOpenAI(model, systemPrompt, retryUser, maxTokens);
     const secondValidation = validate(second);
     if (secondValidation.ok) {
-      return done({ voice: second, validation: secondValidation, usedFallback: false, attempts: 2 });
+      return done({ voice: second, validation: secondValidation, usedFallback: false, attempts: 2, llmError: false });
     }
     note(secondValidation);
     log?.warn(`voice validator caught draft 2: ${logNote(secondValidation)}`);
     validation = secondValidation;
   } catch (e) {
-    log?.error(`voice retry LLM call failed: ${e instanceof Error ? e.message : String(e)}`);
+    llmError = true;
+    llmFailed(2, e);
   }
 
   // Last resort: guaranteed-clean deterministic read.
@@ -136,5 +177,6 @@ Rewrite it. Use ONLY the driver values above, reference no number that isn't a d
     validation,
     usedFallback: true,
     attempts: 2,
+    llmError,
   });
 }

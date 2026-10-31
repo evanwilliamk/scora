@@ -777,6 +777,7 @@ Write today's read using only these drivers.`;
         drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers", surface: 'daily',
+        fallbackOnLlmError: true, // an outage still sends a validated read
         // Library mode: no advice relayed from a passage, no number lifted from one.
         check: (v) => [
           ...postureClaimHits(v, posture.backed ? posture.result.posture : null),
@@ -1380,6 +1381,7 @@ Write this week's review using only these drivers.`;
         drivers,
         maxTokens: 320,
         leadIn: 'This week', surface: 'weekly',
+        fallbackOnLlmError: true,
         log: fastify.log,
       });
       voice = result.voice;
