@@ -724,3 +724,10 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: on a spring-forward day, 2:30 was sent as minute 210 (3:30).
 - Choice: the picker edits a plain time of day in UTC; tests cover every minute, four DST days, 12h and 24h. The unsaved-delivery retry drops any 4xx except 408 and 429 (401 included, so a choice made before an expired session is not resent), and times out at 10 s.
 - To reverse: revert the OnboardingView.swift commits on the branch.
+
+### 2026-10-31: Chat weekday chart counts weeks with a run, like the voice
+- Status: DECIDED
+- Branch: claude/cdv-weekday-chart-weeks
+- Context: the chart counted runs per weekday while the voice line counted weeks, so two runs on one Thursday made them disagree.
+- Choice: one shared helper; the chart shows weeks with a run (0 to 6), axis "Weeks with a run". Alternative: the voice counts runs.
+- To reverse: revert the cdv-chart.ts commits on the branch.
