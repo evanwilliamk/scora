@@ -152,3 +152,18 @@ test('a METRIC line with banned phrasing is not shown as a driver, even when its
   assert.equal(r.fallback, false);
   assert.deepEqual(r.drivers.map((d) => d.metric), ['Runs']);
 });
+
+test('the voice is the first prose line: a leading blank or CHART line never leaves it empty (review 10-31)', () => {
+  for (const raw of ['\n18.4 miles this week.\nMETRIC: This week | VALUE: 18.4 mi', 'CHART: weekly_miles\n18.4 miles this week.\nMETRIC: This week | VALUE: 18.4 mi']) {
+    const p = parseCdvLines(raw);
+    assert.equal(p.voice, '18.4 miles this week.');
+    assert.equal(p.metricLines.length, 1);
+  }
+  // A reply that is only METRIC lines has no voice to show.
+  const r = checkCdvWithRetry('METRIC: This week | VALUE: 18.4 mi', DATA, 'How is my week?', async () => 'METRIC: Runs | VALUE: 3');
+  return r.then((x) => {
+    assert.equal(x.checked.fallback, true);
+    assert.notEqual(x.checked.voice.trim(), '');
+    assert.doesNotMatch(x.checked.voice, /METRIC:/);
+  });
+});

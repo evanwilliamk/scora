@@ -72,7 +72,8 @@ export function checkCdvReply(voice: string, metricLines: Driver[], data: unknow
     const n = String(parseFloat(dec));
     if (!dataDecimals.has(n) && !v.unbackedNumbers.includes(n)) v.unbackedNumbers.push(n);
   }
-  v.ok = v.ok && v.unbackedNumbers.length === 0;
+  // An empty voice is no answer, so it falls back like a failed one.
+  v.ok = v.ok && v.unbackedNumbers.length === 0 && voice.trim() !== '';
   if (v.ok) return { voice, drivers, fallback: false, bannedHits: [], unbackedNumbers: [] };
   return {
     voice: drivers.length
@@ -89,15 +90,17 @@ export function checkCdvReply(voice: string, metricLines: Driver[], data: unknow
 // lines; the CHART line is read separately (cdv-chart.ts).
 export function parseCdvLines(text: string): { voice: string; metricLines: Driver[] } {
   const lines = stripChartLine(text).split('\n');
+  // The voice is the first prose line: never a blank line or a METRIC line.
+  const voiceAt = lines.findIndex((l) => l.trim() !== '' && !l.includes('METRIC:'));
   const metricLines: Driver[] = [];
-  for (const line of lines.slice(1)) {
+  for (const line of lines) {
     if (!line.includes('METRIC:')) continue;
     const metric = line.match(/METRIC:\s*([^|]+)/)?.[1]?.trim();
     const value = line.match(/VALUE:\s*([^|]+)/)?.[1]?.trim();
     const trend = line.match(/TREND:\s*(.+)$/)?.[1]?.trim();
     if (metric && value) metricLines.push({ metric, value, ...(trend ? { trend } : {}) });
   }
-  return { voice: lines[0] || '', metricLines };
+  return { voice: voiceAt >= 0 ? lines[voiceAt].trim() : '', metricLines };
 }
 
 // Check the reply; on a catch, ask once more with the violations named (as
@@ -122,7 +125,7 @@ export async function checkCdvWithRetry(
   const issues = [
     ...first.bannedHits.map((b) => `banned phrasing (${b})`),
     ...(first.unbackedNumbers.length ? [`numbers not in the data: ${first.unbackedNumbers.join(', ')}`] : []),
-  ].join('; ');
+  ].join('; ') || 'no one-sentence answer on line 1';
   try {
     const raw2 = await retry(`Your previous answer was rejected for: ${issues}. Rewrite it in the same format. Use only numbers written exactly as they appear in the data.`);
     const second = check(raw2);
