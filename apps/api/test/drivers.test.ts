@@ -274,7 +274,7 @@ import { postureEvidence } from '../src/drivers';
 test('low sleep-score nights are named as scores, not as short sleep (review 10-31)', () => {
   const ev = postureEvidence({
     posture: 'back-off', rule: 'back-off', engine_version: 'test',
-    reasoning: [{ rule: 'back-off', met: true, clauses: [{ driver: 'consecutive_low_sleep_nights', value: 3, op: '>=', threshold: 2, met: true }] }],
+    reasoning: [{ rule: 'back-off', met: true, evidence: [{ driver: 'consecutive_low_sleep_nights', value: 3, op: '>=', threshold: 2, met: true }] }],
   } as any);
   assert.equal(ev.length, 1);
   assert.doesNotMatch(ev[0].metric, /short/i);

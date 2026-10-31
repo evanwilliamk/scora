@@ -52,6 +52,10 @@ export interface RuleTrace {
   rule: RuleId;
   met: boolean;
   clauses: Clause[];
+  // The clauses that made this rule fire: for an OR rule, only the branches
+  // that completed. Empty when the rule did not fire. The read cites only
+  // these (CLAUDE.md §3.2).
+  evidence: Clause[];
 }
 
 export interface PostureResult {

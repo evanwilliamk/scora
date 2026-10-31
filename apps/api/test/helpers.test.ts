@@ -27,8 +27,8 @@ test('postureEvidence: only the fired rule, only met clauses with values, one dr
   const result: any = {
     rule: 'r1',
     reasoning: [
-      { rule: 'r0', clauses: [clause('days_since_long_effort', true, 9)] },
-      { rule: 'r1', clauses: [clause('days_since_long_effort', true, 3), clause('days_since_long_effort', true, 3), clause('days_since_long_effort', false, 5), clause('unknown_driver', true, 1), clause('days_since_long_effort', true, null)] },
+      { rule: 'r0', evidence: [clause('days_since_long_effort', true, 9)] },
+      { rule: 'r1', evidence: [clause('days_since_long_effort', true, 3), clause('days_since_long_effort', true, 3), clause('days_since_long_effort', false, 5), clause('unknown_driver', true, 1), clause('days_since_long_effort', true, null)] },
     ],
   };
   assert.deepEqual(postureEvidence(result), [{ metric: 'Days since long effort', value: '3' }]);

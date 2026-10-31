@@ -36,11 +36,30 @@ function isTrue(driver: string, value: boolean | null | undefined): Clause {
 }
 
 const all = (cs: Clause[]) => cs.every((c) => c.met);
-const any = (groups: Clause[][]) => groups.some(all);
+
+interface Evaluation {
+  met: boolean;
+  clauses: Clause[]; // every clause checked (audit trail)
+  evidence: Clause[]; // only the clauses that made the rule fire
+}
+
+// One branch that needs every clause (AND).
+function allOf(clauses: Clause[]): Evaluation {
+  const met = all(clauses);
+  return { met, clauses, evidence: met ? clauses : [] };
+}
+
+// Branches joined by OR, each an AND group. Evidence is the clauses of the
+// branches that completed; a true clause on a branch that did not complete
+// did not make the rule fire, so the voice may not cite it.
+function anyOf(groups: Clause[][]): Evaluation {
+  const fired = groups.filter(all);
+  return { met: fired.length > 0, clauses: groups.flat(), evidence: fired.flat() };
+}
 
 interface Rule {
   id: Exclude<RuleId, 'default'>;
-  evaluate(d: PostureDrivers, b: UserBaselines): { met: boolean; clauses: Clause[] };
+  evaluate(d: PostureDrivers, b: UserBaselines): Evaluation;
 }
 
 const weeklyChronic = (d: PostureDrivers): number | null => {
@@ -57,7 +76,7 @@ const RULES: Rule[] = [
         cmp('days_since_long_effort', d.days_since_long_effort, '<', T.taper.max_days_since_long_effort),
         cmp('load_7d', d.load_7d, '>', weeklyChronic(d)),
       ];
-      return { met: all(clauses), clauses };
+      return allOf(clauses);
     },
   },
   {
@@ -71,7 +90,7 @@ const RULES: Rule[] = [
         cmp('hrv_7d_avg_delta', d.hrv_7d_avg_delta, '<', T.rest.hrv_7d_avg_delta_below),
         cmp('rhr_7d_avg_delta', d.rhr_7d_avg_delta, '>', T.rest.rhr_7d_avg_delta_above),
       ];
-      return { met: any([a, c]), clauses: [...a, ...c] };
+      return anyOf([a, c]);
     },
   },
   {
@@ -83,18 +102,18 @@ const RULES: Rule[] = [
         cmp('sleep_7d_avg_delta', d.sleep_7d_avg_delta, '<', T.backOff.sleep_7d_avg_delta_below),
         cmp('consecutive_low_sleep_nights', d.consecutive_low_sleep_nights, '>=', T.backOff.min_consecutive_low_sleep_nights),
       ];
-      return { met: any([a, h, s]), clauses: [...a, ...h, ...s] };
+      return anyOf([a, h, s]);
     },
   },
   {
     id: 'moderate',
     evaluate(d) {
-      const clauses = [
-        cmp('acwr', d.acwr, '>', T.moderate.acwr_above),
-        cmp('sleep_7d_avg_delta', d.sleep_7d_avg_delta, '<', T.moderate.sleep_7d_avg_delta_below),
-        cmp('rhr_7d_avg_delta', d.rhr_7d_avg_delta, '>', T.moderate.rhr_7d_avg_delta_above),
-      ];
-      return { met: clauses.some((c) => c.met), clauses };
+      // Three single-clause branches: any one fires it.
+      return anyOf([
+        [cmp('acwr', d.acwr, '>', T.moderate.acwr_above)],
+        [cmp('sleep_7d_avg_delta', d.sleep_7d_avg_delta, '<', T.moderate.sleep_7d_avg_delta_below)],
+        [cmp('rhr_7d_avg_delta', d.rhr_7d_avg_delta, '>', T.moderate.rhr_7d_avg_delta_above)],
+      ]);
     },
   },
   {
@@ -106,7 +125,7 @@ const RULES: Rule[] = [
         cmp('consecutive_hard_days', d.consecutive_hard_days, '=', T.primed.max_consecutive_hard_days),
         cmp('hrv_7d_avg_delta', d.hrv_7d_avg_delta, '>=', T.primed.hrv_7d_avg_delta_min),
       ];
-      return { met: all(clauses), clauses };
+      return allOf(clauses);
     },
   },
 ];
@@ -114,12 +133,12 @@ const RULES: Rule[] = [
 export function computePosture(drivers: PostureDrivers, baselines: UserBaselines = {}): PostureResult {
   const reasoning: RuleTrace[] = [];
   for (const rule of RULES) {
-    const { met, clauses } = rule.evaluate(drivers, baselines);
-    reasoning.push({ rule: rule.id, met, clauses });
+    const { met, clauses, evidence } = rule.evaluate(drivers, baselines);
+    reasoning.push({ rule: rule.id, met, clauses, evidence });
     if (met) {
       return { posture: rule.id as Posture, rule: rule.id, engine_version: POSTURE_ENGINE_VERSION, reasoning };
     }
   }
-  reasoning.push({ rule: 'default', met: true, clauses: [] });
+  reasoning.push({ rule: 'default', met: true, clauses: [], evidence: [] });
   return { posture: 'steady', rule: 'default', engine_version: POSTURE_ENGINE_VERSION, reasoning };
 }

@@ -238,7 +238,9 @@ export function postureEvidence(result: PostureResult): Driver[] {
   const fired = result.reasoning.find((t) => t.rule === result.rule);
   if (!fired || result.rule === 'default') return [];
   const out: Driver[] = [];
-  for (const c of fired.clauses) {
+  // evidence, not clauses: a true clause on an OR branch that did not
+  // complete is not a reason the rule fired.
+  for (const c of fired.evidence ?? []) {
     if (!c.met || c.value === null || !EVIDENCE[c.driver]) continue;
     const d = EVIDENCE[c.driver](c.value);
     if (!out.some((x) => x.metric === d.metric)) out.push(d);
