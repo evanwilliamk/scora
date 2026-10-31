@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChartKind, stripChartLine, buildChartSpec, hasBlockedKey, CHART_KINDS } from '../src/cdv-chart';
+import { parseChartKind, stripChartLine, buildChartSpec, hasBlockedKey, CHART_KINDS, sixWeekRuns, weekdayRunDates } from '../src/cdv-chart';
 
 const now = Date.UTC(2026, 9, 17, 12); // Saturday
 const day = 86400000;
@@ -158,4 +158,18 @@ test("weekday_runs spans the athlete's last 42 local days, so no weekday counts 
   });
   const spec: any = buildChartSpec('weekday_runs', sats, now, '2026-10-17');
   assert.equal(spec.data.values.find((x: any) => x.day === 'Sat').runs, 6);
+});
+
+test('weekday_runs counts weeks with a run, matching the voice line (two runs on one Thursday count once)', () => {
+  // today Sat Oct 17; Thursdays Oct 15 (two runs), Oct 8, Oct 1, Sep 24.
+  const at = (date: string, hh: number) => {
+    const iso = `${date}T${String(hh).padStart(2, '0')}:00:00Z`;
+    return { type: 'Run', start_date: iso, start_date_local: iso, distance: 8000, moving_time: 2400 };
+  };
+  const thursdays = [at('2026-10-15', 7), at('2026-10-15', 18), at('2026-10-08', 7), at('2026-10-01', 7), at('2026-09-24', 7)];
+  const spec: any = buildChartSpec('weekday_runs', thursdays, now, '2026-10-17');
+  const voiceWeeks = weekdayRunDates(sixWeekRuns(thursdays, '2026-10-17'))[4].size;
+  assert.equal(voiceWeeks, 4);
+  assert.equal(spec.data.values.find((x: any) => x.day === 'Thu').weeks, voiceWeeks);
+  assert.equal(spec.encoding.y.title, 'Weeks with a run');
 });
