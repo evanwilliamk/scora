@@ -279,3 +279,20 @@ export function postureForRead(
     promptLine: backed ? `POSTURE (decided by SCORA's rules from the drivers, ${result.engine_version}): ${result.posture}` : '',
   };
 }
+
+// The read may name only the posture the rules decided (null: none). The
+// words that are not everyday English count anywhere; "steady", "moderate"
+// and "rest" also describe numbers, so they count only tied to "posture".
+// Returns one hit per posture claimed that is not the decided one.
+const POSTURE_WORDS: { posture: string; re: RegExp }[] = [
+  { posture: 'primed', re: /\bprimed\b/i },
+  { posture: 'back-off', re: /\bback[\s-]?off\b/i },
+  { posture: 'taper', re: /\btaper(?:s|ed|ing)?\b/i },
+  { posture: 'steady', re: /\bposture\b[^.]{0,24}\bsteady\b/i },
+  { posture: 'moderate', re: /\bposture\b[^.]{0,24}\bmoderate\b/i },
+  { posture: 'rest', re: /\bposture\b[^.]{0,24}\brest\b/i },
+];
+
+export function postureClaimHits(voice: string, posture: string | null): string[] {
+  return POSTURE_WORDS.filter((w) => w.posture !== posture && w.re.test(voice)).map((w) => `posture ${w.posture}`);
+}

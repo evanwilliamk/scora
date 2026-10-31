@@ -90,3 +90,19 @@ test('the telemetry line records whether the emitted text passed (gate 1.1.4)', 
   const events = lines.map((l) => JSON.parse(l.slice('telemetry '.length)));
   assert.deepEqual(events.map((e) => [e.fallback, e.final_ok]), [[true, true], [false, true]]);
 });
+
+test('an extra check (the read\'s posture) counts as a catch: retry, then fallback', async () => {
+  const calls = stubOpenAI(['Load is 412 min. The body reads primed.', 'Load is 412 min. Still primed.']);
+  const check = (v: string) => (/primed/i.test(v) ? ['posture primed'] : []);
+  const r = await generateValidatedVoice({ ...params, check });
+  assert.equal(calls.length, 2);
+  assert.match(calls[1].messages[1].content, /posture primed/);
+  assert.equal(r.usedFallback, true);
+  assert.doesNotMatch(r.voice, /primed/i);
+});
+
+test('an extra check passing on the retry uses the retry', async () => {
+  stubOpenAI(['Load is 412 min. The body reads primed.', 'Load is 412 min, up 8% on the week.']);
+  const r = await generateValidatedVoice({ ...params, check: (v) => (/primed/i.test(v) ? ['posture primed'] : []) });
+  assert.deepEqual([r.voice, r.attempts, r.usedFallback], ['Load is 412 min, up 8% on the week.', 2, false]);
+});

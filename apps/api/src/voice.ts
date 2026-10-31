@@ -14,6 +14,9 @@ interface GenerateParams {
   maxTokens?: number;
   leadIn?: string; // prefix for the deterministic fallback
   surface?: VoiceSurface; // for the telemetry line
+  // Surface-specific checks (the daily read's posture). Each hit is treated
+  // like a banned phrase: fed back for the retry, then the fallback.
+  check?: (voice: string) => string[];
   log?: { warn: (msg: string) => void; error: (msg: string) => void; info?: (msg: string) => void };
 }
 
@@ -77,14 +80,20 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     leadIn = 'Where things sit',
     surface,
     log,
+    check,
   } = params;
+  const validate = (text: string): ValidationResult => {
+    const v = validateVoice(text, drivers);
+    const extra = check ? check(text) : [];
+    return extra.length ? { ...v, ok: false, bannedHits: [...v.bannedHits, ...extra] } : v;
+  };
   // Every catch across both drafts, for the hit-rate telemetry.
   const seen: string[] = [];
   let unbacked = 0;
   const done = (r: GenerateResult): GenerateResult => {
     // A model draft is only returned once it passed; the fallback is checked
     // here too, so a fail-through would show in the gate report.
-    const finalOk = r.usedFallback ? validateVoice(r.voice, drivers).ok : r.validation.ok;
+    const finalOk = r.usedFallback ? validate(r.voice).ok : r.validation.ok;
     if (surface) trackVoice(log, { surface, attempts: r.attempts, fallback: r.usedFallback, bannedHits: seen, unbackedCount: unbacked, finalOk });
     return r;
   };
@@ -93,7 +102,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
   // Attempt 1. A hard failure here propagates so the endpoint can 500 (matches
   // the prior inline behaviour).
   const first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens);
-  let validation = validateVoice(first, drivers);
+  let validation = validate(first);
   if (validation.ok) {
     return done({ voice: first, validation, usedFallback: false, attempts: 1 });
   }
@@ -109,7 +118,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
 Your previous draft was rejected for: ${violationNote(validation)}.
 Rewrite it. Use ONLY the driver values above, reference no number that isn't a driver, no banned phrasing, no exclamation points, no emoji.`;
     const second = await callOpenAI(model, systemPrompt, retryUser, maxTokens);
-    const secondValidation = validateVoice(second, drivers);
+    const secondValidation = validate(second);
     if (secondValidation.ok) {
       return done({ voice: second, validation: secondValidation, usedFallback: false, attempts: 2 });
     }
