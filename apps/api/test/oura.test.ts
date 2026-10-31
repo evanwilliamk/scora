@@ -141,3 +141,14 @@ test('the night before last is not last night: ring off or not yet synced (revie
   assert.equal(s.readinessScore, null);
   assert.equal(s.nights!.length, 2);
 });
+
+test('fetchOuraSummary gives its Oura calls a timeout, so a hung route cannot hold the read', async () => {
+  const signals: unknown[] = [];
+  globalThis.fetch = (async (_url: string, init: any) => {
+    signals.push(init?.signal);
+    return { ok: true, json: async () => ({ data: [] }) };
+  }) as any;
+  await fetchOuraSummary('t');
+  assert.equal(signals.length, 3);
+  assert.ok(signals.every((s) => s instanceof AbortSignal));
+});

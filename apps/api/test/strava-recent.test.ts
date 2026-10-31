@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchRecentActivities } from '../src/strava';
+import { fetchActivitiesSince, fetchRecentActivities } from '../src/strava';
 
 test('fetchRecentActivities asks by date, pages, and returns newest first', async () => {
   const now = Date.UTC(2026, 9, 29, 12);
@@ -22,4 +22,19 @@ test('fetchRecentActivities asks by date, pages, and returns newest first', asyn
 
 test('fetchRecentActivities passes a Strava refusal up', async () => {
   await assert.rejects(fetchRecentActivities('t', 15, (async () => ({ ok: false, status: 401 })) as any), /Strava 401/);
+});
+
+test('fetchActivitiesSince gives each Strava page a timeout, so a hung call cannot hold the read', async () => {
+  const inits: any[] = [];
+  const fake = (async (_url: string, init: any) => { inits.push(init); return { ok: true, json: async () => [] }; }) as any;
+  await fetchActivitiesSince('t', 0, fake);
+  assert.ok(inits[0]?.signal instanceof AbortSignal, 'request carries an abort signal');
+});
+
+test('fetchActivitiesSince rejects a non-list body and drops non-object entries', async () => {
+  const obj = (async () => ({ ok: true, json: async () => ({ message: 'odd' }) })) as any;
+  await assert.rejects(fetchActivitiesSince('t', 0, obj), /Strava returned no activity list/);
+  const mixed = (async () => ({ ok: true, json: async () => [null, 3, 'x', { id: 1, start_date: '2026-10-01T00:00:00Z' }] })) as any;
+  const got = await fetchActivitiesSince('t', 0, mixed);
+  assert.deepEqual(got.map((a) => a.id), [1]);
 });
