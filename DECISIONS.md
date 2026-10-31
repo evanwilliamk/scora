@@ -661,3 +661,24 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: /api/plan/generate accepted 2026-02-30 and failed deeper in.
 - Choice: calendar-checked up front with the route's existing sentence.
 - To reverse: revert the plan-generate.ts commit.
+
+### 2026-10-31: Numbers in driver names back nothing, except a quoted day window
+- Status: DECIDED
+- Branch: claude/validator-name-digits
+- Context: digits inside driver names ("Load (7d)") counted as backed values, so "7 hours of sleep" passed with no 7 in the data.
+- Choice: only values and trends back numbers; a name's number passes only as a day window ("over 7 days", "7-day") that some driver name states. Fallback reads quote names like "Load (7d)", so the window stays allowed. Alternative: no exception (fallback reads would need rewording).
+- To reverse: revert the validator.ts commit on the branch.
+
+### 2026-10-31: Cited drivers either open a chart or are listed as not chartable
+- Status: DECIDED
+- Branch: claude/tappable-drivers
+- Context: CLAUDE.md §3.4; the read could cite acute:chronic, hard days, days since long effort, peak HR, sleep score and plan drivers with no chart.
+- Choice: series added for acute:chronic, hard days, days since long effort, peak avg HR; "vs week" drivers open the existing HRV/resting HR/load charts. Not chartable, with a reason in NOT_CHARTABLE: sleep score (Oura scores are stored undated), Long effort (needs more than the 35 days fetched), plan drivers (the plan, not body data), weekly drivers. A test fails if a new driver is in neither list.
+- To reverse: revert the branch; to chart sleep score, store Oura scores with their date in oura.ts.
+
+### 2026-10-31: The app asks the API whether onboarding is done after sign-in
+- Status: DECIDED
+- Branch: claude/onboarding-resume
+- Context: signing out and in again ran onboarding again; a failed save on "Skip for now" was never retried.
+- Choice: after sign-in the app reads `onboarded` from GET /api/preferences (existing onboarded_at) and skips onboarding; an unsaved delivery choice is kept on the phone and resent on launch or sign-in (dropped for a different athlete or a 400). A brief spinner covers the check so step 1 does not flash. No API or schema change.
+- To reverse: revert the three Swift commits on the branch.
