@@ -142,6 +142,10 @@ function numberTokens(text: string): string[] {
   return (joined.match(/\d+(?:\.\d+)?/g) || []).map((n) => String(parseFloat(n)));
 }
 
+// A day window as driver names and the voice write it: "7d", "(28d)",
+// "7-day", "7 days", "last 7 full days".
+const WINDOW_PHRASE = /(?<![\d.:,])(\d+)(?:\s?d\b|[\s-]days?\b|\s+full\s+days?\b)/gi;
+
 // What the checks read: the model's typography folded to plain text, so a
 // curly apostrophe ("I’m your coach"), a doubled or non-breaking space
 // ("you  should"), fullwidth or Arabic-Indic digits ("９９", "٩٩") and "½"
@@ -208,14 +212,19 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   if (EXCLAMATION.test(voice)) bannedHits.push('exclamation point');
   if (EMOJI.test(voice)) bannedHits.push('emoji');
 
-  // Driver-existence: every number in the voice must appear in some driver.
+  // Driver-existence: every number in the voice must appear in some driver
+  // value or trend. A driver NAME backs no number ("Load (7d)" does not back
+  // "7 hours"); it only lets the voice quote that name's window as a window
+  // ("over 7 days", "the 7-day average"), which is removed before the check.
   const allowed = new Set<string>();
   for (const d of drivers) {
-    for (const tok of numberTokens(`${d.metric} ${d.value} ${d.trend ?? ''}`)) {
+    for (const tok of numberTokens(`${d.value} ${d.trend ?? ''}`)) {
       allowed.add(tok);
     }
   }
-  const unbackedNumbers = [...new Set(numberTokens(voice))].filter((n) => !allowed.has(n));
+  const windows = new Set(drivers.flatMap((d) => [...d.metric.matchAll(WINDOW_PHRASE)].map((m) => String(parseFloat(m[1])))));
+  const numberText = windows.size ? voice.replace(WINDOW_PHRASE, (w, n: string) => (windows.has(String(parseFloat(n))) ? ' ' : w)) : voice;
+  const unbackedNumbers = [...new Set(numberTokens(numberText))].filter((n) => !allowed.has(n));
   for (const w of wordNumbers(voice)) if (!allowed.has(w.value)) unbackedNumbers.push(w.word);
   // A driver number cited with a unit must carry a unit the driver has:
   // "HRV 52 bpm" is not backed by "52ms". A number some driver states with no
