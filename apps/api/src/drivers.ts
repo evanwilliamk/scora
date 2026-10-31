@@ -227,7 +227,7 @@ const EVIDENCE: Record<string, (v: number | boolean) => Driver> = {
   consecutive_hard_days: (v) => ({ metric: 'Hard days in a row', value: String(v) }),
   sleep_last_night_score: (v) => ({ metric: 'Sleep score', value: String(v) }),
   sleep_7d_avg_delta: (v) => ({ metric: 'Sleep score vs week', value: `${Number(v) > 0 ? '+' : ''}${v} pts` }),
-  consecutive_low_sleep_nights: (v) => ({ metric: 'Short-sleep nights in a row', value: String(v) }),
+  consecutive_low_sleep_nights: (v) => ({ metric: 'Low sleep score nights in a row', value: String(v) }),
   hrv_7d_avg_delta: (v) => ({ metric: 'HRV vs week', value: `${Number(v) > 0 ? '+' : ''}${v}%` }),
   rhr_7d_avg_delta: (v) => ({ metric: 'Resting HR vs week', value: `${Number(v) > 0 ? '+' : ''}${v} bpm` }),
   days_since_long_effort: (v) => ({ metric: 'Days since long effort', value: String(v) }),
