@@ -296,3 +296,18 @@ test('postureEvidence cites only the branch of the rest rule that fired (review 
   assert.equal(result.posture, 'rest');
   assert.deepEqual(postureEvidence(result).map((d) => d.metric), ['Hard days in a row', 'Sleep score']);
 });
+
+test('postureClaimHits: an everyday word near "posture" is not a second posture (review 10-31 pass 2)', () => {
+  assert.deepEqual(postureClaimHits('Posture is steady and the rest of the numbers agree.', 'steady'), []);
+  assert.deepEqual(postureClaimHits('Posture reads moderate; steady sleep at 7:12 keeps it there.', 'moderate'), []);
+  assert.deepEqual(postureClaimHits('With HRV at 52ms and posture steady, rest of the week looks clean.', 'steady'), []);
+  assert.deepEqual(postureClaimHits('The read stays at moderate posture, sleep 7:12 at rest.', 'moderate'), []);
+  // Still caught when the word is the posture.
+  assert.deepEqual(postureClaimHits('Posture reads rest this morning.', 'steady'), ['posture rest']);
+  assert.deepEqual(postureClaimHits('A steady posture this morning.', 'back-off'), ['posture steady']);
+  assert.deepEqual(postureClaimHits('Posture: moderate.', 'steady'), ['posture moderate']);
+});
+
+test("postureClaimHits: the plan's taper in one sentence does not excuse a taper claim in another", () => {
+  assert.deepEqual(postureClaimHits("The plan's taper starts Monday. The body already reads like a taper.", 'steady'), ['posture taper']);
+});

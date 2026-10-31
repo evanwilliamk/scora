@@ -284,19 +284,24 @@ export function postureForRead(
 
 // The read may name only the posture the rules decided (null: none). The
 // words that are not everyday English count anywhere; "steady", "moderate"
-// and "rest" also describe numbers, so they count only tied to "posture".
+// and "rest" also describe numbers, so they count only when they are the
+// posture itself ("posture is steady", "posture: rest", "a moderate
+// posture"), not a nearby word ("posture is steady and the rest ...").
 // Returns one hit per posture claimed that is not the decided one.
-const POSTURE_WORDS: { posture: string; re: RegExp }[] = [
-  { posture: 'primed', re: /\bprimed\b/i },
-  { posture: 'back-off', re: /\bback[\s-]?off\b/i },
-  // A taper the plan schedules ("the plan's taper starts Monday", "taper
-  // phase") is the plan, not the posture, so it does not count.
-  { posture: 'taper', re: /^(?!.*\b(?:plan|phase|block)\b[^.]{0,24}\btaper).*\btaper(?:s|ed|ing)?\b(?!\s+(?:phase|block))/is },
-  { posture: 'steady', re: /\bposture\b[^.]{0,24}\bsteady\b/i },
-  { posture: 'moderate', re: /\bposture\b[^.]{0,24}\bmoderate\b/i },
-  { posture: 'rest', re: /\bposture\b[^.]{0,24}\brest\b/i },
+const tiedToPosture = (word: string) =>
+  new RegExp(String.raw`\bposture\b(?:\s+(?:today\s+)?(?:reads|is|sits|stays|remains|holds|lands)(?:\s+(?:at|as))?)?[\s:,]+(?:a\s+)?${word}\b|\b${word}\s+posture\b`, 'i');
+// A taper the plan schedules ("the plan's taper starts Monday", "taper
+// phase") is the plan, not the posture, so it does not count. Judged per
+// sentence, so the plan's taper never excuses a claim in another sentence.
+const TAPER = /\btaper(?:s|ed|ing)?\b(?!\s+(?:phase|block))/i;
+const PLAN_TAPER = /\b(?:plan|phase|block)\b[^.]{0,24}\btaper/i;
+const POSTURE_WORDS: { posture: string; test: (voice: string) => boolean }[] = [
+  { posture: 'primed', test: (v) => /\bprimed\b/i.test(v) },
+  { posture: 'back-off', test: (v) => /\bback[\s-]?off\b/i.test(v) },
+  { posture: 'taper', test: (v) => v.split(/(?<=[.?;])\s+/).some((s) => TAPER.test(s) && !PLAN_TAPER.test(s)) },
+  ...['steady', 'moderate', 'rest'].map((p) => ({ posture: p, test: (v: string) => tiedToPosture(p).test(v) })),
 ];
 
 export function postureClaimHits(voice: string, posture: string | null): string[] {
-  return POSTURE_WORDS.filter((w) => w.posture !== posture && w.re.test(voice)).map((w) => `posture ${w.posture}`);
+  return POSTURE_WORDS.filter((w) => w.posture !== posture && w.test(voice)).map((w) => `posture ${w.posture}`);
 }
