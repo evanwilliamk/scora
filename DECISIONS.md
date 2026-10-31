@@ -687,7 +687,7 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Status: DECIDED
 - Branch: claude/posture-review
 - Context: rest and back-off rules with two branches cited true values from the branch that did not fire.
-- Choice: the engine records the firing clauses per rule; postureEvidence cites only those. Postures unchanged. Open: race_in_next_7d counts race day plus 7 days before (8 days); plan-engine's T-7 freeze should match, worth a look.
+- Choice: the engine records the firing clauses per rule; postureEvidence cites only those. Postures unchanged. Open: race_in_next_7d counts race day plus 7 days before (8 days); checked: plan-engine's T-7 freeze uses the same 0 to 7 day window, so they agree.
 - To reverse: revert the two commits on the branch.
 
 ### 2026-10-31: Dashboard keeps the newest load and says when a refresh failed
