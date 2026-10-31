@@ -163,7 +163,9 @@ enum WatchSend {
   // Only sessions the Watch can run as written, from today to a week out.
   static let daysAhead = 7
 
-  static func canSend(type: String, steps: [PlanStep]?, date: String, today: String) -> Bool {
+  // A rest day is never sent, whatever steps its row carries.
+  static func canSend(type: String, intensity: String? = nil, steps: [PlanStep]?, date: String, today: String) -> Bool {
+    guard intensity != "rest" else { return false }
     guard let steps, !steps.isEmpty, (try? WorkoutExport.activity(for: type)) != nil else { return false }
     guard let d = day(date), let t = day(today) else { return false }
     // Both dates are UTC midnights; counting in UTC keeps a DST change in the
