@@ -33,15 +33,31 @@ enum OnboardingState {
     set { UserDefaults.standard.set(newValue, forKey: key) }
   }
 
+  // The picker edits a plain time of day. Anchored to today in the phone's
+  // zone, a daylight saving change day has no 2:30 (it became 3:30, sent as
+  // 210) or two 1:30s. So the picker runs on a fixed day in UTC, which has no
+  // such days; the phone's locale still decides 12 or 24 hour display.
+  static let pickerCalendar: Calendar = {
+    var c = Calendar(identifier: .gregorian)
+    c.timeZone = TimeZone(identifier: "UTC")!
+    c.locale = .autoupdatingCurrent
+    return c
+  }()
+  private static let pickerDay = Date(timeIntervalSinceReferenceDate: 0) // 2001-01-01 00:00 UTC
+
   // Minutes after local midnight, as the API stores it.
-  static func deliveryMinute(from date: Date, calendar: Calendar = .current) -> Int {
+  static func deliveryMinute(from date: Date, calendar: Calendar = pickerCalendar) -> Int {
     let c = calendar.dateComponents([.hour, .minute], from: date)
     return (c.hour ?? 6) * 60 + (c.minute ?? 0)
   }
 
-  static func defaultDeliveryTime(calendar: Calendar = .current) -> Date {
-    calendar.date(bySettingHour: 6, minute: 0, second: 0, of: Date()) ?? Date()
+  // The picker's value for a minute of the day.
+  static func deliveryTime(minute: Int) -> Date {
+    let m = ((minute % 1440) + 1440) % 1440
+    return pickerDay.addingTimeInterval(TimeInterval(m * 60))
   }
+
+  static func defaultDeliveryTime() -> Date { deliveryTime(minute: 6 * 60) }
 
   // "America/Los_Angeles" -> "Los Angeles"
   static func zoneLabel(_ zone: TimeZone) -> String {
@@ -132,6 +148,9 @@ struct OnboardingView: View {
         DatePicker("Delivery time", selection: $deliveryTime, displayedComponents: .hourAndMinute)
           .datePickerStyle(.wheel)
           .labelsHidden()
+          // Plain time of day: see OnboardingState.pickerCalendar.
+          .environment(\.timeZone, OnboardingState.pickerCalendar.timeZone)
+          .environment(\.calendar, OnboardingState.pickerCalendar)
           .colorScheme(.dark)
         if let errorText {
           Text(errorText).font(.footnote).foregroundColor(.gray)
@@ -334,7 +353,7 @@ enum OnboardingSync {
   static func hasPending(for athleteId: String) -> Bool { pending?.athleteId == athleteId }
 
   // Sends the waiting choice. True when nothing is left to send: delivered,
-  // refused for good (400), or it belonged to another athlete (dropped, so it
+  // refused for good (a 4xx other than 408 or 429), or it belonged to another athlete (dropped, so it
   // is never sent under the wrong id).
   @discardableResult
   static func flush(athleteId: String) async -> Bool {
@@ -343,6 +362,8 @@ enum OnboardingSync {
     guard let url = URL(string: "\(apiBase)/api/preferences") else { return false }
     var req = URLRequest(url: url)
     req.httpMethod = "PUT"
+    // Sign-in waits on this; the system default would hold it for a minute.
+    req.timeoutInterval = 10
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: [
       "athleteId": p.athleteId,
@@ -357,11 +378,17 @@ enum OnboardingSync {
       if pending == p { pending = nil }
       return true
     }
-    if status == 400 {
+    if isFinalRefusal(status) {
       if pending == p { pending = nil }
       return true
     }
     return false
+  }
+
+  // A 4xx the API gives every time, so resending on each launch only repeats
+  // it. A timeout (408) or rate limit (429) may pass next time.
+  static func isFinalRefusal(_ status: Int) -> Bool {
+    (400..<500).contains(status) && status != 408 && status != 429
   }
 
   // Whether the API has this athlete's onboarding on record (onboarded_at).
