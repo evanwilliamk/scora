@@ -198,6 +198,8 @@ export async function fetchActivitiesSince(
   for (let page = 1; page <= maxPages; page++) {
     const res = await fetchImpl(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${afterSec}&page=${page}`, {
       headers: { Authorization: `Bearer ${token}` },
+      // A hung page must not hold the read (and the scheduler tick behind it).
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Strava ${res.status}`);
     const batch = (await res.json()) as any[];
