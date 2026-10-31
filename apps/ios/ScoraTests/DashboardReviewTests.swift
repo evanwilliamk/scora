@@ -94,6 +94,23 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertTrue(gate.isLatest(second))
   }
 
+  // The newer load fails (offline, cancelled pull to refresh) after an older
+  // one already answered: the older reply was the only read, so it lands.
+  // A reply older than one already shown never puts earlier numbers back.
+  func testOlderReplyLandsUnlessANewerOneAlreadyDid() {
+    var gate = ReadLoadGate()
+    let first = gate.begin()
+    let second = gate.begin()
+    XCTAssertTrue(gate.accept(first), "nothing newer has landed yet")
+    XCTAssertFalse(gate.isLatest(first), "the spinner stays for the load still in flight")
+    XCTAssertTrue(gate.accept(second))
+
+    let third = gate.begin()
+    let fourth = gate.begin()
+    XCTAssertTrue(gate.accept(fourth))
+    XCTAssertFalse(gate.accept(third), "late and older than what is shown")
+  }
+
   // A refresh that fails while a read is on screen keeps the read and says so,
   // with the same line, never a second "pull to refresh" under the error.
   func testFailedRefreshNotice() {

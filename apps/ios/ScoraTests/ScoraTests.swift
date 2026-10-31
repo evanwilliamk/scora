@@ -714,6 +714,63 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(OnboardingStep.done.next)
     }
 
+    // MARK: - Delivery time picker
+
+    // Every minute of the day comes back as itself.
+    func testDeliveryTimeRoundTripsEveryMinute() {
+        for m in 0..<1440 {
+            XCTAssertEqual(OnboardingState.deliveryMinute(from: OnboardingState.deliveryTime(minute: m)), m)
+        }
+        XCTAssertEqual(OnboardingState.deliveryMinute(from: OnboardingState.defaultDeliveryTime()), 360)
+    }
+
+    // On a daylight saving change day the phone's own clock skips 2:00 to 3:00
+    // (spring) or runs 1:00 to 2:00 twice (fall). The picker edits a plain
+    // time of day, so 2:30 is 150 and 1:30 is 90, whatever day and zone the
+    // phone is in.
+    func testDeliveryTimeIgnoresTheDSTChangeDayInThePhonesZone() throws {
+        let savedZone = NSTimeZone.default
+        defer { NSTimeZone.default = savedZone }
+        let changes: [(String, DateComponents)] = [
+            ("America/New_York", DateComponents(year: 2026, month: 3, day: 8)),
+            ("America/New_York", DateComponents(year: 2026, month: 11, day: 1)),
+            ("Europe/London", DateComponents(year: 2026, month: 3, day: 29)),
+            ("Australia/Sydney", DateComponents(year: 2026, month: 10, day: 4)),
+        ]
+        for (id, day) in changes {
+            let zone = try XCTUnwrap(TimeZone(identifier: id))
+            NSTimeZone.default = zone
+            var local = Calendar(identifier: .gregorian)
+            local.timeZone = zone
+            // Sanity: the day really is a change day in that zone.
+            let start = try XCTUnwrap(local.date(from: day))
+            XCTAssertNotEqual(zone.secondsFromGMT(for: start), zone.secondsFromGMT(for: start.addingTimeInterval(86_400)), id)
+            for m in [0, 60, 90, 120, 150, 179, 180, 210, 360, 1439] {
+                XCTAssertEqual(OnboardingState.deliveryMinute(from: OnboardingState.deliveryTime(minute: m)), m, "\(id) \(m)")
+            }
+        }
+    }
+
+    // A 12-hour and a 24-hour locale send the same minute, and the picker's
+    // wall clock reads the same time in each.
+    func testDeliveryTimeInTwelveAndTwentyFourHourLocales() {
+        let t = OnboardingState.deliveryTime(minute: 18 * 60 + 30)
+        for id in ["en_US", "en_GB", "de_DE", "ja_JP", "ar_EG"] {
+            var cal = OnboardingState.pickerCalendar
+            cal.locale = Locale(identifier: id)
+            XCTAssertEqual(OnboardingState.deliveryMinute(from: t, calendar: cal), 1110, id)
+        }
+        let f = DateFormatter()
+        f.timeZone = OnboardingState.pickerCalendar.timeZone
+        f.locale = Locale(identifier: "en_US")
+        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: f.locale)
+        let us = f.string(from: t)
+        XCTAssertTrue(us.hasPrefix("6:30") && us.hasSuffix("PM"), us)
+        f.locale = Locale(identifier: "de_DE")
+        f.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: f.locale)
+        XCTAssertEqual(f.string(from: t), "18:30")
+    }
+
     func testDeliveryMinuteAndZoneLabel() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
@@ -826,6 +883,36 @@ final class ScoraTests: XCTestCase {
         status = 400
         _ = await OnboardingSync.flush(athleteId: "a1")
         XCTAssertNil(OnboardingSync.pending)
+    }
+
+    // A refusal the API will give every time (404, 422) is dropped like a 400,
+    // so it is not resent on every launch. A busy or slow API (408, 429, 5xx)
+    // keeps it. The send is short, so the sign-in wait screen cannot sit for
+    // the system's 60 second default.
+    func testSkippedOnboardingRetryDropsPermanentRefusalsAndIsShort() async throws {
+        let saved = OnboardingSync.transport
+        defer { OnboardingSync.transport = saved; OnboardingSync.pending = nil; TimeZoneSync.forget() }
+        var sent: [URLRequest] = []
+        var status = 0
+        OnboardingSync.transport = { req in sent.append(req); return (status, Data()) }
+        let choice = PendingOnboarding(athleteId: "a1", timezone: "Europe/London", deliveryMinute: 420)
+
+        for code in [404, 409, 413, 422] {
+            OnboardingSync.keep(choice)
+            status = code
+            let done = await OnboardingSync.flush(athleteId: "a1")
+            XCTAssertTrue(done, "\(code)")
+            XCTAssertNil(OnboardingSync.pending, "\(code) is final")
+        }
+        for code in [408, 429, 500, 503] {
+            OnboardingSync.keep(choice)
+            status = code
+            let done = await OnboardingSync.flush(athleteId: "a1")
+            XCTAssertFalse(done, "\(code)")
+            XCTAssertEqual(OnboardingSync.pending, choice, "\(code) is retried")
+        }
+        let req = try XCTUnwrap(sent.last)
+        XCTAssertLessThanOrEqual(req.timeoutInterval, 10)
     }
 
     // MARK: - CDV chart
