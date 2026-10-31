@@ -21,7 +21,13 @@ export interface Card {
   trend?: string; // e.g. "+12% wk", "flat", "6 days"
   source?: string; // "Strava" | "Oura" | "Apple Health"
   cta?: string; // shown when available === false
+  // Set only on an unavailable card whose data is missing because this source
+  // is not connected; null when the source is linked but has nothing tonight.
+  // Clients key the connect action off this, not off the cta text.
+  connect?: ConnectSource | null;
 }
+
+export type ConnectSource = 'oura' | 'strava' | 'healthkit';
 
 // A driver is one raw value the read is allowed to reference. The voice
 // validator (§3.2) checks every claim against this list.
@@ -114,6 +120,7 @@ export function buildDashboard(
       title: 'Sleep',
       available: false,
       source: 'Oura / Apple Health',
+      connect: connections.oura ? null : 'oura',
       cta: connections.oura
         ? 'No sleep recorded last night.'
         : 'Connect Oura or Apple Health to read your sleep.',
@@ -147,6 +154,7 @@ export function buildDashboard(
       title: 'Training Load',
       available: false,
       source: 'Strava',
+      connect: connections.strava ? null : 'strava',
       cta: 'No runs in the last two weeks.',
     });
   }
@@ -176,6 +184,7 @@ export function buildDashboard(
       title: 'Recent Intensity',
       available: false,
       source: 'Strava',
+      connect: connections.strava ? null : 'strava',
       cta: withHr.length === 0 && thisWeek.length > 0
         ? 'No heart-rate data on recent runs.'
         : 'No runs in the last week.',
@@ -207,6 +216,7 @@ export function buildDashboard(
       title: 'Recovery Signal',
       available: false,
       source: 'Oura',
+      connect: connections.oura ? null : 'oura',
       cta: connections.oura
         ? 'No HRV recorded last night.'
         : 'Connect Oura to read HRV and resting heart rate.',
@@ -246,6 +256,7 @@ export function buildDashboard(
       title: 'Long Effort Recency',
       available: false,
       source: 'Strava',
+      connect: connections.strava ? null : 'strava',
       cta: 'No runs in the last 30 days.',
     });
   }
