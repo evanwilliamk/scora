@@ -710,3 +710,17 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: an offline or failed changes load showed moved sessions with no reasons (CLAUDE.md §6.2: never silent).
 - Choice: a line saying the changes did not load, with Try again. Send to Watch is never offered on a rest session.
 - To reverse: revert the PlanView.swift commit.
+
+### 2026-10-31: An OpenAI outage sends the validated fallback read instead of a 500
+- Status: DECIDED
+- Branch: claude/llm-outage-fallback
+- Context: a failed first OpenAI call returned 500 for the daily and weekly reads, so the morning push waited for a retry 15 minutes later.
+- Choice: the read and weekly routes return the deterministic fallback (passes validateVoice), marked llmError, with no retry into the outage; each OpenAI call has a 20 s timeout in code. The day counts as sent, so a scheduled push during an outage is numbers-only; a manual open later still gets a fresh LLM read. Alternative: keep the 500 and let the scheduler retry for a fuller read, later.
+- To reverse: drop fallbackOnLlmError from the two calls in apps/api/src/index.ts.
+
+### 2026-10-31: Delivery time picker edits a time of day, not today's date
+- Status: DECIDED
+- Branch: claude/ios-review-1031
+- Context: on a spring-forward day, 2:30 was sent as minute 210 (3:30).
+- Choice: the picker edits a plain time of day in UTC; tests cover every minute, four DST days, 12h and 24h. The unsaved-delivery retry drops any 4xx except 408 and 429 (401 included, so a choice made before an expired session is not resent), and times out at 10 s.
+- To reverse: revert the OnboardingView.swift commits on the branch.
