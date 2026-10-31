@@ -118,3 +118,48 @@ test('deterministic: same inputs, same output', () => {
   const d = { ...base, acwr: 1.25, sleep_7d_avg_delta: -4 };
   assert.deepEqual(computePosture(d, baselines), computePosture(d, baselines));
 });
+
+// Evidence is only the clauses that made the fired rule fire (review 10-31).
+// A clause that was true on a branch that did not complete is not a reason.
+const evidenceOf = (over: PostureDrivers, b: UserBaselines = baselines) => {
+  const r = computePosture({ ...base, ...over }, b);
+  const fired = r.reasoning.find((t) => t.rule === r.rule)!;
+  return { posture: r.posture, drivers: fired.evidence.map((c) => c.driver) };
+};
+
+test('rest evidence: hard-days branch fired, a lone HRV drop is not listed', () => {
+  const e = evidenceOf({ consecutive_hard_days: 3, sleep_last_night_score: 65, hrv_7d_avg_delta: -12, rhr_7d_avg_delta: 1 });
+  assert.equal(e.posture, 'rest');
+  assert.deepEqual(e.drivers, ['consecutive_hard_days', 'sleep_last_night_score']);
+});
+
+test('rest evidence: HRV branch fired, a lone hard-day streak is not listed', () => {
+  const e = evidenceOf({ consecutive_hard_days: 3, sleep_last_night_score: 75, hrv_7d_avg_delta: -12, rhr_7d_avg_delta: 5 });
+  assert.equal(e.posture, 'rest');
+  assert.deepEqual(e.drivers, ['hrv_7d_avg_delta', 'rhr_7d_avg_delta']);
+});
+
+test('rest evidence: both branches fired, all four are listed', () => {
+  const e = evidenceOf({ consecutive_hard_days: 3, sleep_last_night_score: 65, hrv_7d_avg_delta: -12, rhr_7d_avg_delta: 5 });
+  assert.deepEqual(e.drivers, ['consecutive_hard_days', 'sleep_last_night_score', 'hrv_7d_avg_delta', 'rhr_7d_avg_delta']);
+});
+
+test('back-off evidence: acwr fired, a sleep dip without the streak is not listed', () => {
+  const e = evidenceOf({ acwr: 1.6, sleep_7d_avg_delta: -6, consecutive_low_sleep_nights: 1 });
+  assert.equal(e.posture, 'back-off');
+  assert.deepEqual(e.drivers, ['acwr']);
+});
+
+test('moderate and taper/primed evidence: each met trigger, nothing unmet', () => {
+  assert.deepEqual(evidenceOf({ acwr: 1.3, rhr_7d_avg_delta: 2.5 }).drivers, ['acwr', 'rhr_7d_avg_delta']);
+  assert.deepEqual(
+    evidenceOf({ race_in_next_7d: true, days_since_long_effort: 3, load_7d: 330 }).drivers,
+    ['race_in_next_7d', 'days_since_long_effort', 'load_7d'],
+  );
+});
+
+test('rules that did not fire, and the default, carry no evidence', () => {
+  const r = computePosture({ ...base, acwr: 1.3 }, baselines);
+  for (const t of r.reasoning.filter((t) => !t.met)) assert.deepEqual(t.evidence, []);
+  assert.deepEqual(computePosture(base, baselines).reasoning.at(-1)!.evidence, []);
+});

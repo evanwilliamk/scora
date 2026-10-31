@@ -286,3 +286,13 @@ test("postureClaimHits: the plan's own taper is the plan, not a posture claim", 
   assert.deepEqual(postureClaimHits('Two weeks out, the taper phase is next on the plan.', 'steady'), []);
   assert.deepEqual(postureClaimHits('Load has come down and the body reads like a taper.', 'steady'), ['posture taper']);
 });
+
+test('postureEvidence cites only the branch of the rest rule that fired (review 10-31)', async () => {
+  const { computePosture } = await import('@scora/posture');
+  const result = computePosture(
+    { consecutive_hard_days: 3, sleep_last_night_score: 65, hrv_7d_avg_delta: -12, rhr_7d_avg_delta: 1 },
+    { sleep_score_p25: 70, sleep_score_p75: 85 },
+  );
+  assert.equal(result.posture, 'rest');
+  assert.deepEqual(postureEvidence(result).map((d) => d.metric), ['Hard days in a row', 'Sleep score']);
+});
