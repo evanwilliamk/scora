@@ -202,9 +202,12 @@ export async function fetchActivitiesSince(
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Strava ${res.status}`);
-    const batch = (await res.json()) as any[];
-    out.push(...batch);
-    if (batch.length < 200) break;
+    const body: unknown = await res.json();
+    // Outside data: anything but a list is a failed pull, and entries that
+    // are not objects would crash the card math downstream.
+    if (!Array.isArray(body)) throw new Error('Strava returned no activity list');
+    out.push(...body.filter((a) => a !== null && typeof a === 'object'));
+    if (body.length < 200) break;
   }
   return out;
 }
