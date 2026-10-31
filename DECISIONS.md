@@ -696,3 +696,17 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: overlapping loads could restore older numbers; a failed refresh showed yesterday's read with no notice.
 - Choice: a load generation counter applies only the newest reply; a failed refresh shows the error line under the kept read. "Connect Oura" only on cards whose prompt asks to connect (keys on the API text starting "Connect"; a `connected` flag would be sturdier).
 - To reverse: revert the DashboardView.swift commits on the branch.
+
+### 2026-10-31: Library-mode reads get an extra check for relayed advice and lifted number words
+- Status: DECIDED
+- Branch: claude/knowledge-review
+- Context: with KNOWLEDGE_RETRIEVAL=on, a read could credit advice to a source ("Daniels would cut") or lift a spelled-out number from a passage ("three hard days") past the validator.
+- Choice: libraryClaimHits runs as the read's extra check (retry, then fallback); "one" is exempt as everyday English. A fallback read records no citations.
+- To reverse: drop libraryClaimHits from the daily read's check in apps/api/src/index.ts.
+
+### 2026-10-31: Your Plan says when plan changes failed to load
+- Status: DECIDED
+- Branch: claude/ios-settings-plan-review
+- Context: an offline or failed changes load showed moved sessions with no reasons (CLAUDE.md §6.2: never silent).
+- Choice: a line saying the changes did not load, with Try again. Send to Watch is never offered on a rest session.
+- To reverse: revert the PlanView.swift commit.
