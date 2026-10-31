@@ -643,16 +643,16 @@ struct DashboardView: View {
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
-    do {
-      let (data, resp) = try await URLSession.shared.data(for: req)
-      if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        let msg = APIErrorText.message(from: data, fallback: "The read could not load. Pull to try again.")
-        await MainActor.run {
-          guard loadGate.isLatest(token) else { return }
-          errorText = msg; isLoading = false
-        }
-        return
+    let outcome = await ReadFetch.run { try await URLSession.shared.data(for: req) }
+    guard case .data(let data) = outcome else {
+      await MainActor.run {
+        guard loadGate.isLatest(token) else { return }
+        // A cancelled pull to refresh leaves the read and says nothing.
+        errorText = outcome.errorLine; isLoading = false
       }
+      return
+    }
+    do {
       let decoded = try JSONDecoder().decode(ReadResponse.self, from: data)
       await MainActor.run {
         // A newer reply already landed: this one is older news.
@@ -671,9 +671,46 @@ struct DashboardView: View {
     } catch {
       await MainActor.run {
         guard loadGate.isLatest(token) else { return }
-        errorText = "The read could not load. Pull to try again."; isLoading = false
+        errorText = ReadFetch.failureLine; isLoading = false
       }
     }
+  }
+}
+
+// One read request, sorted into what the dashboard does with it. SwiftUI
+// cancels the refreshable task when a pull ends early or the view goes away;
+// URLSession then throws URLError.cancelled (or the task CancellationError).
+// That is not a failure: no error line, and the read on screen stays.
+enum ReadFetchOutcome: Equatable {
+  case data(Data)
+  case failed(String)
+  case cancelled
+
+  var errorLine: String? {
+    if case .failed(let line) = self { return line }
+    return nil
+  }
+}
+
+enum ReadFetch {
+  static let failureLine = "The read could not load. Pull to try again."
+
+  static func run(_ loader: () async throws -> (Data, URLResponse)) async -> ReadFetchOutcome {
+    do {
+      let (data, resp) = try await loader()
+      if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
+        return .failed(APIErrorText.message(from: data, fallback: failureLine))
+      }
+      return .data(data)
+    } catch {
+      return isCancellation(error) ? .cancelled : .failed(failureLine)
+    }
+  }
+
+  static func isCancellation(_ error: Error) -> Bool {
+    if error is CancellationError { return true }
+    if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+    return false
   }
 }
 
