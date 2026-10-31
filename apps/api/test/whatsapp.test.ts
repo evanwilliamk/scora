@@ -8,9 +8,10 @@ test('the morning message: numbers, read, today, link (CLAUDE.md §3.3)', () => 
     voice: 'Body is settled.\n  Load is where it should be.',
     today: '45 min tempo · 3 × 8 min at threshold',
     link: 'https://scora.app/r/abc',
+    drivers: [],
   });
   assert.equal(m, 'Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412\n\nBody is settled. Load is where it should be.\n\nToday: 45 min tempo · 3 × 8 min at threshold\n\nFull read: https://scora.app/r/abc');
-  const noPlan = composeDoorbell({ numbers: 'Sleep 7:12', voice: 'Settled.', today: null, link: 'L' });
+  const noPlan = composeDoorbell({ numbers: 'Sleep 7:12', voice: 'Settled.', today: null, link: 'L', drivers: [] });
   assert.equal(noPlan, 'Sleep 7:12\n\nSettled.\n\nFull read: L');
 });
 
@@ -97,7 +98,7 @@ test('a why reply runs through the validators and falls back when it invents a n
 test('review 6: a long read is shortened at a sentence so the message fits Twilio WhatsApp body limit', async () => {
   const { WHATSAPP_MAX_CHARS } = await import('../src/whatsapp');
   const sentence = 'Sleep held for the second night and the week reads settled so far. ';
-  const m = composeDoorbell({ numbers: 'Sleep 7:12', voice: sentence.repeat(60), today: '45 min tempo', link: 'https://scora.app/r/abc' });
+  const m = composeDoorbell({ numbers: 'Sleep 7:12', voice: sentence.repeat(60), today: '45 min tempo', link: 'https://scora.app/r/abc', drivers: [] });
   assert.ok(m.length <= WHATSAPP_MAX_CHARS, `length ${m.length}`);
   assert.match(m, /^Sleep 7:12\n\nSleep held/);
   assert.match(m, /settled so far\.\n\nToday: 45 min tempo\n\nFull read: https:\/\/scora\.app\/r\/abc$/, 'cut at a sentence end; today and link kept');
@@ -106,7 +107,18 @@ test('review 6: a long read is shortened at a sentence so the message fits Twili
 test('review 6: a decimal is not taken for a sentence end when the read is cut', async () => {
   const { WHATSAPP_MAX_CHARS } = await import('../src/whatsapp');
   const voice = 'Settled. ' + 'x'.repeat(WHATSAPP_MAX_CHARS - 40) + ' HRV 7.2 is up. More text follows here.';
-  const m = composeDoorbell({ numbers: 'N', voice, link: 'L' });
+  const m = composeDoorbell({ numbers: 'N', voice, link: 'L', drivers: [{ metric: 'HRV', value: '7.2' }] });
   assert.ok(m.length <= WHATSAPP_MAX_CHARS);
   assert.doesNotMatch(m, /7\.\n/);
+});
+
+test('review 6: the doorbell refuses a read the voice validators reject, and emoji or ! anywhere', () => {
+  const drivers = [{ metric: 'Sleep', value: '7:12' }, { metric: 'HRV', value: '52ms', trend: '+8% wk' }];
+  const base = { numbers: 'Sleep 7:12 · HRV 52ms (+8% wk)', today: '45 min tempo', link: 'L', drivers };
+  assert.doesNotThrow(() => composeDoorbell({ ...base, voice: 'Sleep held at 7:12 and HRV is climbing.' }));
+  assert.throws(() => composeDoorbell({ ...base, voice: 'You should run easy today.' }), /you should/);
+  assert.throws(() => composeDoorbell({ ...base, voice: 'HRV is 61ms.' }), /61/);
+  assert.throws(() => composeDoorbell({ ...base, voice: 'Settled.', today: '45 min tempo \u{1F525}' }), /emoji/);
+  assert.throws(() => composeDoorbell({ ...base, voice: 'Settled.', numbers: 'Sleep 7:12!' }), /exclamation/);
+  assert.throws(() => composeDoorbell({ ...base, voice: '   ' }), /empty/);
 });

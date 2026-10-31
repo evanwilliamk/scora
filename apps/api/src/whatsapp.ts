@@ -6,6 +6,7 @@
 // wait on Evan (money, privacy text).
 
 import crypto from 'node:crypto';
+import { validateVoice, type Driver } from './validator';
 
 // The morning message, numbers first (CLAUDE.md §3.3):
 //   Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412
@@ -29,12 +30,27 @@ function fitVoice(voice: string, room: number): string {
   return word ? `${word}\u2026` : '';
 }
 
-export function composeDoorbell(p: { numbers: string; voice: string; today?: string | null; link: string }): string {
+// The read must pass the voice validators against the drivers it cites
+// (CLAUDE.md §3.2, §4); the numbers and Today lines carry no emoji or
+// exclamation points (§3.7). Anything else throws: nothing unchecked is sent.
+export class DoorbellError extends Error {}
+
+const EMOJI = /\p{Extended_Pictographic}/u;
+
+export function composeDoorbell(p: { numbers: string; voice: string; today?: string | null; link: string; drivers: Driver[] }): string {
   const numbers = p.numbers.trim();
   const today = p.today ? p.today.replace(/\s+/g, ' ').trim() : '';
+  const read = p.voice.replace(/\s+/g, ' ').trim();
+  if (!read) throw new DoorbellError('empty read');
+  const check = validateVoice(read, p.drivers);
+  if (!check.ok) throw new DoorbellError(`read fails the voice validators: ${[...check.bannedHits, ...check.unbackedNumbers].join(', ')}`);
+  for (const line of [numbers, today]) {
+    if (EMOJI.test(line)) throw new DoorbellError('emoji in the message');
+    if (/[!\u00A1]/.test(line)) throw new DoorbellError('exclamation point in the message');
+  }
   const fixed = [numbers, today ? `Today: ${today}` : '', `Full read: ${p.link.trim()}`].filter(Boolean);
   const room = WHATSAPP_MAX_CHARS - fixed.join('\n\n').length - 2;
-  const voice = fitVoice(p.voice.replace(/\s+/g, ' ').trim(), room);
+  const voice = fitVoice(read, room);
   const parts = [numbers, voice, ...fixed.slice(numbers ? 1 : 0)];
   return parts.filter(Boolean).join('\n\n');
 }
