@@ -15,10 +15,27 @@ import crypto from 'node:crypto';
 //   Today: 45 min tempo · 3 × 8 min at threshold   (Plan and Coach tiers)
 //
 //   Full read: <link>
+//
+// Twilio caps a WhatsApp message body at 1,600 characters. The numbers, the
+// Today line and the link are kept whole; a read too long to fit is cut at
+// its last full sentence (or word) that fits.
+export const WHATSAPP_MAX_CHARS = 1600;
+
+function fitVoice(voice: string, room: number): string {
+  if (voice.length <= room) return voice;
+  // The last sentence end that fits; "7.2" is not one (no space after it).
+  for (let i = room - 1; i > 0; i--) if (/[.?]/.test(voice[i]) && voice[i + 1] === ' ') return voice.slice(0, i + 1);
+  const word = voice.slice(0, Math.max(0, room - 1)).replace(/\s+\S*$/, '');
+  return word ? `${word}\u2026` : '';
+}
+
 export function composeDoorbell(p: { numbers: string; voice: string; today?: string | null; link: string }): string {
-  const parts = [p.numbers.trim(), p.voice.replace(/\s+/g, ' ').trim()];
-  if (p.today && p.today.trim()) parts.push(`Today: ${p.today.trim()}`);
-  parts.push(`Full read: ${p.link}`);
+  const numbers = p.numbers.trim();
+  const today = p.today ? p.today.replace(/\s+/g, ' ').trim() : '';
+  const fixed = [numbers, today ? `Today: ${today}` : '', `Full read: ${p.link.trim()}`].filter(Boolean);
+  const room = WHATSAPP_MAX_CHARS - fixed.join('\n\n').length - 2;
+  const voice = fitVoice(p.voice.replace(/\s+/g, ' ').trim(), room);
+  const parts = [numbers, voice, ...fixed.slice(numbers ? 1 : 0)];
   return parts.filter(Boolean).join('\n\n');
 }
 
