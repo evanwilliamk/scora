@@ -46,3 +46,17 @@ test('weekly plan line: no planned run minutes, or a run with no duration, means
   assert.equal(weeklyPlanDriver(unknown, runs, FROM, TO), null);
   assert.equal(weeklyPlanDriver([], runs, FROM, TO), null);
 });
+
+test('weekly push: once per week, even when the athlete changes time zone that Monday', async () => {
+  const { dueDeliveries, defaultPrefs } = await import('../src/delivery');
+  // Sent Monday 06:00 in Tokyo (Sun 21:00 UTC), then moved to Los Angeles.
+  const sentTokyo = { ...defaultPrefs(), timezone: 'America/Los_Angeles', last_weekly_sent_on: '2026-11-02' };
+  assert.equal(dueDeliveries(sentTokyo, new Date(Date.UTC(2026, 10, 2, 14, 5))).weekly, false, 'LA Monday 06:05');
+  // Sent Monday 06:00 in Los Angeles, then moved to Tokyo: Tokyo is on Tuesday.
+  const sentLa = { ...defaultPrefs(), timezone: 'Asia/Tokyo', last_weekly_sent_on: '2026-11-02' };
+  for (let h = 0; h < 48; h++) {
+    assert.equal(dueDeliveries(sentLa, new Date(Date.UTC(2026, 10, 2, 14) + h * 3600_000)).weekly, false, `hour ${h}`);
+  }
+  // The next Monday it is due again.
+  assert.equal(dueDeliveries({ ...sentTokyo, delivery_minute: 360 }, new Date(Date.UTC(2026, 10, 9, 14, 5))).weekly, true);
+});
