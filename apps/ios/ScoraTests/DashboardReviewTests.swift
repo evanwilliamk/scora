@@ -122,6 +122,38 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertEqual(ReadStatus.of(hasRead: false, isLoading: false, error: nil), .empty)
   }
 
+  // A pull to refresh cut short (gesture ended early, view went away) is not a
+  // failure: no error line over a read that is fine. A real failure still says so.
+  func testCancelledRefreshShowsNoErrorLine() async {
+    let cancelled = await ReadFetch.run { throw CancellationError() }
+    XCTAssertEqual(cancelled, .cancelled)
+    XCTAssertNil(cancelled.errorLine)
+    XCTAssertEqual(ReadStatus.of(hasRead: true, isLoading: false, error: cancelled.errorLine), .shown)
+
+    let urlCancelled = await ReadFetch.run { throw URLError(.cancelled) }
+    XCTAssertEqual(urlCancelled, .cancelled)
+    XCTAssertNil(urlCancelled.errorLine)
+    XCTAssertEqual(ReadStatus.of(hasRead: true, isLoading: false, error: urlCancelled.errorLine), .shown)
+
+    let offline = await ReadFetch.run { throw URLError(.notConnectedToInternet) }
+    XCTAssertEqual(offline, .failed(ReadFetch.failureLine))
+    XCTAssertEqual(ReadStatus.of(hasRead: true, isLoading: false, error: offline.errorLine),
+                   .staleWithError(ReadFetch.failureLine))
+  }
+
+  // A 200 hands the body on; any other status is a failure with the server's line.
+  func testReadFetchStatusHandling() async {
+    let url = URL(string: "https://example.invalid/api/read")!
+    let ok = await ReadFetch.run {
+      (Data("{}".utf8), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    XCTAssertEqual(ok, .data(Data("{}".utf8)))
+    let down = await ReadFetch.run {
+      (Data(#"{"error":"Down for a minute."}"#.utf8), HTTPURLResponse(url: url, statusCode: 503, httpVersion: nil, headerFields: nil)!)
+    }
+    XCTAssertEqual(down, .failed("Down for a minute."))
+  }
+
   // Week So Far speaks full day names and counts minutes correctly.
   func testWeekSoFarSpokenLabels() {
     XCTAssertEqual(WeekSoFarDay(date: "2026-10-26", weekday: "Mon", runMin: 1).spokenLabel, "Monday, 1 minute")
