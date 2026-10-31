@@ -54,6 +54,15 @@ const INTENSITY_WORDS: Record<string, RegExp> = {
   steady_state: /\bsteady(?:[- ]state)?\b/i,
   moderate: /\bmoderate (?:run|session)\b/i,
 };
+// The words that say what a downgraded session became (looser than
+// INTENSITY_WORDS: "now easy" names the change as well as "now an easy run").
+const NEW_SESSION_WORDS: Partial<Record<string, RegExp>> = {
+  steady_state: /\bsteady\b/i,
+  endurance: /\bendurance\b/i,
+  easy: /\beasy\b/i,
+  recovery: /\brecovery\b/i,
+  moderate: /\bmoderate\b/i,
+};
 const POSTURES = ['primed', 'steady', 'moderate', 'back-off', 'rest', 'taper'];
 const DAY_FORMS: Record<string, RegExp> = Object.fromEntries(WEEKDAYS.map((day) => [
   day,
@@ -133,6 +142,10 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   for (const [kind, re] of Object.entries(INTENSITY_WORDS)) {
     if (!allowedTypes.has(kind) && re.test(t)) issues.push(`names ${kind}`);
   }
+
+  // A downgrade states what the session became; a line that only gives the
+  // cause never tells the athlete the plan changed.
+  if (d.type === 'downgraded' && !NEW_SESSION_WORDS[d.to_intensity]?.test(t)) issues.push(`missing ${d.to_intensity}`);
 
   // Posture: if the line names one, it is today's.
   for (const p of POSTURES) {

@@ -146,3 +146,10 @@ test('cut or reduced on a driver does not reject a move; on the session it does'
   ];
   for (const t of bad) assert.ok(reasonIssues(t, moved, evidence).includes('says shortened for a move'), t);
 });
+
+test('a downgrade line must name what the session became, or it does not state the change', () => {
+  assert.match(reasonIssues("Tuesday's intervals stay on the plan. HRV is 12% under your week.", downgraded, evidence).join(';'), /missing steady_state/);
+  assert.match(reasonIssues("Tuesday's intervals, with HRV 12% under your week.", downgraded, evidence).join(';'), /missing steady_state/);
+  // The fixed sentences always pass.
+  assert.deepEqual(reasonIssues(reasonText(downgraded), downgraded, []), []);
+});
