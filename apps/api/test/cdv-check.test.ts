@@ -142,3 +142,28 @@ test('a clock time never backs a decimal: "HRV 7.12" is not a 7:12 pace (review 
   const good = checkCdvReply('The last run held 7:12 per mile over 6.2 miles.', [], data, 'How was my last run?');
   assert.equal(good.fallback, false);
 });
+
+test('a METRIC line with banned phrasing is not shown as a driver, even when its numbers are real (review 10-31)', () => {
+  const r = checkCdvReply(
+    '18.4 miles over 3 runs this week.',
+    [{ metric: 'You should go easy', value: '18.4 mi' }, { metric: 'Runs', value: '3', trend: 'flat' }, { metric: 'Crush it this week', value: '3' }],
+    DATA, 'How is my week going?',
+  );
+  assert.equal(r.fallback, false);
+  assert.deepEqual(r.drivers.map((d) => d.metric), ['Runs']);
+});
+
+test('the voice is the first prose line: a leading blank or CHART line never leaves it empty (review 10-31)', () => {
+  for (const raw of ['\n18.4 miles this week.\nMETRIC: This week | VALUE: 18.4 mi', 'CHART: weekly_miles\n18.4 miles this week.\nMETRIC: This week | VALUE: 18.4 mi']) {
+    const p = parseCdvLines(raw);
+    assert.equal(p.voice, '18.4 miles this week.');
+    assert.equal(p.metricLines.length, 1);
+  }
+  // A reply that is only METRIC lines has no voice to show.
+  const r = checkCdvWithRetry('METRIC: This week | VALUE: 18.4 mi', DATA, 'How is my week?', async () => 'METRIC: Runs | VALUE: 3');
+  return r.then((x) => {
+    assert.equal(x.checked.fallback, true);
+    assert.notEqual(x.checked.voice.trim(), '');
+    assert.doesNotMatch(x.checked.voice, /METRIC:/);
+  });
+});

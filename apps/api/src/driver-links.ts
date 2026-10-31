@@ -96,14 +96,16 @@ const round = (v: number, dp: number) => Math.round(v * 10 ** dp) / 10 ** dp;
 
 // Body signals: the baseline is the mean of the nights in the 7 days before
 // the newest, as the read's "wk" comparisons use (oura.ts hrvWeekAvgMs).
-const series = (key: SeriesKey, label: string, unit: string, points: SeriesPoint[]): DriverSeries => {
+// The baseline keeps the series' own precision: HRV and resting HR are whole
+// numbers, as the read's week average is (oura.ts Math.round).
+const series = (key: SeriesKey, label: string, unit: string, points: SeriesPoint[], dp: number): DriverSeries => {
   const sorted = [...points].sort((a, b) => (a.date < b.date ? -1 : 1));
   const newest = sorted[sorted.length - 1]?.date;
   const weekFrom = newest ? new Date(Date.parse(`${newest}T00:00:00Z`) - 7 * DAY).toISOString().slice(0, 10) : '';
   const prior = sorted.slice(0, -1).filter((p) => p.date >= weekFrom).map((p) => p.value);
   return {
     key, label, unit, points: sorted,
-    baseline: prior.length > 0 ? round(prior.reduce((s, v) => s + v, 0) / prior.length, 1) : null,
+    baseline: prior.length > 0 ? round(prior.reduce((s, v) => s + v, 0) / prior.length, dp) : null,
   };
 };
 
@@ -148,9 +150,9 @@ export function buildDriverSeries(
   const sleep = pick((n) => (n.sleepSeconds == null ? null : n.sleepSeconds / 3600), 2);
   const hrv = pick((n) => n.hrvMs, 0);
   const rhr = pick((n) => n.restingHr, 0);
-  if (sleep.length >= 2) out.sleep = series('sleep', 'Hours slept', 'h', sleep);
-  if (hrv.length >= 2) out.hrv = series('hrv', 'HRV, nightly average', 'ms', hrv);
-  if (rhr.length >= 2) out.resting_hr = series('resting_hr', 'Resting heart rate', 'bpm', rhr);
+  if (sleep.length >= 2) out.sleep = series('sleep', 'Hours slept', 'h', sleep, 2);
+  if (hrv.length >= 2) out.hrv = series('hrv', 'HRV, nightly average', 'ms', hrv, 0);
+  if (rhr.length >= 2) out.resting_hr = series('resting_hr', 'Resting heart rate', 'bpm', rhr, 0);
   return out;
 }
 

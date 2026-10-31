@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureForRead, raceWithinWeek } from './drivers';
-import { SnapshotCache, planCardExpansion } from './card-expand';
+import { SnapshotCache, planCardExpansion, checkCardPosture } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations } from './knowledge-retrieval';
 import {
@@ -513,7 +513,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     }
     // The model picks a chart kind; the spec and its data come from the activities.
     const chartKind = parseChartKind(final.raw);
-    const chart = chartKind ? buildChartSpec(chartKind, activities, now) : null;
+    const chart = chartKind ? buildChartSpec(chartKind, activities, now, todayLocal) : null;
 
     return reply.send({
       voice: checked.voice,
@@ -860,7 +860,7 @@ fastify.post('/api/card-expand', async (request, reply) => {
       leadIn: card.title, surface: 'card',
       log: fastify.log,
     });
-    return reply.send({ cardId, reply: result.voice, drivers: plan.drivers, generated: true });
+    return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: true });
   } catch (e) {
     fastify.log.error(`Card expansion failed: ${e instanceof Error ? e.message : e}`);
     trackVoice(fastify.log, { surface: 'card', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0 });

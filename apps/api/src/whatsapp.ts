@@ -6,6 +6,7 @@
 // wait on Evan (money, privacy text).
 
 import crypto from 'node:crypto';
+import { validateVoice, type Driver } from './validator';
 
 // The morning message, numbers first (CLAUDE.md §3.3):
 //   Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412
@@ -15,10 +16,42 @@ import crypto from 'node:crypto';
 //   Today: 45 min tempo · 3 × 8 min at threshold   (Plan and Coach tiers)
 //
 //   Full read: <link>
-export function composeDoorbell(p: { numbers: string; voice: string; today?: string | null; link: string }): string {
-  const parts = [p.numbers.trim(), p.voice.replace(/\s+/g, ' ').trim()];
-  if (p.today && p.today.trim()) parts.push(`Today: ${p.today.trim()}`);
-  parts.push(`Full read: ${p.link}`);
+//
+// Twilio caps a WhatsApp message body at 1,600 characters. The numbers, the
+// Today line and the link are kept whole; a read too long to fit is cut at
+// its last full sentence (or word) that fits.
+export const WHATSAPP_MAX_CHARS = 1600;
+
+function fitVoice(voice: string, room: number): string {
+  if (voice.length <= room) return voice;
+  // The last sentence end that fits; "7.2" is not one (no space after it).
+  for (let i = room - 1; i > 0; i--) if (/[.?]/.test(voice[i]) && voice[i + 1] === ' ') return voice.slice(0, i + 1);
+  const word = voice.slice(0, Math.max(0, room - 1)).replace(/\s+\S*$/, '');
+  return word ? `${word}\u2026` : '';
+}
+
+// The read must pass the voice validators against the drivers it cites
+// (CLAUDE.md §3.2, §4); the numbers and Today lines carry no emoji or
+// exclamation points (§3.7). Anything else throws: nothing unchecked is sent.
+export class DoorbellError extends Error {}
+
+const EMOJI = /\p{Extended_Pictographic}/u;
+
+export function composeDoorbell(p: { numbers: string; voice: string; today?: string | null; link: string; drivers: Driver[] }): string {
+  const numbers = p.numbers.trim();
+  const today = p.today ? p.today.replace(/\s+/g, ' ').trim() : '';
+  const read = p.voice.replace(/\s+/g, ' ').trim();
+  if (!read) throw new DoorbellError('empty read');
+  const check = validateVoice(read, p.drivers);
+  if (!check.ok) throw new DoorbellError(`read fails the voice validators: ${[...check.bannedHits, ...check.unbackedNumbers].join(', ')}`);
+  for (const line of [numbers, today]) {
+    if (EMOJI.test(line)) throw new DoorbellError('emoji in the message');
+    if (/[!\u00A1]/.test(line)) throw new DoorbellError('exclamation point in the message');
+  }
+  const fixed = [numbers, today ? `Today: ${today}` : '', `Full read: ${p.link.trim()}`].filter(Boolean);
+  const room = WHATSAPP_MAX_CHARS - fixed.join('\n\n').length - 2;
+  const voice = fitVoice(read, room);
+  const parts = [numbers, voice, ...fixed.slice(numbers ? 1 : 0)];
   return parts.filter(Boolean).join('\n\n');
 }
 
@@ -36,6 +69,7 @@ export const PAUSE_MAX_DAYS = 30;
 
 // Opt-out words carriers and WhatsApp users expect to work, beyond "stop".
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'optout', 'revoke']);
+const STOP_FILLER = new Set(['please', 'now', 'all', 'me', 'my', 'it', 'this', 'the', 'these', 'them', 'messages', 'message', 'texts', 'whatsapp', 'subscription', 'thanks', 'thank', 'you', 'pls', 'plz']);
 
 // The reply set is bounded (PRD §5.B.2): anything else is 'unknown' and gets
 // the help text. Matching folds width and case, drops emoji, zero-width and
@@ -50,12 +84,16 @@ export function parseReply(text: string): ReplyCommand {
   // "cancel", "end" and "quit" stop only on their own ("end of week was good"
   // is not an opt-out); the unambiguous words stop wherever a message starts.
   const leading = ['stop', 'stopall', 'unsubscribe', 'optout', 'revoke'];
-  if (STOP_WORDS.has(t.replace(/ /g, '')) || leading.includes(first) || /^opt out\b/.test(t) || /^please (stop|unsubscribe)\b/.test(t)) {
+  // Any stop word, with only polite filler around it ("please cancel",
+  // "quit messages", "cancel my subscription"), stops too.
+  const rest = t.split(' ').filter((w) => !STOP_FILLER.has(w));
+  const politeStop = rest.length === 1 && STOP_WORDS.has(rest[0]) && rest.length < t.split(' ').length;
+  if (STOP_WORDS.has(t.replace(/ /g, '')) || leading.includes(first) || politeStop || /^opt out\b/.test(t) || /^please (stop|unsubscribe)\b/.test(t)) {
     return { cmd: 'stop' };
   }
   if (t === 'why') return { cmd: 'why' };
   if (t === 'more') return { cmd: 'more' };
-  if (t === 'resume' || t === 'start' || t === 'unpause') return { cmd: 'resume' };
+  if (t === 'resume' || t === 'start' || t === 'unpause' || t === 'unstop') return { cmd: 'resume' };
   if (t === 'help' || t === 'info') return { cmd: 'help' };
   const pause = /^pause(?: (\d{1,3}))?(?: days?)?$/.exec(t);
   if (pause) {
@@ -98,11 +136,38 @@ export function twilioSignature(authToken: string, url: string, params: Record<s
   return crypto.createHmac('sha1', authToken).update(data, 'utf8').digest('base64');
 }
 
+// Twilio may sign the URL with or without the scheme's default port
+// (":443"), so, like twilio-node's validateRequest, both forms are tried.
+// Every candidate is compared in constant time; any other port or host fails.
+function portVariants(url: string): string[] {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return [url];
+  }
+  const port = u.protocol === 'https:' ? '443' : u.protocol === 'http:' ? '80' : '';
+  if (!port) return [url];
+  const auth = u.username ? `${u.username}${u.password ? `:${u.password}` : ''}@` : '';
+  // Path, query and fragment exactly as written (URL would re-encode them).
+  const start = url.indexOf('//') + 2;
+  const end = url.slice(start).search(/[/?#]/);
+  const tail = end === -1 ? '' : url.slice(start + end);
+  const host = u.hostname; // IPv6 keeps its brackets
+  const bare = `${u.protocol}//${auth}${host}${tail}`;
+  const ported = `${u.protocol}//${auth}${host}:${port}${tail}`;
+  return [...new Set([url, bare, ported])];
+}
+
 export function verifyTwilioSignature(authToken: string, url: string, params: Record<string, string | string[]>, signature: string | undefined): boolean {
-  if (!authToken || !signature) return false;
-  const expected = Buffer.from(twilioSignature(authToken, url, params));
+  if (!authToken || typeof signature !== 'string' || !signature) return false;
   const given = Buffer.from(signature);
-  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
+  let ok = false;
+  for (const candidate of portVariants(url)) {
+    const expected = Buffer.from(twilioSignature(authToken, candidate, params));
+    if (expected.length === given.length && crypto.timingSafeEqual(expected, given)) ok = true;
+  }
+  return ok;
 }
 
 // 'why' and 'more' replies (doc 08 §5 and §6): LLM expansions of the morning

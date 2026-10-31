@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SnapshotCache, planCardExpansion, relatedDrivers } from '../src/card-expand';
+import { SnapshotCache, planCardExpansion, relatedDrivers, checkCardPosture } from '../src/card-expand';
 import { buildDashboard } from '../src/metrics';
 import { validateVoice } from '../src/validator';
 import type { OuraSummary } from '../src/oura';
@@ -81,4 +81,18 @@ test('the validator rejects an expansion that invents a number', () => {
   if (plan.kind !== 'llm') throw new Error('expected llm plan');
   assert.equal(validateVoice('HRV 52ms sits above the week, resting HR 48 bpm.', plan.drivers).ok, true);
   assert.equal(validateVoice('HRV 61ms is the highest this month.', plan.drivers).ok, false);
+});
+
+test('a card reply naming a posture the read did not decide falls back to the drivers (review 10-31)', () => {
+  const drivers = relatedDrivers('recovery_signal', withOura.drivers);
+  const ok = 'HRV 52ms sits above the week. The read is steady.';
+  assert.equal(checkCardPosture(ok, 'steady', drivers, 'Recovery Signal'), ok);
+  // A different posture, or one when the read had none, is not backed.
+  for (const [text, posture] of [['HRV 52ms reads as a back-off morning.', 'steady'], ['HRV 52ms, the body looks primed.', null], ['A taper read: HRV 52ms.', 'primed']] as const) {
+    const out = checkCardPosture(text, posture, drivers, 'Recovery Signal');
+    assert.match(out, /^Recovery Signal: HRV 52ms/);
+  }
+  // Ordinary words are not posture claims.
+  const plain = 'HRV 52ms has held steady, with a moderate load behind it.';
+  assert.equal(checkCardPosture(plain, null, drivers, 'Recovery Signal'), plain);
 });
