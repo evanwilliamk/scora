@@ -18,7 +18,7 @@ export type ChartKind = (typeof CHART_KINDS)[number];
 export const CHART_MENU = `- weekly_miles: total run miles per week, last 8 weeks
 - recent_pace: pace of the last 10 runs
 - recent_hr: average heart rate of the last 10 runs
-- weekday_runs: how many runs fell on each weekday, last 6 weeks
+- weekday_runs: in how many of the last 6 weeks each weekday had a run
 - none: no chart helps this question`;
 
 // `CHART: <kind>` anywhere in the reply, with or without markdown around the
@@ -53,6 +53,30 @@ const localDate = (a: any) => new Date(a.start_date_local || a.start_date);
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const dayLabel = (a: any) => { const d = localDate(a); return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`; };
+
+// Weekday patterns (chat voice and weekday_runs chart share these).
+// start_date_local's date part is the athlete's day.
+export const localRunDay = (a: any): string => String(a.start_date_local || a.start_date || '').slice(0, 10);
+
+// Runs in the athlete's last 42 local days ending `todayLocal` (YYYY-MM-DD):
+// exactly six of each weekday; a rolling 42 x 24h window would reach a seventh.
+export function sixWeekRuns(runs: any[], todayLocal: string): any[] {
+  const from = new Date(Date.parse(`${todayLocal}T00:00:00Z`) - 42 * DAY).toISOString().slice(0, 10);
+  return runs.filter((a) => { const d = localRunDay(a); return d > from && d <= todayLocal; });
+}
+
+// Index 0 (Sun) to 6 (Sat): local date to that day's runs. A weekday counts
+// once per week however many runs fell on it, so `.size` is weeks with a run.
+export function weekdayRunDates(runs: any[]): Map<string, any[]>[] {
+  const byDay = Array.from({ length: 7 }, () => new Map<string, any[]>());
+  for (const a of runs) {
+    const date = localRunDay(a);
+    const dates = byDay[new Date(`${date}T00:00:00Z`).getUTCDay()];
+    if (!dates) continue; // no readable date
+    dates.set(date, [...(dates.get(date) ?? []), a]);
+  }
+  return byDay;
+}
 
 // Layout only. Colors and fonts come from the app's own Vega config (a server
 // config.axis would replace it wholesale and drop the iOS label colors).
@@ -140,26 +164,21 @@ export function buildChartSpec(kind: ChartKind, activities: any[], now = Date.no
     };
   }
 
-  // weekday_runs: with the athlete's date, the 42 local days the chat's
-  // weekday patterns read (exactly six of each weekday); a rolling 42 x 24h
-  // window would reach into a seventh.
-  const localDay = (a: any) => String(a.start_date_local || a.start_date).slice(0, 10);
-  const from = todayLocal ? new Date(Date.parse(`${todayLocal}T00:00:00Z`) - 42 * DAY).toISOString().slice(0, 10) : null;
-  const six = from
-    ? runs.filter((a) => localDay(a) > from && localDay(a) <= todayLocal!)
-    : runs.filter((a) => startMs(a) > now - 42 * DAY);
+  // weekday_runs: weeks with a run on each weekday (0 to 6), from the same
+  // helpers as the chat's weekday patterns, so chart and voice cannot drift.
+  // Without the athlete's date, a rolling 42 x 24h window.
+  const six = todayLocal ? sixWeekRuns(runs, todayLocal) : runs.filter((a) => startMs(a) > now - 42 * DAY);
   if (six.length < 2) return null;
-  const counts = WEEKDAYS.map((day, i) => ({
-    day, order: i, runs: six.filter((a) => localDate(a).getUTCDay() === i).length,
-  }));
+  const byDay = weekdayRunDates(six);
+  const counts = WEEKDAYS.map((day, i) => ({ day, order: i, weeks: byDay[i].size }));
   return {
-    ...base('Runs by weekday, last 6 weeks'),
+    ...base('Weeks with a run by weekday, last 6 weeks'),
     data: { values: counts },
     mark: { type: 'bar', cornerRadiusEnd: 3 },
     encoding: {
       x: { field: 'day', type: 'ordinal', sort: { field: 'order' }, title: null },
-      y: { field: 'runs', type: 'quantitative', title: 'runs', axis: { tickMinStep: 1 } },
-      tooltip: [{ field: 'day' }, { field: 'runs' }],
+      y: { field: 'weeks', type: 'quantitative', title: 'Weeks with a run', scale: { domain: [0, 6] }, axis: { tickMinStep: 1 } },
+      tooltip: [{ field: 'day' }, { field: 'weeks', title: 'weeks with a run' }],
     },
   };
 }

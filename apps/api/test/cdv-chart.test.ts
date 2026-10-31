@@ -52,9 +52,9 @@ test('recent_hr skips runs without heart rate', () => {
   assert.deepEqual(spec.data.values.map((x: any) => x.value), [145, 140, 148, 150]);
 });
 
-test('weekday_runs counts runs per weekday over 6 weeks', () => {
+test('weekday_runs counts weeks with a run per weekday over 6 weeks', () => {
   const spec: any = buildChartSpec('weekday_runs', acts, now);
-  const total = spec.data.values.reduce((s: number, x: any) => s + x.runs, 0);
+  const total = spec.data.values.reduce((s: number, x: any) => s + x.weeks, 0);
   assert.equal(total, 5);
   assert.equal(spec.data.values.length, 7);
 });
@@ -98,7 +98,7 @@ test('a Sydney morning run lands in this week and on its local date', () => {
   const hr: any = buildChartSpec('recent_hr', acts2, readAt);
   assert.equal(hr.data.values.at(-1).date, 'Oct 18');
   const wd: any = buildChartSpec('weekday_runs', acts2, readAt);
-  assert.equal(wd.data.values.find((x: any) => x.day === 'Sun').runs, 1, 'Oct 18 2026 is a Sunday in Sydney');
+  assert.equal(wd.data.values.find((x: any) => x.day === 'Sun').weeks, 1, 'Oct 18 2026 is a Sunday in Sydney');
 });
 
 test('weeks older than the fetched data are left out, not drawn as zero', () => {
@@ -157,7 +157,7 @@ test("weekday_runs spans the athlete's last 42 local days, so no weekday counts 
     return { type: 'Run', start_date: new Date(t).toISOString(), start_date_local: new Date(t).toISOString(), distance: 8000, moving_time: 2400 };
   });
   const spec: any = buildChartSpec('weekday_runs', sats, now, '2026-10-17');
-  assert.equal(spec.data.values.find((x: any) => x.day === 'Sat').runs, 6);
+  assert.equal(spec.data.values.find((x: any) => x.day === 'Sat').weeks, 6);
 });
 
 test('weekday_runs counts weeks with a run, matching the voice line (two runs on one Thursday count once)', () => {

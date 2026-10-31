@@ -5,7 +5,7 @@ import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRece
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion, checkCardPosture } from './card-expand';
-import { CHART_MENU, parseChartKind, buildChartSpec } from './cdv-chart';
+import { CHART_MENU, parseChartKind, buildChartSpec, localRunDay, sixWeekRuns, weekdayRunDates } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations, citedChunks, libraryClaimHits } from './knowledge-retrieval';
 import {
   buildOuraAuthorizeUrl,
@@ -341,24 +341,19 @@ fastify.post('/api/cdv', async (request, reply) => {
     // Weekdays and "today" are the athlete's, never the server's (UTC on
     // Railway): start_date_local is local wall time marked Z, so its date part
     // is the athlete's day, and the app sends its local date.
-    const localDay = (a: any): string => String(a.start_date_local || a.start_date || '').slice(0, 10);
+    const localDay = localRunDay;
     const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
     const todayLocal = nearToday(body.today) ?? athleteLocalToday(activities);
     // The last six weeks by the athlete's dates: exactly six of each weekday.
-    const windowStart = new Date(Date.parse(`${todayLocal}T00:00:00Z`) - 42 * 86400000).toISOString().slice(0, 10);
-    const sixWeeks = runs.filter(a => { const d = localDay(a); return d > windowStart && d <= todayLocal; });
-    // Group by weekday, then by date: a weekday counts once per week, however
-    // many runs fell on it ("Thursdays in 4 of the last 6 weeks").
-    const byDay: Record<number, Map<string, any[]>> = {};
-    for (const a of sixWeeks) {
-      const date = localDay(a);
-      const dates = (byDay[weekdayOf(date)] ||= new Map());
-      dates.set(date, [...(dates.get(date) ?? []), a]);
-    }
+    // Grouped by weekday, then by date: a weekday counts once per week, however
+    // many runs fell on it ("Thursdays in 4 of the last 6 weeks"). The
+    // weekday_runs chart uses the same helpers, so the two cannot drift.
+    const byDay = weekdayRunDates(sixWeekRuns(runs, todayLocal));
     const weeksInWindow = 6;
-    const weekdayPatterns = Object.entries(byDay)
-      .map(([dow, dates]) => {
-        const d = Number(dow);
+    const weekdayPatterns = byDay
+      .map((dates, d) => ({ dates, d }))
+      .filter(({ dates }) => dates.size > 0)
+      .map(({ dates, d }) => {
         const arr = [...dates.values()].flat();
         const weeks = dates.size;
         // Per day run, so two runs on one Thursday add up to that Thursday.
