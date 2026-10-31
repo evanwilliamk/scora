@@ -682,3 +682,17 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: signing out and in again ran onboarding again; a failed save on "Skip for now" was never retried.
 - Choice: after sign-in the app reads `onboarded` from GET /api/preferences (existing onboarded_at) and skips onboarding; an unsaved delivery choice is kept on the phone and resent on launch or sign-in (dropped for a different athlete or a 400). A brief spinner covers the check so step 1 does not flash. No API or schema change.
 - To reverse: revert the three Swift commits on the branch.
+
+### 2026-10-31: Posture evidence lists only the clauses that made the rule fire
+- Status: DECIDED
+- Branch: claude/posture-review
+- Context: rest and back-off rules with two branches cited true values from the branch that did not fire.
+- Choice: the engine records the firing clauses per rule; postureEvidence cites only those. Postures unchanged. Open: race_in_next_7d counts race day plus 7 days before (8 days); checked: plan-engine's T-7 freeze uses the same 0 to 7 day window, so they agree.
+- To reverse: revert the two commits on the branch.
+
+### 2026-10-31: Dashboard keeps the newest load and says when a refresh failed
+- Status: DECIDED
+- Branch: claude/ios-dashboard-review
+- Context: overlapping loads could restore older numbers; a failed refresh showed yesterday's read with no notice.
+- Choice: a load generation counter applies only the newest reply; a failed refresh shows the error line under the kept read. "Connect Oura" only on cards whose prompt asks to connect (keys on the API text starting "Connect"; a `connected` flag would be sturdier).
+- To reverse: revert the DashboardView.swift commits on the branch.
