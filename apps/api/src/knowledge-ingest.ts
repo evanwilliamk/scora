@@ -52,6 +52,19 @@ export function parseExport(json: unknown): ExportEntry[] {
   });
 }
 
+// Parse the export file's text. JSON.parse's own message quotes a slice of the
+// file (passage text), so the error names the file and position only.
+export function parseExportText(text: string, label = 'Export'): ExportEntry[] {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    const pos = e instanceof Error ? /position (\d+)/.exec(e.message)?.[1] : undefined;
+    throw new IngestError(`${label} is not valid JSON${pos ? ` (near character ${pos})` : ''}`);
+  }
+  return parseExport(json);
+}
+
 // Split a passage into chunks no longer than maxChars, breaking at paragraph,
 // then sentence, then word boundaries. Consecutive chunks share up to
 // `overlap` characters of trailing context so an idea split across a boundary
@@ -211,10 +224,14 @@ export async function ingest(
     if (vectors.length !== slice.length) {
       throw new IngestError(`Embedder returned ${vectors.length} vectors for ${slice.length} texts`);
     }
-    for (let j = 0; j < slice.length; j++) {
-      if (vectors[j].length !== EMBEDDING_DIMS) {
-        throw new IngestError(`Embedding has ${vectors[j].length} dims, expected ${EMBEDDING_DIMS}`);
+    // Check the whole batch before writing any of it, so a bad vector never
+    // leaves a half-written batch behind.
+    for (const v of vectors) {
+      if (!Array.isArray(v) || v.length !== EMBEDDING_DIMS) {
+        throw new IngestError(`Embedding has ${Array.isArray(v) ? v.length : 'no'} dims, expected ${EMBEDDING_DIMS}`);
       }
+    }
+    for (let j = 0; j < slice.length; j++) {
       await deps.store.upsertChunk(ids.get(slice[j].sourceKey)!, slice[j], vectors[j]);
     }
   }

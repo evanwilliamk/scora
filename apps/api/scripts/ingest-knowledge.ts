@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import { parseExport, planIngest, ingest, openAiEmbedder, supabaseStore } from '../src/knowledge-ingest';
+import { parseExportText, planIngest, ingest, openAiEmbedder, supabaseStore } from '../src/knowledge-ingest';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -23,7 +23,7 @@ async function main() {
     process.exit(2);
   }
 
-  const entries = parseExport(JSON.parse(readFileSync(file, 'utf8')));
+  const entries = parseExportText(readFileSync(file, 'utf8'), file);
   if (sync && entries.length === 0) {
     console.error('Refusing --sync with an empty export: it would delete the whole library');
     process.exit(2);

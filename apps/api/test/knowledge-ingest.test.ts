@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import {
-  parseExport, chunkPassage, planIngest, ingest, sqlStore, supabaseStore, openAiEmbedder,
+  parseExport, parseExportText, chunkPassage, planIngest, ingest, sqlStore, supabaseStore, openAiEmbedder,
   IngestError, EMBEDDING_DIMS, EMBEDDING_MODEL, PRUNE_BATCH,
 } from '../src/knowledge-ingest';
 
@@ -273,4 +273,29 @@ test('supabaseStore sync lists stored ids page by page and deletes missing ones 
   assert.ok(deletes.every((ids) => ids.length <= PRUNE_BATCH));
   assert.equal(deletes.flat().length, 1248, 'each missing entry deleted once');
   await assert.rejects(supabaseStore(sb).pruneMissing([]), /no entries/);
+});
+
+// ---- review 2026-10-31 ----
+
+test('a bad vector anywhere in a batch writes nothing from that batch (review finding)', async () => {
+  const entries = parseExport(fixture);
+  const writes: string[] = [];
+  const store = { upsertSource: async () => 'id', upsertChunk: async (_s: string, c: any) => { writes.push(c.fieldcopy_entry_id); }, pruneEntry: async () => {}, pruneMissing: async () => {} };
+  const good = () => new Array(EMBEDDING_DIMS).fill(0.1);
+  // Last vector is short; a missing one is not even an array.
+  await assert.rejects(ingest(entries, { embed: async (t) => t.map((_, i) => (i === t.length - 1 ? [1] : good())), store }), /dims/);
+  assert.deepEqual(writes, []);
+  await assert.rejects(ingest(entries, { embed: async (t) => t.map((_, i) => (i === 0 ? (undefined as any) : good())), store }), IngestError);
+  assert.deepEqual(writes, []);
+});
+
+test('parseExportText turns invalid JSON into a clear IngestError without echoing the file (review finding)', () => {
+  const text = '[{"id": "a", "passage": "Sleep debt builds quietly over a week", }]';
+  assert.throws(() => parseExportText(text, 'export.json'), (e: unknown) => {
+    assert.ok(e instanceof IngestError);
+    assert.match((e as Error).message, /^export\.json is not valid JSON/);
+    assert.doesNotMatch((e as Error).message, /Sleep debt/);
+    return true;
+  });
+  assert.equal(parseExportText(JSON.stringify(fixture), 'export.json').length, parseExport(fixture).length);
 });
