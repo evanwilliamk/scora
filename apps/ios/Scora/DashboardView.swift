@@ -114,12 +114,20 @@ extension DashboardCard {
 }
 
 // Read loads can overlap (pull to refresh while an Oura or plan change reload
-// is in flight). Only the newest one's reply is applied, so an older reply
-// arriving late never puts the earlier numbers back.
+// is in flight). A reply lands unless a newer one already has, so an older
+// reply arriving late never puts the earlier numbers back, and a newer load
+// that fails never throws away the only read that came back. Errors and the
+// spinner follow the newest load alone.
 struct ReadLoadGate {
   private(set) var current = 0
+  private(set) var applied = 0
   mutating func begin() -> Int { current += 1; return current }
   func isLatest(_ token: Int) -> Bool { token == current }
+  mutating func accept(_ token: Int) -> Bool {
+    guard token > applied else { return false }
+    applied = token
+    return true
+  }
 }
 
 // What the top of Today's Read shows besides the read itself.
@@ -647,8 +655,8 @@ struct DashboardView: View {
       }
       let decoded = try JSONDecoder().decode(ReadResponse.self, from: data)
       await MainActor.run {
-        // A newer load is in flight: its reply is the one to show.
-        guard loadGate.isLatest(token) else { return }
+        // A newer reply already landed: this one is older news.
+        guard loadGate.accept(token) else { return }
         read = decoded.read
         posture = decoded.posture?.posture
         week = decoded.weekSoFar
@@ -657,7 +665,8 @@ struct DashboardView: View {
         readGeneration += 1
         loadedDay = day
         loadedAt = Date()
-        isLoading = false
+        // A newer load still in flight keeps the spinner.
+        if loadGate.isLatest(token) { isLoading = false }
       }
     } catch {
       await MainActor.run {
