@@ -146,3 +146,15 @@ test('body-signal baselines are the 7 nights before the newest, not the month (r
   assert.equal(s.hrv!.baseline, 45);
   assert.equal(s.hrv!.baselineLabel, undefined);
 });
+
+test('HRV and resting HR baselines are whole numbers, as the read rounds its week average (review 10-31)', () => {
+  const nights = [
+    { day: '2026-10-18', sleepSeconds: 25920, hrvMs: 52, restingHr: 47 },
+    { day: '2026-10-17', sleepSeconds: 25000, hrvMs: 50, restingHr: 48 },
+    { day: '2026-10-16', sleepSeconds: 26000, hrvMs: 47, restingHr: 49 },
+    { day: '2026-10-15', sleepSeconds: 27000, hrvMs: 48, restingHr: 49 },
+  ];
+  const s = buildDriverSeries([], { sleepSeconds: null, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: 48, nights }, '2026-10-18');
+  assert.equal(s.hrv!.baseline, 48); // the read's week avg: Math.round(48.33)
+  assert.equal(s.resting_hr!.baseline, 49); // Math.round(48.67)
+});
