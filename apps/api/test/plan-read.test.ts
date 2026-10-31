@@ -211,3 +211,11 @@ test('todayLine: only for a SCORA session with steps; pasted plans and rest days
   assert.equal(todayLine(w('rest', []), describeWorkout), null);
   assert.equal(todayLine(null, describeWorkout), null);
 });
+
+test('Plan today driver reads in words, never a storage key like steady_state (review 10-31)', () => {
+  const d = planDriver(w(TODAY, 'steady_state', { planned_duration_min: 45 }));
+  assert.equal(d.value, 'steady state, 45 min');
+  assert.equal(readNamesPlan("Today's steady-state session sits on a settled night.", d), true);
+  assert.equal(readNamesPlan("Today's steady state session sits on a settled night.", d), true);
+  assert.equal(planForRead([w(TODAY, 'steady_state', { planned_duration_min: 45 })], TODAY).promptLine.includes('_'), false);
+});
