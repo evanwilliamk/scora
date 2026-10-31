@@ -205,6 +205,11 @@ export interface OuraSummary {
   // Dated nights, newest first, last night included: the series behind the
   // inline charts (driver-links.ts). One entry per night (longest period).
   nights?: { day: string; sleepSeconds: number | null; hrvMs: number | null; restingHr: number | null }[];
+  // Dated daily sleep scores, newest first, the scored night included: the
+  // series behind the Sleep score chart. Dated by the morning the night ends,
+  // as Oura's daily_sleep `day` is. Never newer than the night sleepScore
+  // reads, so the chart's newest point is the number the read cites.
+  sleepScoreNights?: { day: string; score: number }[];
 }
 
 // Pull the last week of Oura data and reduce it to the values the two cards
@@ -304,6 +309,9 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
         .slice(0, 28)
         .map((r) => r.score)
         .filter((v) => typeof v === 'number');
+      summary.sleepScoreNights = rows
+        .filter((r) => typeof r.day === 'string' && typeof r.score === 'number' && (!night || r.day <= night.day))
+        .map((r) => ({ day: r.day, score: r.score }));
     }
   } catch {
     // leave null
