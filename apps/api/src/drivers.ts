@@ -289,7 +289,7 @@ export function postureForRead(
 // posture"), not a nearby word ("posture is steady and the rest ...").
 // Returns one hit per posture claimed that is not the decided one.
 const tiedToPosture = (word: string) =>
-  new RegExp(String.raw`\bposture\b(?:\s+(?:today\s+)?(?:reads|is|sits|stays|remains|holds|lands)(?:\s+(?:at|as))?)?[\s:,]+(?:a\s+)?${word}\b|\b${word}\s+posture\b`, 'i');
+  new RegExp(String.raw`\bposture\b(?:\s+(?:(?:today|this morning)\s+)?(?:reads|is|sits|stays|remains|holds|lands)(?:\s+(?:at|as))?)?[\s:,]+(?:a\s+)?${word}\b|\b${word}\s+posture\b`, 'i');
 // A taper the plan schedules ("the plan's taper starts Monday", "taper
 // phase") is the plan, not the posture, so it does not count. Judged per
 // sentence, so the plan's taper never excuses a claim in another sentence.

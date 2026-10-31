@@ -306,6 +306,7 @@ test('postureClaimHits: an everyday word near "posture" is not a second posture 
   assert.deepEqual(postureClaimHits('Posture reads rest this morning.', 'steady'), ['posture rest']);
   assert.deepEqual(postureClaimHits('A steady posture this morning.', 'back-off'), ['posture steady']);
   assert.deepEqual(postureClaimHits('Posture: moderate.', 'steady'), ['posture moderate']);
+  assert.deepEqual(postureClaimHits('Posture this morning reads rest.', 'steady'), ['posture rest']);
 });
 
 test("postureClaimHits: the plan's taper in one sentence does not excuse a taper claim in another", () => {
