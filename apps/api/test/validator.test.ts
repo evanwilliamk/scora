@@ -120,3 +120,34 @@ test('every §4.1 ban is caught, and history is not mistaken for an order', () =
   ];
   for (const v of allowed) assert.deepEqual(validateVoice(v, [{ metric: 'Long run', value: '18 km' }]).bannedHits, [], v);
 });
+
+// ---- digits in driver names (review) ----
+
+test('driver-existence: a digit inside a driver NAME backs nothing', () => {
+  const named: Driver[] = [
+    { metric: 'Load (7d)', value: '412 min' },
+    { metric: 'Race within 7 days', value: 'yes' },
+    { metric: 'HRV (28d)', value: '52ms' },
+  ];
+  const r = validateVoice('Sleep came in at 7 hours of sleep and HRV is 52ms.', named);
+  assert.equal(r.ok, false, JSON.stringify(r));
+  assert.deepEqual(r.unbackedNumbers, ['7']);
+  assert.deepEqual(validateVoice('HRV has held for 28 nights.', named).unbackedNumbers, ['28']);
+  assert.deepEqual(validateVoice('Seven hours of sleep.', [{ metric: 'Load (7d)', value: '412 min' }]).unbackedNumbers, ['Seven hours']);
+});
+
+test('driver-existence: the window a driver name states may be quoted as a window', () => {
+  const named: Driver[] = [
+    { metric: 'Load (7d)', value: '412 min' },
+    { metric: 'HRV vs 7-day', value: '-12%' },
+    { metric: 'Plan, last 7 full days', value: '135 of 190 planned run min' },
+  ];
+  for (const v of ['Load over 7 days is 412 min.', 'Load (7d) sits at 412 min.', 'HRV is 12% under the 7-day average.', 'Across the last 7 full days, 135 of 190 planned run min.']) {
+    assert.deepEqual(validateVoice(v, named).unbackedNumbers, [], v);
+  }
+  // A window no driver names is not backed: "28 days" with only a 7d window.
+  assert.deepEqual(validateVoice('Load over 28 days is 412 min.', named).unbackedNumbers, ['28']);
+  // The fallback quotes driver names verbatim and must still validate.
+  const fb = buildFallbackVoice([...named, { metric: 'Race within 7 days', value: 'yes' }]);
+  assert.equal(validateVoice(fb, [...named, { metric: 'Race within 7 days', value: 'yes' }]).ok, true, fb);
+});
