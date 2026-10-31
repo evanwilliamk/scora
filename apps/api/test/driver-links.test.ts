@@ -158,3 +158,82 @@ test('HRV and resting HR baselines are whole numbers, as the read rounds its wee
   assert.equal(s.hrv!.baseline, 48); // the read's week avg: Math.round(48.33)
   assert.equal(s.resting_hr!.baseline, 49); // Math.round(48.67)
 });
+
+// Five weeks of runs: daily easy runs, a hard workout on three recent days in
+// a row, a 100-minute long run 4 days ago.
+function fiveWeeks(now: number) {
+  const acts: any[] = [];
+  for (let k = 34; k >= 0; k--) {
+    const iso = new Date(now - k * 86_400_000 - 3 * 3600000).toISOString();
+    const hard = k <= 2;
+    acts.push({
+      type: 'Run', start_date: iso, start_date_local: iso, utc_offset: 0,
+      moving_time: k === 4 ? 6000 : 2400 + (k % 5) * 120, distance: k === 4 ? 18000 : 7000,
+      average_heartrate: hard ? 170 + k : 140 + (k % 7), workout_type: hard ? 3 : 0,
+    });
+  }
+  return acts;
+}
+
+test('posture drivers and peak HR: the newest point is the number the read cites', async () => {
+  const { postureForRead } = await import('../src/drivers');
+  const { buildDashboard } = await import('../src/metrics');
+  const now = Date.now();
+  const acts = fiveWeeks(now);
+  const today = new Date(now).toISOString().slice(0, 10);
+  const s = buildDriverSeries(acts, null, today, 28, now);
+  const rec = postureForRead(acts, null, { localToday: today, now }).record.drivers;
+  assert.equal(s.acwr!.points.at(-1)!.value, rec.acwr);
+  assert.equal(s.hard_days!.points.at(-1)!.value, rec.consecutive_hard_days);
+  assert.equal(s.hard_days!.points.at(-1)!.value, 3);
+  assert.equal(s.days_since_long_effort!.points.at(-1)!.value, rec.days_since_long_effort);
+  assert.equal(s.days_since_long_effort!.points.at(-1)!.value, 4);
+  // ACWR needs 27 days of history: early days are left out, not guessed.
+  assert.ok(s.acwr!.points.length < 28 && s.acwr!.points.length > 0);
+  assert.equal(s.acwr!.unit, 'ratio');
+  const peak = buildDashboard(acts, { strava: true, oura: false, healthKit: false }, null, 'Oura', today).drivers.find((d) => d.metric === 'Peak avg HR (7d)')!;
+  assert.equal(`${s.peak_hr!.points.at(-1)!.value} bpm`, peak.value);
+  assert.equal(s.peak_hr!.points.length, 28);
+});
+
+test('posture drivers link by name; a bare count never links to another number', () => {
+  const avail = new Set<SeriesKey>(['acwr', 'hard_days', 'days_since_long_effort', 'peak_hr', 'load', 'hrv']);
+  const voice = "Today's plan is 3 × 8 min. That makes 3 hard days in a row, acute:chronic load at 1.32, and the long effort was 4 days ago.";
+  const links = linkDrivers(voice, [
+    { metric: 'Hard days in a row', value: '3' },
+    { metric: 'Acute:chronic load', value: '1.32' },
+    { metric: 'Days since long effort', value: '4' },
+    { metric: 'HRV vs week', value: '+8%' },
+  ], avail);
+  assert.deepEqual(links.map((l) => [l.key, span(voice, l)]), [
+    ['hard_days', 'hard days'],
+    ['acwr', '1.32'],
+    ['days_since_long_effort', 'long effort'],
+  ]);
+});
+
+test('every driver the read can cite has a series or an explicit not-chartable entry', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { METRIC_KEYS, NOT_CHARTABLE } = await import('../src/driver-links');
+  // The files that build the read's drivers (metrics.ts dashboard and weekly,
+  // drivers.ts posture evidence, plan-read.ts, plan-adapt.ts plan changes).
+  const files = ['metrics.ts', 'drivers.ts', 'plan-read.ts', 'plan-adapt.ts'];
+  const metrics = new Set<string>();
+  for (const f of files) {
+    const src = readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(src, /metric:\s*`/, `${f}: a template-literal metric name cannot be checked`);
+    for (const m of src.matchAll(/metric:\s*'((?:[^'\\]|\\.)*)'/g)) metrics.add(m[1]);
+  }
+  assert.ok(metrics.size >= 20, `found only ${metrics.size} driver names`);
+  const missing = [...metrics].filter((m) => !(m in METRIC_KEYS) && !(m in NOT_CHARTABLE));
+  assert.deepEqual(missing, [], 'add these to METRIC_KEYS (with a series) or NOT_CHARTABLE (with a reason)');
+  const both = Object.keys(METRIC_KEYS).filter((m) => m in NOT_CHARTABLE);
+  assert.deepEqual(both, []);
+  // Every mapped series is one buildDriverSeries can actually build.
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const nights = Array.from({ length: 5 }, (_, i) => ({ day: new Date(now - i * 86_400_000).toISOString().slice(0, 10), sleepSeconds: 25000 + i, hrvMs: 50 + i, restingHr: 48 + i }));
+  const built = buildDriverSeries(fiveWeeks(now), { sleepSeconds: null, sleepScore: null, hrvMs: null, restingHr: null, readinessScore: null, hrvWeekAvgMs: null, nights }, today, 28, now);
+  const unbuilt = [...new Set(Object.values(METRIC_KEYS))].filter((k) => !built[k]);
+  assert.deepEqual(unbuilt, []);
+});

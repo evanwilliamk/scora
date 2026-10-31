@@ -8,10 +8,13 @@
 import type { Driver } from './metrics';
 import type { OuraSummary } from './oura';
 import { isRun } from './activity-types';
+import { computeDriverRecord } from './drivers';
 
 export const inlineChartsEnabled = () => process.env.INLINE_CHARTS === 'on';
 
-export type SeriesKey = 'load' | 'volume' | 'sleep' | 'hrv' | 'resting_hr';
+export type SeriesKey =
+  | 'load' | 'volume' | 'sleep' | 'hrv' | 'resting_hr'
+  | 'acwr' | 'hard_days' | 'days_since_long_effort' | 'peak_hr';
 
 export interface SeriesPoint {
   date: string; // YYYY-MM-DD, the athlete's local day
@@ -37,15 +40,50 @@ export interface DriverLink {
   key: SeriesKey;
 }
 
-// Driver metric names (metrics.ts) to the series behind them.
-const METRIC_KEYS: Record<string, SeriesKey> = {
+// Driver metric names (metrics.ts, drivers.ts EVIDENCE) to the series behind
+// them. The newest point of each series is the number the read cites; the
+// "vs week" deltas link to the signal's own chart, whose newest point and
+// baseline are the two numbers the delta compares.
+export const METRIC_KEYS: Record<string, SeriesKey> = {
   'Sleep': 'sleep',
   'Sleep (last night)': 'sleep',
   'Load': 'load',
+  'Load (7d)': 'load',
   'Weekly volume': 'volume',
   'HRV': 'hrv',
+  'HRV vs week': 'hrv',
   'Resting HR': 'resting_hr',
+  'Resting HR vs week': 'resting_hr',
+  'Acute:chronic load': 'acwr',
+  'Hard days in a row': 'hard_days',
+  'Days since long effort': 'days_since_long_effort',
+  'Peak avg HR (7d)': 'peak_hr',
 };
+
+// Drivers the read may cite that have no honest 28-day chart. They are never
+// linked; the reason says why, so a new driver has to land in one map or the
+// other (test/driver-links.test.ts checks every driver in the source).
+export const NOT_CHARTABLE: Record<string, string> = {
+  // oura.ts keeps sleep scores undated (sleepScoreHistory), so there is no
+  // dated series to draw. The Sleep card shows last night's score.
+  'Sleep score': 'no dated nightly sleep scores',
+  'Sleep score vs week': 'no dated nightly sleep scores',
+  'Low sleep score nights in a row': 'no dated nightly sleep scores',
+  // Longest run in the 30 days before each day: the fetch holds 35 days, so
+  // only the newest few points would cover their window.
+  'Long effort': '30-day window, not enough fetched history for 28 points',
+  // The plan, not body data. The Plan Today card shows it.
+  'Plan today': 'the plan, shown on the Plan Today card',
+  'Plan change': 'the plan, shown on the Plan Today card',
+  'Race within 7 days': 'the plan\'s race date, not body data',
+  // Weekly review drivers: the weekly review has no inline charts.
+  'Plan, last 7 full days': 'weekly review only',
+  'Days trained': 'weekly review only',
+  'Long run': 'weekly review only',
+  'Peak avg HR': 'weekly review only',
+};
+
+export const isChartable = (metric: string): boolean => metric in METRIC_KEYS;
 
 // Words the voice uses for a driver when it does not quote the number.
 const NAMES: Record<SeriesKey, RegExp> = {
@@ -54,6 +92,10 @@ const NAMES: Record<SeriesKey, RegExp> = {
   volume: /\b(?:volume|mileage)\b/i,
   hrv: /\bHRV\b/,
   resting_hr: /\bresting (?:HR|heart rate)\b/i,
+  acwr: /\bacute:?\s?chronic\b|\bACWR\b/i,
+  hard_days: /\bhard (?:days?|sessions?)\b/i,
+  days_since_long_effort: /\blong effort\b/i,
+  peak_hr: /\b(?:peak|hardest)[^.]{0,24}?\b(?:HR|heart rate)\b/i,
 };
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -76,7 +118,10 @@ export function linkDrivers(voice: string, drivers: Driver[], available: Set<Ser
   for (const d of drivers) {
     const key = METRIC_KEYS[d.metric];
     if (!key || seen.has(key) || !available.has(key)) continue;
-    for (const re of [valuePattern(d.value), NAMES[key]]) {
+    // A bare whole number ("3" hard days) would match any "3" in the read,
+    // so those link by name only.
+    const bare = /^\d+$/.test(d.value.trim());
+    for (const re of [bare ? null : valuePattern(d.value), NAMES[key]]) {
       if (!re) continue;
       // The first mention not already linked to another driver.
       const all = re.global ? [...voice.matchAll(re)] : [re.exec(voice)].filter((x): x is RegExpExecArray => x !== null);
@@ -142,6 +187,28 @@ export function buildDriverSeries(
     const ends = dates.map((date, i) => ({ date, end: now - (days - 1 - i) * DAY }));
     out.load = totals('load', 'Run minutes, last 7 days', 'min', ends.map(({ date, end }) => ({ date, value: Math.round(week(end, (a) => (a.moving_time || 0) / 60)) })));
     out.volume = totals('volume', 'Miles, last 7 days', 'mi', ends.map(({ date, end }) => ({ date, value: round(week(end, (a) => (a.distance || 0) / 1609.34), 1) })));
+
+    // The read's Peak avg HR (7d), metrics.ts: the highest average HR of a run
+    // in the same 168 hours, rounded. Windows with no HR are left out.
+    const peak = ends.flatMap(({ date, end }) => {
+      const hrs = runs.filter((a) => { const t = startMs(a); return t > end - 7 * DAY && t <= end && a.average_heartrate; }).map((a) => a.average_heartrate as number);
+      return hrs.length > 0 ? [{ date, value: Math.round(Math.max(...hrs)) }] : [];
+    });
+    if (peak.length > 0) out.peak_hr = { key: 'peak_hr', label: 'Hardest run avg HR, last 7 days', unit: 'bpm', points: peak, baseline: null };
+
+    // Posture drivers, each day as the posture engine saw it on that day: the
+    // same computeDriverRecord, run with that day's clock, so the newest
+    // point is the number in the read. Days the record has no value (ACWR
+    // before 27 days of history) are left out.
+    const records = ends.map(({ date, end }) => ({ date, d: computeDriverRecord(runs, null, { now: end, localToday: date }).drivers }));
+    const pts = (f: (d: (typeof records)[number]['d']) => number | null | undefined) =>
+      records.flatMap(({ date, d }) => { const v = f(d); return v == null ? [] : [{ date, value: v }]; });
+    const acwr = pts((d) => d.acwr);
+    const hard = pts((d) => d.consecutive_hard_days);
+    const long = pts((d) => d.days_since_long_effort);
+    if (acwr.length > 0) out.acwr = { key: 'acwr', label: 'Acute:chronic load, 7 days against 28', unit: 'ratio', points: acwr, baseline: null };
+    if (hard.length > 0) out.hard_days = { key: 'hard_days', label: 'Hard days in a row', unit: 'days', points: hard, baseline: null };
+    if (long.length > 0) out.days_since_long_effort = { key: 'days_since_long_effort', label: 'Days since a run of 90+ min', unit: 'days', points: long, baseline: null };
   }
 
   const nights = (oura?.nights ?? []).filter((n) => n.day >= first && n.day <= today);
