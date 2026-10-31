@@ -12,6 +12,7 @@
 		8496DF112FF6B90900A67915 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8496DF102FF6B90900A67915 /* Assets.xcassets */; };
 		8496DF142FF6B90900A67915 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8496DF132FF6B90900A67915 /* Preview Assets.xcassets */; };
 		8496DF1E2FF6B90A00A67915 /* ScoraTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF1D2FF6B90A00A67915 /* ScoraTests.swift */; };
+		1C56E6A566B8B19B75B59CFE /* DashboardReviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76302FA9778DE18783A58C5C /* DashboardReviewTests.swift */; };
 		8496DF282FF6B90A00A67915 /* ScoraUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF272FF6B90A00A67915 /* ScoraUITests.swift */; };
 		8496DF2A2FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496DF292FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift */; };
 		84D45B012FF6BF3900E8AC69 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D45B002FF6BF3900E8AC69 /* DashboardView.swift */; };
@@ -53,6 +54,7 @@
 		8496DF132FF6B90900A67915 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		8496DF192FF6B90A00A67915 /* ScoraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScoraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8496DF1D2FF6B90A00A67915 /* ScoraTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoraTests.swift; sourceTree = "<group>"; };
+		76302FA9778DE18783A58C5C /* DashboardReviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardReviewTests.swift; sourceTree = "<group>"; };
 		8496DF232FF6B90A00A67915 /* ScoraUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScoraUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8496DF272FF6B90A00A67915 /* ScoraUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoraUITests.swift; sourceTree = "<group>"; };
 		8496DF292FF6B90A00A67915 /* ScoraUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoraUITestsLaunchTests.swift; sourceTree = "<group>"; };
@@ -152,6 +154,7 @@
 			isa = PBXGroup;
 			children = (
 				8496DF1D2FF6B90A00A67915 /* ScoraTests.swift */,
+				76302FA9778DE18783A58C5C /* DashboardReviewTests.swift */,
 			);
 			path = ScoraTests;
 			sourceTree = "<group>";
@@ -317,6 +320,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8496DF1E2FF6B90A00A67915 /* ScoraTests.swift in Sources */,
+				1C56E6A566B8B19B75B59CFE /* DashboardReviewTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

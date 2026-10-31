@@ -27,6 +27,76 @@ struct DashboardCard: Decodable, Identifiable {
   let cta: String?
 }
 
+extension DashboardCard {
+  static let unavailableLine = "Not available yet."
+  static let connectOuraLine = "Connect Oura"
+
+  enum TapKind: Equatable { case connectOura, expand, none }
+
+  // Only a card that asks the athlete to connect Oura offers the link. With
+  // Oura already linked, a night with no data says so ("No sleep recorded
+  // last night.") and is not a reason to sign in again.
+  var offersOuraConnect: Bool {
+    guard !available, source?.contains("Oura") ?? false else { return false }
+    return cta.map { $0.hasPrefix("Connect") } ?? true
+  }
+
+  var tapKind: TapKind {
+    if offersOuraConnect { return .connectOura }
+    if available, translation != nil { return .expand }
+    return .none
+  }
+
+  // Long Effort run today arrives with an empty unit; nothing is drawn for it.
+  var shownUnit: String? {
+    guard let unit, !unit.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+    return unit
+  }
+
+  // What VoiceOver reads for the whole card, from the API's own strings.
+  var spokenLabel: String {
+    let body: String
+    if available, let value {
+      body = [[value, shownUnit].compactMap { $0 }.joined(separator: " "), trend]
+        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    } else {
+      body = cta ?? Self.unavailableLine
+    }
+    var line = "\(title), \(body)"
+    if !line.hasSuffix(".") { line += "." }
+    if let source, !source.isEmpty { line += " From \(source.replacingOccurrences(of: " / ", with: " or "))." }
+    return line
+  }
+}
+
+// Read loads can overlap (pull to refresh while an Oura or plan change reload
+// is in flight). Only the newest one's reply is applied, so an older reply
+// arriving late never puts the earlier numbers back.
+struct ReadLoadGate {
+  private(set) var current = 0
+  mutating func begin() -> Int { current += 1; return current }
+  func isLatest(_ token: Int) -> Bool { token == current }
+}
+
+// What the top of Today's Read shows besides the read itself.
+enum ReadStatus: Equatable {
+  case shown
+  case staleWithError(String) // a refresh failed; the earlier read stays
+  case loading
+  case error(String)
+  case empty
+
+  static let emptyLine = "Pull to refresh your read."
+  static let loadingLine = "Reading…"
+
+  static func of(hasRead: Bool, isLoading: Bool, error: String?) -> ReadStatus {
+    if hasRead { return error.map { .staleWithError($0) } ?? .shown }
+    if isLoading { return .loading }
+    if let error { return .error(error) }
+    return .empty
+  }
+}
+
 // /api/card-expand reply: a 2-3 sentence read of one card.
 struct CardExpansion: Decodable {
   let cardId: String
@@ -90,6 +160,7 @@ struct DashboardView: View {
   @ObservedObject var tokenManager: TokenManager
   @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.dynamicTypeSize) private var typeSize
   // The local day the shown read was made for: a new day means a new read.
   @State private var loadedDay: String?
   @State private var loadedAt: Date?
@@ -105,6 +176,7 @@ struct DashboardView: View {
   @State private var expanding: Set<String> = []
   // Bumped on every new read; an expansion from an older read is dropped.
   @State private var readGeneration = 0
+  @State private var loadGate = ReadLoadGate()
   @State private var showChat = false
   @State private var showWeekly = false
   @State private var ouraBanner: OuraLinkResult?
@@ -113,10 +185,11 @@ struct DashboardView: View {
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
-  private let columns = [
-    GridItem(.flexible(), spacing: 12),
-    GridItem(.flexible(), spacing: 12),
-  ]
+  // Two cards a row; one at the accessibility text sizes, where half a
+  // screen cannot hold a value and its unit.
+  private var columns: [GridItem] {
+    Array(repeating: GridItem(.flexible(), spacing: 12), count: typeSize.isAccessibilitySize ? 1 : 2)
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -145,8 +218,8 @@ struct DashboardView: View {
               }
             }
           }
-          if let errorText, read == nil {
-            Text(errorText)
+          if case .error(let message) = ReadStatus.of(hasRead: read != nil, isLoading: isLoading, error: errorText) {
+            Text(message)
               .font(.subheadline)
               .foregroundColor(.gray)
               .frame(maxWidth: .infinity, alignment: .center)
@@ -290,18 +363,10 @@ struct DashboardView: View {
 
       if let read {
         // Posture badge and the raw numbers first (PRD §5.A.3, CLAUDE.md §3.3).
-        HStack(spacing: 8) {
-          if let p = posture {
-            Text(p)
-              .font(.caption.bold())
-              .foregroundColor(.black)
-              .padding(.horizontal, 8).padding(.vertical, 3)
-              .background(Color.orange.opacity(0.85))
-              .clipShape(Capsule())
-          }
-          if let n = read.numbers, !n.isEmpty {
-            Text(n).font(.footnote.monospacedDigit()).foregroundColor(.gray)
-          }
+        // The numbers drop under the badge at large text sizes instead of clipping.
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 8) { postureAndNumbers(read) }
+          VStack(alignment: .leading, spacing: 6) { postureAndNumbers(read) }
         }
         Text(ReadText.attributed(read.voice, links: read.links ?? [], series: read.series ?? [:]))
           .scaledSerif(20)
@@ -316,15 +381,24 @@ struct DashboardView: View {
         // The plan's session for today (CLAUDE.md §3.3), only on a SCORA plan.
         if let today = read.today, !today.isEmpty {
           Text(today).font(.footnote).foregroundColor(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        // A refresh that failed leaves the earlier read up, and says so.
+        if case .staleWithError(let message) = ReadStatus.of(hasRead: true, isLoading: isLoading, error: errorText) {
+          Text(message)
+            .font(.caption)
+            .foregroundColor(.gray)
+            .fixedSize(horizontal: false, vertical: true)
         }
       } else if isLoading {
         HStack(spacing: 10) {
           ProgressView().tint(.white)
-          Text("Reading…").foregroundColor(.gray).font(.subheadline)
+          Text(ReadStatus.loadingLine).foregroundColor(.gray).font(.subheadline)
         }
         .padding(.vertical, 8)
-      } else {
-        Text("Pull to refresh your read.")
+      } else if errorText == nil {
+        // A failed first load shows its own line below; no second prompt here.
+        Text(ReadStatus.emptyLine)
           .font(.subheadline)
           .foregroundColor(.gray)
       }
@@ -333,17 +407,30 @@ struct DashboardView: View {
     .padding(.bottom, 4)
   }
 
-  // MARK: Card
-
-  // An unavailable card whose data comes from Oura offers a tap-to-connect.
-  private func isOuraConnectable(_ card: DashboardCard) -> Bool {
-    !card.available && (card.source?.contains("Oura") ?? false)
+  @ViewBuilder
+  private func postureAndNumbers(_ read: DailyRead) -> some View {
+    if let p = posture {
+      Text(p)
+        .font(.caption.bold())
+        .foregroundColor(.black)
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(Color.orange.opacity(0.85))
+        .clipShape(Capsule())
+        .accessibilityLabel("Posture: \(p)")
+    }
+    if let n = read.numbers, !n.isEmpty {
+      Text(n).font(.footnote.monospacedDigit()).foregroundColor(.gray)
+        .fixedSize(horizontal: false, vertical: true)
+    }
   }
+
+  // MARK: Card
 
   @ViewBuilder
   private func cardView(_ card: DashboardCard) -> some View {
     let isOpen = expanded.contains(card.id)
-    let connectable = isOuraConnectable(card)
+    let tap = card.tapKind
+    let openText = isOpen ? CardExpansion.text(reply: expansions[card.id], translation: card.translation) : nil
     VStack(alignment: .leading, spacing: 8) {
       Text(card.title)
         .font(.caption.bold())
@@ -351,36 +438,42 @@ struct DashboardView: View {
 
       if card.available, let value = card.value {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
+          // Scales with Dynamic Type; a long word ("Nothing", "Today")
+          // shrinks to fit the card rather than truncating.
           Text(value)
-            .font(.system(size: 30, weight: .semibold))
+            .font(.title.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .foregroundColor(.white)
-          if let unit = card.unit {
+          if let unit = card.shownUnit {
             Text(unit)
               .font(.caption)
               .foregroundColor(.gray)
+              .fixedSize(horizontal: false, vertical: true)
           }
         }
         if let trend = card.trend, !trend.isEmpty {
           Text(trend)
             .font(.caption)
             .foregroundColor(.orange)
+            .fixedSize(horizontal: false, vertical: true)
         }
       } else {
         // Unavailable card: connect prompt, no fabricated number.
-        Text(card.cta ?? "Not available yet.")
+        Text(card.cta ?? DashboardCard.unavailableLine)
           .font(.footnote)
           .foregroundColor(.gray)
           .fixedSize(horizontal: false, vertical: true)
-        if connectable {
-          Text("Connect Oura →")
+        if tap == .connectOura {
+          Text("\(DashboardCard.connectOuraLine) \(Image(systemName: "arrow.right"))")
             .font(.caption.bold())
             .foregroundColor(.orange)
             .padding(.top, 2)
         }
       }
 
-      if isOpen, let text = CardExpansion.text(reply: expansions[card.id], translation: card.translation) {
-        Text(text)
+      if let openText {
+        Text(openText)
           .font(.footnote)
           .foregroundColor(Color(white: 0.75))
           .fixedSize(horizontal: false, vertical: true)
@@ -393,24 +486,38 @@ struct DashboardView: View {
           .font(.caption2)
           .foregroundColor(Color(white: 0.4))
           .padding(.top, 2)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
     .padding(14)
     .background(Color(white: 0.11))
     .cornerRadius(12)
-    .onTapGesture {
-      if connectable {
-        connectOura()
-        return
-      }
-      guard card.available, card.translation != nil else { return }
+    .contentShape(Rectangle())
+    .onTapGesture { tapCard(card) }
+    // One VoiceOver stop per card, read from the same strings it shows.
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(card.spokenLabel)
+    .accessibilityValue(openText ?? "")
+    .accessibilityAddTraits(tap == .none ? [] : .isButton)
+    .accessibilityHint(tap == .connectOura ? "Opens Oura to connect it." : tap == .expand ? (isOpen ? "Hides the explanation." : "Shows what this means.") : "")
+    .accessibilityAction { tapCard(card) }
+  }
+
+  private func tapCard(_ card: DashboardCard) {
+    switch card.tapKind {
+    case .connectOura:
+      connectOura()
+    case .expand:
+      let isOpen = expanded.contains(card.id)
       withAnimation(.easeInOut(duration: 0.15)) {
         if isOpen { expanded.remove(card.id) } else { expanded.insert(card.id) }
       }
       if !isOpen, expansions[card.id] == nil, !expanding.contains(card.id) {
         Task { await loadExpansion(card.id) }
       }
+    case .none:
+      return
     }
   }
 
@@ -460,13 +567,19 @@ struct DashboardView: View {
     }
     #endif
     guard let url = URL(string: "\(apiBase)/api/read") else { return }
-    await MainActor.run { isLoading = true; errorText = nil }
+    let token = await MainActor.run { () -> Int in
+      isLoading = true; errorText = nil
+      return loadGate.begin()
+    }
+    // The day the read is asked for is the day it is shown as, even if the
+    // reply lands after midnight.
+    let day = PlanDay.today()
 
     // HealthKit is on-device: read a summary and send it up so the backend can
     // fill Sleep + Recovery when Oura isn't connected.
     // The local date lets the read find today's session in the athlete's plan
     // and the plan engine evaluate the athlete's tomorrow, not the server's.
-    var payload: [String: Any] = ["athleteId": tokenManager.athleteId, "today": PlanDay.today()]
+    var payload: [String: Any] = ["athleteId": tokenManager.athleteId, "today": day]
     if let health = await HealthManager.shared.fetchSummary(),
        let encoded = try? JSONEncoder().encode(health),
        let dict = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any] {
@@ -482,23 +595,31 @@ struct DashboardView: View {
       let (data, resp) = try await URLSession.shared.data(for: req)
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
         let msg = APIErrorText.message(from: data, fallback: "The read could not load. Pull to try again.")
-        await MainActor.run { errorText = msg; isLoading = false }
+        await MainActor.run {
+          guard loadGate.isLatest(token) else { return }
+          errorText = msg; isLoading = false
+        }
         return
       }
       let decoded = try JSONDecoder().decode(ReadResponse.self, from: data)
       await MainActor.run {
+        // A newer load is in flight: its reply is the one to show.
+        guard loadGate.isLatest(token) else { return }
         read = decoded.read
         posture = decoded.posture?.posture
         week = decoded.weekSoFar
         cards = decoded.cards
         expansions = [:] // a new read means new numbers to interpret
         readGeneration += 1
-        loadedDay = PlanDay.today()
+        loadedDay = day
         loadedAt = Date()
         isLoading = false
       }
     } catch {
-      await MainActor.run { errorText = "The read could not load. Pull to try again."; isLoading = false }
+      await MainActor.run {
+        guard loadGate.isLatest(token) else { return }
+        errorText = "The read could not load. Pull to try again."; isLoading = false
+      }
     }
   }
 }
