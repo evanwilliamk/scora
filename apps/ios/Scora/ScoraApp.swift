@@ -7,7 +7,16 @@ struct ScoraApp: App {
   
   var body: some Scene {
     WindowGroup {
-      if tokenManager.isAuthenticated && tokenManager.needsOnboarding {
+      if tokenManager.isAuthenticated && tokenManager.checkingOnboarding {
+        // A moment after sign-in, while the API says whether onboarding is done.
+        ProgressView()
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .background(Color.black)
+          .preferredColorScheme(.dark)
+          .onOpenURL { url in
+            handleDeepLink(url)
+          }
+      } else if tokenManager.isAuthenticated && tokenManager.needsOnboarding {
         OnboardingView(tokenManager: tokenManager, onFinish: {})
           .onOpenURL { url in
             handleDeepLink(url)

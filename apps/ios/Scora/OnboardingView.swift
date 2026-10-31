@@ -144,7 +144,7 @@ struct OnboardingView: View {
         }
           .disabled(isSaving)
         if errorText != nil {
-          Button("Skip for now") { advance(from: .delivery) }
+          Button("Skip for now") { skipDelivery() }
             .font(.subheadline)
             .foregroundColor(.gray)
             .frame(maxWidth: .infinity)
@@ -225,6 +225,17 @@ struct OnboardingView: View {
     onFinish()
   }
 
+  // The save failed and the athlete moved on: keep the choice on the phone
+  // so it is sent on the next launch or sign-in.
+  private func skipDelivery() {
+    OnboardingSync.keep(PendingOnboarding(
+      athleteId: tokenManager.athleteId,
+      timezone: TimeZone.current.identifier,
+      deliveryMinute: OnboardingState.deliveryMinute(from: deliveryTime)
+    ))
+    advance(from: .delivery)
+  }
+
   private func saveDelivery() async {
     guard let url = URL(string: "\(apiBase)/api/preferences") else { return }
     await MainActor.run { isSaving = true; errorText = nil }
@@ -240,7 +251,10 @@ struct OnboardingView: View {
     let ok: Bool
     if let (_, resp) = try? await URLSession.shared.data(for: req) {
       ok = (resp as? HTTPURLResponse)?.statusCode == 200
-      if ok { TimeZoneSync.remember(TimeZone.current.identifier) }
+      if ok {
+        TimeZoneSync.remember(TimeZone.current.identifier)
+        OnboardingSync.pending = nil
+      }
     } else {
       ok = false
     }
@@ -275,5 +289,94 @@ enum TimeZoneSync {
     if let (_, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 {
       remember(current)
     }
+  }
+}
+
+// An onboarding choice the API has not taken yet: "Skip for now" after a
+// failed save. It stays on the phone and is sent again on the next launch or
+// sign-in until the API accepts it, the way push-open reports are kept.
+struct PendingOnboarding: Codable, Equatable {
+  let athleteId: String
+  let timezone: String
+  let deliveryMinute: Int
+}
+
+enum OnboardingSync {
+  static let pendingKey = "scora.pendingOnboarding"
+  private static let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
+
+  // Sends one request and answers the status and body, or nil with no reply.
+  // Tests swap it for a stub, so they never reach the network.
+  typealias Transport = (URLRequest) async -> (Int, Data)?
+  static var transport: Transport = { req in
+    guard let (data, resp) = try? await URLSession.shared.data(for: req) else { return nil }
+    return ((resp as? HTTPURLResponse)?.statusCode ?? 0, data)
+  }
+
+  static var pending: PendingOnboarding? {
+    get {
+      guard let data = UserDefaults.standard.data(forKey: pendingKey) else { return nil }
+      return try? JSONDecoder().decode(PendingOnboarding.self, from: data)
+    }
+    set {
+      if let newValue, let data = try? JSONEncoder().encode(newValue) {
+        UserDefaults.standard.set(data, forKey: pendingKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+      }
+    }
+  }
+
+  static func keep(_ choice: PendingOnboarding) { pending = choice }
+
+  // True when this athlete has a choice waiting, so onboarding is done on the
+  // phone even though the server does not know yet.
+  static func hasPending(for athleteId: String) -> Bool { pending?.athleteId == athleteId }
+
+  // Sends the waiting choice. True when nothing is left to send: delivered,
+  // refused for good (400), or it belonged to another athlete (dropped, so it
+  // is never sent under the wrong id).
+  @discardableResult
+  static func flush(athleteId: String) async -> Bool {
+    guard let p = pending else { return true }
+    guard p.athleteId == athleteId, !athleteId.isEmpty else { pending = nil; return true }
+    guard let url = URL(string: "\(apiBase)/api/preferences") else { return false }
+    var req = URLRequest(url: url)
+    req.httpMethod = "PUT"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: [
+      "athleteId": p.athleteId,
+      "timezone": p.timezone,
+      "deliveryMinute": p.deliveryMinute,
+      "onboarded": true,
+    ] as [String: Any])
+    guard let (status, _) = await transport(req) else { return false }
+    // Only clear the copy that was sent; a newer one saved meanwhile stays.
+    if status == 200 {
+      TimeZoneSync.remember(p.timezone)
+      if pending == p { pending = nil }
+      return true
+    }
+    if status == 400 {
+      if pending == p { pending = nil }
+      return true
+    }
+    return false
+  }
+
+  // Whether the API has this athlete's onboarding on record (onboarded_at).
+  // nil when it cannot be told: no reply, an error, an unreadable body.
+  static func remoteOnboarded(athleteId: String) async -> Bool? {
+    var c = URLComponents(string: "\(apiBase)/api/preferences")
+    c?.queryItems = [URLQueryItem(name: "athleteId", value: athleteId)]
+    guard !athleteId.isEmpty, let url = c?.url else { return nil }
+    var req = URLRequest(url: url)
+    req.httpMethod = "GET"
+    req.timeoutInterval = 10
+    guard let (status, data) = await transport(req), status == 200,
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let onboarded = json["onboarded"] as? Bool
+    else { return nil }
+    return onboarded
   }
 }
