@@ -142,3 +142,13 @@ test('a clock time never backs a decimal: "HRV 7.12" is not a 7:12 pace (review 
   const good = checkCdvReply('The last run held 7:12 per mile over 6.2 miles.', [], data, 'How was my last run?');
   assert.equal(good.fallback, false);
 });
+
+test('a METRIC line with banned phrasing is not shown as a driver, even when its numbers are real (review 10-31)', () => {
+  const r = checkCdvReply(
+    '18.4 miles over 3 runs this week.',
+    [{ metric: 'You should go easy', value: '18.4 mi' }, { metric: 'Runs', value: '3', trend: 'flat' }, { metric: 'Crush it this week', value: '3' }],
+    DATA, 'How is my week going?',
+  );
+  assert.equal(r.fallback, false);
+  assert.deepEqual(r.drivers.map((d) => d.metric), ['Runs']);
+});

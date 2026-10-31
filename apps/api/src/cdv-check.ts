@@ -59,10 +59,10 @@ export function checkCdvReply(voice: string, metricLines: Driver[], data: unknow
     { metric: '', value: questionCounts(question) },
   ];
   // A METRIC line is shown to the athlete as a driver, so its name, value and
-  // trend must all be in the data.
+  // trend must all be in the data, and none of it may be banned phrasing.
   const drivers = metricLines
     .map((d) => (trendIssue(d.trend) ? { metric: d.metric, value: d.value } : d))
-    .filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).unbackedNumbers.length === 0);
+    .filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).ok);
   const v = validateVoice(timesWhole(voice), source);
   // Folding makes "8:47" read as 8.47, so a decimal the voice writes as a
   // decimal is backed only by a decimal in the data, never by a clock time
