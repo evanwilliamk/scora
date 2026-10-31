@@ -1,0 +1,95 @@
+import XCTest
+@testable import Scora
+
+// Dashboard correctness: cards, loads, and what VoiceOver hears.
+final class DashboardReviewTests: XCTestCase {
+
+  private func card(_ id: String, available: Bool = true, value: String? = nil, unit: String? = nil,
+                    translation: String? = nil, trend: String? = nil, source: String? = nil, cta: String? = nil) -> DashboardCard {
+    DashboardCard(id: id, title: id.capitalized, available: available, value: value, unit: unit,
+                  translation: translation, trend: trend, source: source, cta: cta)
+  }
+
+  // Oura linked but no night recorded: the card says so and does not send
+  // the athlete through Oura sign-in again.
+  func testOuraConnectOnlyWhenTheCardAsksForIt() {
+    let unlinked = card("sleep", available: false, source: "Oura / Apple Health",
+                        cta: "Connect Oura or Apple Health to read your sleep.")
+    let linkedNoNight = card("sleep", available: false, source: "Oura / Apple Health",
+                             cta: "No sleep recorded last night.")
+    let linkedNoHrv = card("recovery_signal", available: false, source: "Oura", cta: "No HRV recorded last night.")
+    let strava = card("training_load", available: false, source: "Strava", cta: "No runs in the last two weeks.")
+    XCTAssertTrue(unlinked.offersOuraConnect)
+    XCTAssertFalse(linkedNoNight.offersOuraConnect)
+    XCTAssertFalse(linkedNoHrv.offersOuraConnect)
+    XCTAssertFalse(strava.offersOuraConnect)
+    XCTAssertFalse(card("sleep", value: "7:12", unit: "hrs", source: "Oura").offersOuraConnect)
+  }
+
+  // Long Effort run today comes with an empty unit: nothing is drawn for it.
+  func testEmptyUnitIsNotShown() {
+    XCTAssertNil(card("long_effort", value: "Today", unit: "").shownUnit)
+    XCTAssertNil(card("long_effort", value: "Today", unit: nil).shownUnit)
+    XCTAssertEqual(card("sleep", value: "7:12", unit: "hrs").shownUnit, "hrs")
+  }
+
+  // One spoken line per card, built from the API's own strings.
+  func testCardSpokenLabel() {
+    let sleep = card("sleep", value: "7:12", unit: "hrs", trend: "Oura 84", source: "Oura")
+    XCTAssertEqual(sleep.spokenLabel, "Sleep, 7:12 hrs, Oura 84. From Oura.")
+    let today = card("long_effort", value: "Today", unit: "", trend: "8.2 mi", source: "Strava")
+    XCTAssertEqual(today.spokenLabel, "Long_Effort, Today, 8.2 mi. From Strava.")
+    let off = card("recovery_signal", available: false, source: "Oura", cta: "Connect Oura to read HRV and resting heart rate.")
+    XCTAssertEqual(off.spokenLabel, "Recovery_Signal, Connect Oura to read HRV and resting heart rate. From Oura.")
+    let bare = card("x", available: false)
+    XCTAssertEqual(bare.spokenLabel, "X, Not available yet.")
+  }
+
+  // Tap-to-expand only where there is something to expand.
+  func testCardTapKinds() {
+    XCTAssertEqual(card("sleep", available: false, source: "Oura", cta: "Connect Oura to read HRV.").tapKind, .connectOura)
+    XCTAssertEqual(card("sleep", value: "7:12", translation: "Slept 7:12.").tapKind, .expand)
+    XCTAssertEqual(card("connections", value: "1").tapKind, .none)
+    XCTAssertEqual(card("training_load", available: false, source: "Strava", cta: "No runs.").tapKind, .none)
+  }
+
+  // Two loads in flight: only the newest one's reply lands.
+  func testOnlyTheNewestReadLoadApplies() {
+    var gate = ReadLoadGate()
+    let first = gate.begin()
+    let second = gate.begin()
+    XCTAssertFalse(gate.isLatest(first))
+    XCTAssertTrue(gate.isLatest(second))
+  }
+
+  // A refresh that fails while a read is on screen keeps the read and says so,
+  // with the same line, never a second "pull to refresh" under the error.
+  func testFailedRefreshNotice() {
+    XCTAssertEqual(ReadStatus.of(hasRead: true, isLoading: false, error: "The read could not load. Pull to try again."),
+                   .staleWithError("The read could not load. Pull to try again."))
+    XCTAssertEqual(ReadStatus.of(hasRead: true, isLoading: false, error: nil), .shown)
+    XCTAssertEqual(ReadStatus.of(hasRead: false, isLoading: true, error: nil), .loading)
+    XCTAssertEqual(ReadStatus.of(hasRead: false, isLoading: false, error: "Down."), .error("Down."))
+    XCTAssertEqual(ReadStatus.of(hasRead: false, isLoading: false, error: nil), .empty)
+  }
+
+  // Week So Far speaks full day names and counts minutes correctly.
+  func testWeekSoFarSpokenLabels() {
+    XCTAssertEqual(WeekSoFarDay(date: "2026-10-26", weekday: "Mon", runMin: 1).spokenLabel, "Monday, 1 minute")
+    XCTAssertEqual(WeekSoFarDay(date: "2026-10-27", weekday: "Tue", runMin: 0).spokenLabel, "Tuesday, no run")
+    XCTAssertEqual(WeekSoFarDay(date: "2026-10-28", weekday: "Wed", runMin: 40, plannedMin: 45).spokenLabel,
+                   "Wednesday, 40 minutes, plan 45 minutes")
+    XCTAssertEqual(WeekSoFarDay(date: "2026-10-29", weekday: "Thu", runMin: nil, plannedMin: 0).spokenLabel, "Thursday, still ahead")
+    XCTAssertEqual(WeekSoFarDay(date: "2026-10-30", weekday: "Fri", runMin: nil, plannedMin: 1).spokenLabel,
+                   "Friday, still ahead, plan 1 minute")
+  }
+
+  func testDashboardCopyHasNoExclamationOrEmoji() {
+    let lines = [ReadStatus.emptyLine, ReadStatus.loadingLine, DashboardCard.connectOuraLine, DashboardCard.unavailableLine]
+    for line in lines {
+      XCTAssertFalse(line.contains("!"), line)
+      XCTAssertFalse(line.unicodeScalars.contains { $0.properties.isEmojiPresentation }, line)
+      XCTAssertFalse(line.contains("\u{2014}"), line)
+    }
+  }
+}

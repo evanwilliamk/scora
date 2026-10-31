@@ -80,7 +80,19 @@ final class ScoraUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo-read", "-demo-cards"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Plan today"].waitForExistence(timeout: 10))
+        // Each card is one VoiceOver element, read as its title then its numbers.
+        let plan = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Plan today, 45 min, tempo.'")).firstMatch
+        XCTAssertTrue(plan.waitForExistence(timeout: 10))
+    }
+
+    func testDashboardCardsAndWeekBarsHaveSpokenLabels() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-cards"]
+        app.launch()
+        let sleep = app.buttons.matching(NSPredicate(format: "label == 'Sleep, 7:12 hrs, Oura 84. From Oura.'")).firstMatch
+        XCTAssertTrue(sleep.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["Monday, 40 minutes, plan 40 minutes"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["Friday, still ahead"].exists)
     }
 
     func testPlanSetupFormOpens() throws {

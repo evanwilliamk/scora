@@ -14,6 +14,22 @@ struct WeekSoFarDay: Decodable, Equatable {
     case runMin = "run_min"
     case plannedMin = "planned_min"
   }
+
+  private static let fullNames = ["Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday",
+                                  "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday"]
+  private static func minutes(_ n: Int) -> String { n == 1 ? "1 minute" : "\(n) minutes" }
+
+  // What VoiceOver reads for one bar: the full day name, then the run, then the plan.
+  var spokenLabel: String {
+    var parts = [Self.fullNames[weekday] ?? weekday]
+    switch runMin {
+    case nil: parts.append("still ahead")
+    case 0?: parts.append("no run")
+    case let n?: parts.append(Self.minutes(n))
+    }
+    if let p = plannedMin, p > 0 { parts.append("plan \(Self.minutes(p))") }
+    return parts.joined(separator: ", ")
+  }
 }
 
 struct WeekSoFar: Decodable, Equatable {
@@ -62,11 +78,12 @@ struct WeekSoFarView: View {
           }
           .frame(maxWidth: .infinity)
           .accessibilityElement(children: .ignore)
-          .accessibilityLabel("\(day.weekday): \(day.runMin.map { "\($0) minutes" } ?? "ahead")\(day.plannedMin.map { $0 > 0 ? ", plan \($0) minutes" : "" } ?? "")")
+          .accessibilityLabel(day.spokenLabel)
         }
       }
       .frame(height: 64, alignment: .bottom)
       Text(week.line).font(.footnote).foregroundColor(Color(white: 0.75))
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 }
