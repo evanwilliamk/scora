@@ -14,6 +14,10 @@ On without a flag once merged and deployed (with a new app build where it is iOS
 - Oura "last night" counts only a night dated today; before the ring syncs, the Sleep card shows its no-data line.
 - Treadmill and Zwift runs count toward load and volume (not race predictions).
 - New route `POST /api/unregister-device` (sign-out); a new app build sends it, and resends the time zone after travel.
+- From 2026-10-31: a read that names a posture the rules did not decide is a validator catch (one retry, then the fallback), and numbers inside driver names ("Load (7d)") no longer back a value: watch the `voice` fallback rate again after deploy.
+- Strava activity pages give up after 15 s and the Oura pull after 20 s, so one hung call no longer holds the morning push.
+- Dashboard cards carry `connect` (oura, strava or null); the new app build offers Connect Oura only when Oura is not linked.
+- The app skips onboarding for a returning athlete (reads `onboarded` from `GET /api/preferences`) and resends an unsaved delivery time.
 
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
 
