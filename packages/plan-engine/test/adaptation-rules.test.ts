@@ -304,3 +304,52 @@ test('no window downgrade keeps the duration and is frozen in race week like any
   const frozen = evaluateAdaptation(input({ workout: sat, plan: plan({ week, goal_race_date: '2026-10-31', template_week_minutes: 150 }), today: '2026-10-23' }));
   assert.deepEqual(frozen, { type: 'none', code: 'race_week_freeze', blocked_rule: 'posture_rest_hard_scheduled' });
 });
+
+// Partial first week: the plan was created on Thursday 2026-10-22, so Monday
+// to Wednesday were never stored. The full template week is 300 minutes; the
+// stored days hold 160 of them.
+const partialWeek = [
+  w('thu', '2026-10-22', 'easy', 40),
+  w('fri', '2026-10-23', 'intervals', 50),
+  w('sat', '2026-10-24', 'easy', 10),
+  w('sun', '2026-10-25', 'easy', 60),
+];
+
+test('partial first week: a legal move window is taken, measured against the days on the plan', () => {
+  const fri = partialWeek[1];
+  const r = evaluateAdaptation(input({
+    workout: fri,
+    plan: plan({ week: partialWeek, template_week_minutes: 300, first_day_on_plan: '2026-10-22' }),
+    today: '2026-10-22',
+  }));
+  assert.equal(r.type, 'moved');
+  if (r.type !== 'moved') return;
+  assert.equal(r.to, '2026-10-24');
+  assert.equal(r.displaced_workout_id, 'sat');
+  assert.equal(r.facts.week_minutes_before, 160);
+  assert.equal(r.facts.week_minutes_after, 150);
+  assert.equal(r.facts.template_week_minutes, 160);
+});
+
+test('partial first week: a move that drops the stored days more than 10% is still blocked', () => {
+  const week = partialWeek.map((x) => (x.id === 'sat' ? { ...x, planned_duration_min: 30 } : x));
+  const r = evaluateAdaptation(input({
+    workout: week[1],
+    plan: plan({ week, template_week_minutes: 300, first_day_on_plan: '2026-10-22' }),
+    today: '2026-10-22',
+  }));
+  // Sat drops 30 of 180 (17%), Sun drops 60: no window, so easy at the same duration.
+  assertNoWindowDowngrade(r, 'fri', 'intervals');
+});
+
+test('first_day_on_plan on or before the week\'s Monday leaves the template call as the baseline', () => {
+  for (const first of ['2026-10-19', '2026-10-12', null]) {
+    const r = evaluateAdaptation(input({
+      workout: partialWeek[1],
+      plan: plan({ week: partialWeek, template_week_minutes: 300, first_day_on_plan: first }),
+      today: '2026-10-22',
+    }));
+    assertNoWindowDowngrade(r, 'fri', 'intervals');
+    if (r.type === 'downgraded') assert.equal(r.facts.template_week_minutes, 300);
+  }
+});
