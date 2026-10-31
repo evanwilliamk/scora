@@ -117,6 +117,19 @@ struct PlanAdaptationsResponse: Decodable {
 }
 
 enum PlanChanges {
+  enum LoadOutcome: Equatable { case loaded, off, failed }
+
+  // 404 means adaptations are switched off. Anything else that is not a 200
+  // (offline included) is a failure the sheet says out loud: sessions may
+  // have moved, and their reasons must not vanish silently (CLAUDE.md §6.2).
+  static func loadOutcome(status: Int) -> LoadOutcome {
+    switch status {
+    case 200: return .loaded
+    case 404: return .off
+    default: return .failed
+    }
+  }
+
   // Newest first, at most three: the list is a footnote to the plan, not a feed.
   // A displaced session's "skipped" row repeats its move, so it is left out.
   static func visible(_ rows: [PlanAdaptation]) -> [PlanAdaptation] {
@@ -617,6 +630,16 @@ enum PlanSheet {
   static let loadFailed = "Your plan did not load. Try again in a moment."
   static let markFailed = "That session could not be marked just now. Try again in a moment."
   static let dismissFailed = "That change could not be cleared just now. Try again in a moment."
+  static let changesFailed = "Plan changes did not load, so the reasons for any moved or changed sessions are not shown."
+
+  // VoiceOver names the session, not only "Completed" or "Missed".
+  private static func spoken(_ w: PlanWorkout) -> String {
+    "\(w.dayLabel), \(w.detail.replacingOccurrences(of: " · ", with: ", "))"
+  }
+  static func markLabel(_ w: PlanWorkout, done: Bool) -> String {
+    "Mark \(spoken(w)), as \(done ? "completed" : "missed")"
+  }
+  static func watchLabel(_ w: PlanWorkout) -> String { "Send \(spoken(w)), to Watch" }
 }
 
 // What the sheet shows around the plan's sessions. All of it belongs to one
@@ -625,10 +648,11 @@ struct PlanExtras: Equatable {
   var unmarked: [PlanWorkout] = []
   var changes: [PlanAdaptation] = []
   var changesOn = false // the adaptations endpoint answered
+  var changesFailed = false // it did not, and is not switched off
   var prediction: RacePrediction?
 
   mutating func clearForNewPlan() {
-    unmarked = []; changes = []; prediction = nil
+    unmarked = []; changes = []; changesFailed = false; prediction = nil
   }
 }
 
@@ -659,6 +683,7 @@ struct PlanRowRequests: Equatable {
 struct PlanView: View {
   @ObservedObject var tokenManager: TokenManager
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   @State private var text = ""
   @State private var workouts: [PlanWorkout] = []
@@ -865,6 +890,13 @@ struct PlanView: View {
           .cornerRadius(10)
         }
       }
+      if extras.changesFailed {
+        VStack(alignment: .leading, spacing: 6) {
+          Text(PlanSheet.changesFailed).font(.footnote).foregroundColor(.gray)
+          Button("Try again") { Task { await loadChanges() } }
+            .font(.footnote).foregroundColor(.orange)
+        }
+      }
       if extras.changesOn {
         Button("All plan changes") {
           Task {
@@ -891,17 +923,23 @@ struct PlanView: View {
         Text("Past sessions").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
         ForEach(extras.unmarked.filter { $0.rowId != nil }) { w in
           VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            // At accessibility sizes the buttons go under the day, so neither clips.
+            let row = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout())
+            row {
               VStack(alignment: .leading, spacing: 2) {
                 Text(w.dayLabel).font(.subheadline.bold()).foregroundColor(.white)
                 Text(w.detail).font(.caption).foregroundColor(.gray)
               }
-              Spacer()
-              // A miss is recorded, never rescheduled (CLAUDE.md §6.2).
-              Button("Completed") { Task { await mark(w, done: true) } }
-                .font(.caption.bold()).foregroundColor(.orange)
-              Button("Missed") { Task { await mark(w, done: false) } }
-                .font(.caption.bold()).foregroundColor(.gray).padding(.leading, 10)
+              if !typeSize.isAccessibilitySize { Spacer() }
+              HStack(spacing: 10) {
+                // A miss is recorded, never rescheduled (CLAUDE.md §6.2).
+                Button("Completed") { Task { await mark(w, done: true) } }
+                  .font(.caption.bold()).foregroundColor(.orange)
+                  .accessibilityLabel(PlanSheet.markLabel(w, done: true)).accessibilityIdentifier("Completed")
+                Button("Missed") { Task { await mark(w, done: false) } }
+                  .font(.caption.bold()).foregroundColor(.gray)
+                  .accessibilityLabel(PlanSheet.markLabel(w, done: false)).accessibilityIdentifier("Missed")
+              }
             }
             .disabled(marks.isPending(w.id))
             if let err = marks.error(for: w.id) {
@@ -918,15 +956,16 @@ struct PlanView: View {
       if let watchNote { Text(watchNote).font(.footnote).foregroundColor(.gray) }
       ForEach(workouts) { w in
         VStack(alignment: .leading, spacing: 3) {
-          HStack {
+          let row = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout())
+          row {
             Text(w.dayLabel).font(.subheadline.bold()).foregroundColor(.white)
-            Spacer()
+            if !typeSize.isAccessibilitySize { Spacer() }
             Text(w.detail).font(.caption).foregroundColor(.orange)
           }
           if let d = w.description, !d.isEmpty {
             Text(d).font(.footnote).foregroundColor(Color(white: 0.7))
           }
-          if WatchSend.canSend(type: w.type, steps: w.steps, date: w.date, today: PlanDay.today()) {
+          if WatchSend.canSend(type: w.type, intensity: w.intensity, steps: w.steps, date: w.date, today: PlanDay.today()) {
             Button(action: { Task { await sendToWatch(w) } }) {
               HStack(spacing: 6) {
                 if sendingId == w.id { ProgressView().tint(.orange) }
@@ -935,6 +974,7 @@ struct PlanView: View {
             }
             .font(.caption.bold()).foregroundColor(.orange).padding(.top, 2)
             .disabled(sendingId != nil)
+            .accessibilityLabel(PlanSheet.watchLabel(w)).accessibilityIdentifier("Send to Watch")
           }
         }
         .padding(12)
@@ -1053,12 +1093,19 @@ struct PlanView: View {
   private func loadChanges() async {
     var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
-    guard let url = comps?.url,
-          let (data, resp) = try? await URLSession.shared.data(from: url),
-          (resp as? HTTPURLResponse)?.statusCode == 200,
-          let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
-    else { return }
-    await MainActor.run { extras.changes = PlanChanges.visible(decoded.adaptations); extras.changesOn = true }
+    guard let url = comps?.url else { return }
+    let result = try? await URLSession.shared.data(from: url)
+    let status = (result?.1 as? HTTPURLResponse)?.statusCode ?? 0
+    let decoded = result.flatMap { try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: $0.0) }
+    switch (PlanChanges.loadOutcome(status: status), decoded) {
+    case (.loaded, let decoded?):
+      await MainActor.run { extras.changes = PlanChanges.visible(decoded.adaptations); extras.changesOn = true; extras.changesFailed = false }
+    case (.off, _):
+      await MainActor.run { extras.changesFailed = false }
+    default:
+      // Keep any list already shown; say the reasons may be missing.
+      await MainActor.run { extras.changesFailed = true }
+    }
   }
 
   // True once the history arrived; a failed load must not read as "no changes".
