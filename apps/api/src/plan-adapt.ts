@@ -157,6 +157,12 @@ export async function adaptTomorrow(
   let week = await loadWeek();
   const weekIndex = Math.floor((Date.parse(`${monday}T00:00:00Z`) - Date.parse(`${mondayOf(plan.start_date)}T00:00:00Z`)) / (7 * DAY));
   const template_week_minutes = templateWeekMinutes(plan.template)[weekIndex] ?? null;
+  // A plan made mid-week stores nothing before the day it was made, so in
+  // week 1 the earliest stored session stands in for that day (rest days are
+  // not stored; a full week 1 that opens on a rest day then measures against
+  // its own stored minutes, which equal the template call until a move).
+  const firstDay = () =>
+    weekIndex === 0 ? week.filter((w) => w.scheduled_date < addDays(monday, 7)).map((w) => w.scheduled_date).sort()[0] ?? null : null;
 
   const out: AdaptResult[] = [];
   const targets = week.filter((w) => w.scheduled_date === tomorrow && w.planned_intensity !== 'rest').map((w) => w.id);
@@ -167,7 +173,7 @@ export async function adaptTomorrow(
     const decision = evaluateAdaptation({
       posture,
       workout,
-      plan: { source: 'scora_ai', goal_race_date: plan.goal_race_date, week, template_week_minutes },
+      plan: { source: 'scora_ai', goal_race_date: plan.goal_race_date, week, template_week_minutes, first_day_on_plan: firstDay() },
       today,
     });
     if (decision.type === 'none') {

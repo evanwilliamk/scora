@@ -310,3 +310,24 @@ test('history: every change on the active plan, dismissed ones kept and marked (
   await db.query(`update training_plans set current_status = 'replaced' where athlete_id = 'h1'`);
   assert.deepEqual(await store.history('h1', 50), [], 'a replaced plan takes its changes with it');
 });
+
+test('partial first week: a plan made on Wednesday measures week 1 against its stored sessions, so the move is not blocked by the 10% guard', async () => {
+  await seedPlan('pw1', templateId);
+  const m = ids.get('pw1')!;
+  // Generated Wednesday 2026-10-21: nothing before that day is stored.
+  await db.query(`delete from scheduled_workouts where athlete_id = 'pw1' and scheduled_date < '2026-10-21'`);
+  // Saturday made easy so Friday is a legal window next to it (this fixture's
+  // long run would otherwise cluster); only the 10% guard can now block it.
+  await db.query(`update scheduled_workouts set planned_intensity = 'easy' where id = $1`, [m.get('w1:saturday')]);
+  // Friday holds a short easy run, so the only windows displace an easy
+  // session (a pure move into an open day never trips the guard).
+  await db.query(
+    `insert into scheduled_workouts (athlete_id, training_plan_id, scheduled_date, planned_type, planned_intensity, planned_duration_min, source)
+     select athlete_id, training_plan_id, '2026-10-23', 'run', 'easy', 15, 'scora_ai' from scheduled_workouts where id = $1`,
+    [m.get('w1:thursday')],
+  );
+  // Thursday's tempo tomorrow, rest posture today.
+  const [r] = await adaptTomorrow('pw1', '2026-10-21', 'rest', store, DRAFTS);
+  assert.equal(r.decision.type, 'moved');
+  assert.equal((await row(m.get('w1:thursday')!)).date, '2026-10-23');
+});
