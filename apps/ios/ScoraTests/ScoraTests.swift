@@ -159,6 +159,17 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(DriverSeries.format(52, unit: "ms"), "52 ms")
     }
 
+    func testRatioAndDayCountFormatsAndBars() {
+        XCTAssertEqual(DriverSeries.format(1.32, unit: "ratio"), "1.32")
+        XCTAssertEqual(DriverSeries.format(1.3, unit: "ratio"), "1.30")
+        XCTAssertEqual(DriverSeries.format(3, unit: "days"), "3 days")
+        XCTAssertEqual(DriverSeries.format(1, unit: "days"), "1 day")
+        let hard = DriverSeries(key: "hard_days", label: "Hard days in a row", unit: "days", points: [], baseline: nil)
+        let acwr = DriverSeries(key: "acwr", label: "Acute:chronic load", unit: "ratio", points: [], baseline: nil)
+        XCTAssertTrue(hard.isDailyTotal, "counts draw as bars")
+        XCTAssertFalse(acwr.isDailyTotal, "a ratio draws as a line")
+    }
+
     func testLastNightSleepIsTodaysGroupedNightOnly() {
         let nights = [HealthNight(day: "2026-10-27", sleepSeconds: 26000), HealthNight(day: "2026-10-28", sleepSeconds: 25920)]
         XCTAssertEqual(HealthNights.lastNightSleep(nights, today: "2026-10-28"), 25920)
