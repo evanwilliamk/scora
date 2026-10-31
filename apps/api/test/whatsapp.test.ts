@@ -122,3 +122,11 @@ test('review 6: the doorbell refuses a read the voice validators reject, and emo
   assert.throws(() => composeDoorbell({ ...base, voice: 'Settled.', numbers: 'Sleep 7:12!' }), /exclamation/);
   assert.throws(() => composeDoorbell({ ...base, voice: '   ' }), /empty/);
 });
+
+test('review 6: Twilio opt-out words with polite filler still stop; UNSTOP resumes', () => {
+  for (const s of ['please cancel', 'Cancel please', 'QUIT please', 'end please.', 'cancel my subscription', 'quit messages', 'End now', 'please quit', 'Unsubscribe me', 'stop all messages']) {
+    assert.deepEqual(parseReply(s), { cmd: 'stop' }, s);
+  }
+  for (const s of ['end of week was good', 'cancel that', 'quit early yesterday']) assert.deepEqual(parseReply(s), { cmd: 'unknown' }, s);
+  assert.deepEqual(parseReply('UNSTOP'), { cmd: 'resume' });
+});

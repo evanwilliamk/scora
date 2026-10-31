@@ -69,6 +69,7 @@ export const PAUSE_MAX_DAYS = 30;
 
 // Opt-out words carriers and WhatsApp users expect to work, beyond "stop".
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'optout', 'revoke']);
+const STOP_FILLER = new Set(['please', 'now', 'all', 'me', 'my', 'it', 'this', 'the', 'these', 'them', 'messages', 'message', 'texts', 'whatsapp', 'subscription', 'thanks', 'thank', 'you', 'pls', 'plz']);
 
 // The reply set is bounded (PRD §5.B.2): anything else is 'unknown' and gets
 // the help text. Matching folds width and case, drops emoji, zero-width and
@@ -83,12 +84,16 @@ export function parseReply(text: string): ReplyCommand {
   // "cancel", "end" and "quit" stop only on their own ("end of week was good"
   // is not an opt-out); the unambiguous words stop wherever a message starts.
   const leading = ['stop', 'stopall', 'unsubscribe', 'optout', 'revoke'];
-  if (STOP_WORDS.has(t.replace(/ /g, '')) || leading.includes(first) || /^opt out\b/.test(t) || /^please (stop|unsubscribe)\b/.test(t)) {
+  // Any stop word, with only polite filler around it ("please cancel",
+  // "quit messages", "cancel my subscription"), stops too.
+  const rest = t.split(' ').filter((w) => !STOP_FILLER.has(w));
+  const politeStop = rest.length === 1 && STOP_WORDS.has(rest[0]) && rest.length < t.split(' ').length;
+  if (STOP_WORDS.has(t.replace(/ /g, '')) || leading.includes(first) || politeStop || /^opt out\b/.test(t) || /^please (stop|unsubscribe)\b/.test(t)) {
     return { cmd: 'stop' };
   }
   if (t === 'why') return { cmd: 'why' };
   if (t === 'more') return { cmd: 'more' };
-  if (t === 'resume' || t === 'start' || t === 'unpause') return { cmd: 'resume' };
+  if (t === 'resume' || t === 'start' || t === 'unpause' || t === 'unstop') return { cmd: 'resume' };
   if (t === 'help' || t === 'info') return { cmd: 'help' };
   const pause = /^pause(?: (\d{1,3}))?(?: days?)?$/.exec(t);
   if (pause) {
