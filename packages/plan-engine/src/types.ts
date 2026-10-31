@@ -49,6 +49,13 @@ export interface PlanContext {
   // The template's weekly call in minutes for that week. When unknown, the
   // week as currently scheduled is the baseline.
   template_week_minutes?: number | null;
+  // The first date the plan holds sessions for (the day it was created; a
+  // plan made mid-week stores nothing for the days already gone). When it
+  // falls after the evaluated week's Monday, that week is partial and the
+  // full template call no longer describes it: the stored sessions of the
+  // week are the baseline for the volume guard instead. Unset, or on or
+  // before the Monday, changes nothing.
+  first_day_on_plan?: string | null;
 }
 
 export interface AdaptationInput {

@@ -13,7 +13,8 @@
 //      steady state; back-off + tempo -> endurance. primed never pushes past
 //      the plan; moderate, steady and taper change nothing.
 //   3. Guards on the result: race week freezes everything, weekly volume
-//      stays within ±10% of the template, long runs keep their distance
+//      stays within ±10% of the template (in a partial first week, of the
+//      sessions stored for it), long runs keep their distance
 //      (a move keeps it; nothing here shortens one).
 
 import {
@@ -96,7 +97,10 @@ export function evaluateAdaptation(input: AdaptationInput): AdaptationDecision {
   const end = weekEnd(workout.scheduled_date);
   const week = all.filter((w) => daysBetween(monday, w.scheduled_date) >= 0 && daysBetween(w.scheduled_date, end) >= 0);
   const before = weekMinutes(week);
-  const template = plan.template_week_minutes ?? before;
+  // A partial first week measures against the days that exist on the plan
+  // (the sessions stored for it), not the whole template week.
+  const partial = !!plan.first_day_on_plan && daysBetween(monday, plan.first_day_on_plan) > 0;
+  const template = partial ? before : plan.template_week_minutes ?? before;
   const facts = (after: number): AdaptationFacts => ({
     posture,
     workout_date: workout.scheduled_date,
