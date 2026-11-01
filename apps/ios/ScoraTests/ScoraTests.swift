@@ -653,6 +653,125 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(WatchSend.scheduleTime(for: "2026-10-22", now: nextDay), "the day is over")
     }
 
+    // MARK: Watch reconcile
+
+    private func session(_ date: String, _ intensity: String, _ min: Int, row: String?, steps: [PlanStep]? = nil, type: String = "run") -> PlanWorkout {
+        var w = PlanWorkout(date: date, type: type, intensity: intensity, durationMin: min, distanceKm: nil, description: nil)
+        w.rowId = row
+        w.steps = steps ?? [PlanStep(type: "steady", durationMin: Double(min), intensity: intensity, reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        return w
+    }
+    private func at6(_ day: Int) -> DateComponents { DateComponents(year: 2026, month: 11, day: day, hour: 6, minute: 0) }
+    private var reconcileNow: Date { Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
+
+    // Sends `w` with the fake Watch and records it, as Your Plan does.
+    private func sent(_ ws: [PlanWorkout], to watch: FakeWatch) -> WatchLedger {
+        var ledger = WatchLedger()
+        for w in ws { watch.scheduled.append((name: w.detail, at: at6(Int(w.date.suffix(2))!))); ledger.recordSend(w) }
+        return ledger
+    }
+
+    @MainActor
+    func testAMovedSessionMovesOnTheWatchWhenTheAthleteSentIt() async {
+        let watch = FakeWatch()
+        let tue = session("2026-11-03", "tempo", 45, row: "r1")
+        let ledger = sent([tue], to: watch)
+        // The plan engine moved it to Wednesday, unchanged otherwise.
+        let wed = session("2026-11-04", "tempo", 45, row: "r1")
+        let out = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(4)], "Tuesday's copy is gone, Wednesday's is on the Watch")
+        XCTAssertEqual(out.note(for: wed), "Moved from Tue Nov 3. Its Watch copy moved with it.")
+        XCTAssertEqual(out.sends.map(\.date), ["2026-11-04"])
+        // Running again changes nothing.
+        let again = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: out, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(4)])
+        XCTAssertEqual(again, out)
+    }
+
+    @MainActor
+    func testAMovedAndChangedSessionIsRemovedAndNotSentAgain() async {
+        let watch = FakeWatch()
+        let ledger = sent([session("2026-11-03", "tempo", 45, row: "r1")], to: watch)
+        let wed = session("2026-11-04", "endurance", 45, row: "r1") // moved and downgraded
+        let out = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(watch.scheduled.isEmpty, "unsure it is the same session: removed, not resent")
+        XCTAssertEqual(out.note(for: wed), "Moved from Tue Nov 3. Its Watch copy for Tue Nov 3 was removed and has not been sent for this day.")
+    }
+
+    @MainActor
+    func testADowngradedOrRemovedSessionLeavesTheWatchWithANote() async {
+        let watch = FakeWatch()
+        let ledger = sent([session("2026-11-03", "tempo", 45, row: "r1"), session("2026-11-05", "long", 90, row: "r2")], to: watch)
+        let tueEasy = session("2026-11-03", "endurance", 45, row: "r1") // downgraded in place
+        let thuRest = session("2026-11-05", "rest", 0, row: "r3") // Thursday's run is gone
+        let plan = [tueEasy, thuRest]
+        let out = await WatchReconcile.run(workouts: plan, coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(watch.scheduled.isEmpty)
+        XCTAssertEqual(out.note(for: tueEasy), WatchReconcile.changed)
+        XCTAssertEqual(out.note(for: thuRest), "Thu Nov 5's session is no longer on your plan, so its Watch copy was removed.")
+        XCTAssertEqual(out.unattachedNotes([tueEasy]), ["Thu Nov 5's session is no longer on your plan, so its Watch copy was removed."])
+        for n in out.notes.map(\.text) {
+            XCTAssertFalse(n.contains("\u{2014}"))
+            XCTAssertFalse(n.lowercased().contains("you should"))
+        }
+    }
+
+    @MainActor
+    func testReconcileLeavesPastDaysMatchingCopiesAndUnlistedDaysAlone() async {
+        let watch = FakeWatch()
+        let mon = session("2026-11-02", "tempo", 45, row: "r0") // yesterday
+        let tue = session("2026-11-03", "easy", 40, row: "r1")
+        let far = session("2026-11-09", "long", 90, row: "r9")
+        let ledger = sent([mon, tue, far], to: watch)
+        // Yesterday's row is no longer listed, and the list (a full page) ends on Nov 8.
+        let out = await WatchReconcile.run(workouts: [tue], coveredThrough: "2026-11-08", ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(2), at6(3), at6(9)], "nothing removed")
+        XCTAssertNil(out.note(for: tue))
+        // A copy sent before this device kept records still counts when its name matches.
+        let older = FakeWatch()
+        older.scheduled = [(name: tue.detail, at: at6(3))]
+        _ = await WatchReconcile.run(workouts: [tue], coveredThrough: nil, ledger: WatchLedger(), scheduler: older, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(older.scheduled.count, 1)
+        XCTAssertNil(WatchReconcile.coveredThrough([tue]), "a short page is the whole plan")
+    }
+
+    @MainActor
+    func testReconcileTouchesOnlyTheStaleCopyOnADayWithTwoSessions() async {
+        let watch = FakeWatch()
+        let run = session("2026-11-04", "easy", 40, row: "a")
+        let ride = session("2026-11-04", "recovery", 30, row: "b", type: "ride")
+        let ledger = sent([run, ride], to: watch)
+        // The coach drops the ride; the run stays.
+        let out = await WatchReconcile.run(workouts: [run], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.name), [run.detail])
+        XCTAssertEqual(out.sends.map(\.rowId), ["a"])
+        // The day's note shows under the run, the row left on that day; it names neither as changed.
+        XCTAssertEqual(out.notes.map(\.key), ["day:2026-11-04"])
+        XCTAssertEqual(out.notes.first?.text, "One of Wed Nov 4's sessions is no longer on your plan, so its Watch copy was removed.")
+    }
+
+    @MainActor
+    func testReconcileNeverAsksForWatchPermission() async {
+        let watch = FakeWatch()
+        let ledger = sent([session("2026-11-03", "tempo", 45, row: "r1")], to: watch)
+        watch.allow = false
+        let out = await WatchReconcile.run(workouts: [], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.count, 1)
+        XCTAssertEqual(out, ledger)
+    }
+
+    func testWatchLedgerRemembersTheNameASessionWasSentUnder() {
+        var ledger = WatchLedger()
+        let tempo = session("2026-11-03", "tempo", 45, row: "r1")
+        ledger.recordSend(tempo)
+        XCTAssertEqual(ledger.lastSentName(session("2026-11-03", "endurance", 45, row: "r1")), tempo.detail)
+        let defaults = UserDefaults(suiteName: "watch-ledger-test")!
+        defer { defaults.removePersistentDomain(forName: "watch-ledger-test") }
+        ledger.save(athleteId: "a1", defaults: defaults)
+        XCTAssertEqual(WatchLedger.load(athleteId: "a1", defaults: defaults), ledger)
+        XCTAssertEqual(WatchLedger.load(athleteId: "other", defaults: defaults), WatchLedger())
+    }
+
     func testASessionWhoseDayHasPassedSaysSo() async {
         // The plan screen was left open overnight: yesterday's session still shows.
         let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]

@@ -700,6 +700,7 @@ struct PlanView: View {
   @State private var isEditing = false
   @State private var watchNote: String?
   @State private var sendingId: String?
+  @State private var watchLedger = WatchLedger() // what the Watch pass changed, said next to each session
   @State private var feedLink = ""
   @State private var isImporting = false
   @State private var savedFeed: String?
@@ -954,6 +955,9 @@ struct PlanView: View {
       Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
       if let note { Text(note).font(.footnote).foregroundColor(.gray) }
       if let watchNote { Text(watchNote).font(.footnote).foregroundColor(.gray) }
+      ForEach(watchLedger.unattachedNotes(workouts), id: \.self) { n in
+        Text(n).font(.footnote).foregroundColor(.gray)
+      }
       ForEach(workouts) { w in
         VStack(alignment: .leading, spacing: 3) {
           let row = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout())
@@ -975,6 +979,9 @@ struct PlanView: View {
             .font(.caption.bold()).foregroundColor(.orange).padding(.top, 2)
             .disabled(sendingId != nil)
             .accessibilityLabel(PlanSheet.watchLabel(w)).accessibilityIdentifier("Send to Watch")
+          }
+          if let n = watchLedger.note(for: w) {
+            Text(n).font(.caption).foregroundColor(.gray)
           }
         }
         .padding(12)
@@ -1001,12 +1008,21 @@ struct PlanView: View {
   private func sendToWatch(_ w: PlanWorkout) async {
     guard let steps = w.steps else { return }
     await MainActor.run { sendingId = w.id; watchNote = nil }
+    let id = tokenManager.athleteId
     let outcome = await WatchSend.send(
       steps: steps, type: w.type, date: w.date, displayName: w.detail, dayLabel: w.dayLabel,
-      scheduler: AppleWatchScheduler()
+      replacing: WatchLedger.load(athleteId: id).lastSentName(w), scheduler: AppleWatchScheduler()
     )
     await MainActor.run { watchNote = WatchSend.message(outcome); sendingId = nil }
-    if case .sent = outcome { await recordWatchSend(w) }
+    if case .sent = outcome {
+      await MainActor.run {
+        var ledger = WatchLedger.load(athleteId: id)
+        ledger.recordSend(w)
+        ledger.save(athleteId: id)
+        watchLedger = ledger
+      }
+      await recordWatchSend(w)
+    }
   }
 
   // Tells the API the session is on the Watch (doc 10 3.1.9). Best effort: a
@@ -1077,6 +1093,9 @@ struct PlanView: View {
       return
     }
     await MainActor.run { workouts = decoded.workouts; extras.unmarked = decoded.recent ?? []; planLoaded = true; loadFailed = false }
+    // The plan may have changed since a session was sent: bring the Watch in step.
+    let ledger = await WatchReconcile.reconcile(decoded.workouts, athleteId: tokenManager.athleteId, today: today)
+    await MainActor.run { watchLedger = ledger }
     await loadChanges()
   }
 
