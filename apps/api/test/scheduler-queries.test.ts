@@ -76,7 +76,7 @@ test('past 1000 device rows and 1000 preference rows, every athlete gets their r
   assert.deepEqual(ny.r, { daily: 0, weekly: 0 });
 });
 
-test('queries per tick as athletes grow', async () => {
+test('queries per tick as athletes grow', async (t) => {
   const report: string[] = [];
   for (const n of [10, 100, 2500]) {
     const { db, deps } = setup(n);
@@ -85,11 +85,15 @@ test('queries per tick as athletes grow', async () => {
     // 06:00 London: everyone due, one day after their last read.
     const due = await tick(deps, '2026-11-03T06:00:00Z');
     assert.equal(due.r.daily, n);
+    // Idle: one device page and one preferences request per 1000 / 500.
+    assert.equal(idle.queries, Math.ceil(n / 1000) + Math.ceil(n / 500));
+    // Per delivery: the claim (one update) and the device tokens.
+    assert.equal(due.queries - idle.queries, 2 * n);
     report.push(`${n} athletes: idle ${idle.queries} ${JSON.stringify(idle.byTable)}; all due ${due.queries} (${((due.queries - idle.queries) / n).toFixed(2)} per delivery)`);
     // Then due again a minute later: nothing left to send.
     const after = await tick(deps, '2026-11-03T06:01:00Z');
     assert.equal(after.r.daily, 0);
     assert.equal([...db.prefs.values()].every((p) => p.last_daily_sent_on === '2026-11-03'), true);
   }
-  console.log(report.join('\n'));
+  t.diagnostic(report.join('\n'));
 });
