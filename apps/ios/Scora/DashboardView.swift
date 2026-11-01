@@ -149,6 +149,99 @@ enum ReadStatus: Equatable {
   }
 }
 
+// Which day the read on screen is for. A read kept from an earlier day (the
+// phone was offline, or today's load failed) is headed with its own date,
+// never "Today's Read" (CLAUDE.md 3.2: every claim is backed by a driver, and
+// yesterday's drivers are not today's).
+enum ReadDate {
+  static let todayHeading = "Today's Read"
+
+  static func isOld(loadedDay: String?, today: String) -> Bool {
+    guard let loadedDay else { return false }
+    return loadedDay != today
+  }
+
+  static func heading(loadedDay: String?, today: String) -> String {
+    guard let loadedDay, isOld(loadedDay: loadedDay, today: today), let shown = spoken(loadedDay) else { return todayHeading }
+    return "Read for \(shown)"
+  }
+
+  // "2026-10-31" as "Saturday, October 31".
+  static func spoken(_ day: String) -> String? {
+    let parse = DateFormatter()
+    parse.locale = Locale(identifier: "en_US_POSIX")
+    parse.timeZone = TimeZone(identifier: "UTC")
+    parse.dateFormat = "yyyy-MM-dd"
+    guard let date = parse.date(from: day) else { return nil }
+    let out = DateFormatter()
+    out.locale = Locale(identifier: "en_US_POSIX")
+    out.timeZone = TimeZone(identifier: "UTC")
+    out.dateFormat = "EEEE, MMMM d"
+    return out.string(from: date)
+  }
+}
+
+// When a dropped connection comes back, the dashboard reads again if its
+// last load failed or it still shows an earlier day's read.
+enum ReadRetry {
+  static func onReconnect(hasError: Bool, loadedDay: String?, today: String, isLoading: Bool) -> Bool {
+    guard !isLoading else { return false }
+    return hasError || ReadDate.isOld(loadedDay: loadedDay, today: today)
+  }
+}
+
+// The last read that loaded, kept on this phone so a launch without a
+// connection shows it (headed with its date) instead of a blank dashboard.
+// It is health-derived, so it lives only in the app's own container
+// (Application Support), is excluded from iCloud and iTunes backups, and is
+// removed at sign-out.
+enum ReadCache {
+  static let maxAge: TimeInterval = 7 * 86_400
+
+  struct Entry: Codable {
+    let athleteId: String
+    let day: String
+    let savedAt: Date
+    let body: Data // the /api/read reply as it arrived
+
+    var response: ReadResponse? { try? JSONDecoder().decode(ReadResponse.self, from: body) }
+  }
+
+  static var defaultURL: URL {
+    let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+      ?? FileManager.default.temporaryDirectory
+    return base.appendingPathComponent("Scora", isDirectory: true).appendingPathComponent("last-read.json")
+  }
+
+  static func save(_ body: Data, day: String, athleteId: String, at date: Date = Date(), to url: URL = defaultURL) {
+    guard !athleteId.isEmpty,
+          let data = try? JSONEncoder().encode(Entry(athleteId: athleteId, day: day, savedAt: date, body: body)) else { return }
+    do {
+      try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+      var file = url
+      var values = URLResourceValues()
+      values.isExcludedFromBackup = true
+      try file.setResourceValues(values)
+    } catch {
+      // A read that cannot be kept is still shown; the next launch just has none.
+    }
+  }
+
+  static func load(athleteId: String, now: Date = Date(), from url: URL = defaultURL) -> Entry? {
+    guard let data = try? Data(contentsOf: url),
+          let entry = try? JSONDecoder().decode(Entry.self, from: data),
+          entry.athleteId == athleteId,
+          now.timeIntervalSince(entry.savedAt) <= maxAge,
+          entry.response != nil else { return nil }
+    return entry
+  }
+
+  static func clear(at url: URL = defaultURL) {
+    try? FileManager.default.removeItem(at: url)
+  }
+}
+
 // /api/card-expand reply: a 2-3 sentence read of one card.
 struct CardExpansion: Decodable {
   let cardId: String
@@ -216,6 +309,8 @@ struct DashboardView: View {
   // The local day the shown read was made for: a new day means a new read.
   @State private var loadedDay: String?
   @State private var loadedAt: Date?
+  // The athlete's local day now, kept current across midnight and resumes.
+  @State private var today = PlanDay.today()
 
   @State private var read: DailyRead?
   @State private var posture: String?
@@ -305,6 +400,10 @@ struct DashboardView: View {
         #if DEBUG
         if DemoMode.isOn { await loadRead(); return }
         #endif
+        NetworkStatus.start()
+        // The last read kept on the phone shows at once, under its own date;
+        // without a connection it is what the athlete sees instead of a blank screen.
+        showCachedRead()
         _ = await HealthManager.shared.requestAuthorization()
         await loadRead()
         await TimeZoneSync.syncIfChanged(athleteId: tokenManager.athleteId)
@@ -327,9 +426,22 @@ struct DashboardView: View {
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
       Task { await loadRead() }
     }
+    // The connection is back: a failed load, or an earlier day's read, loads again.
+    .onReceive(NotificationCenter.default.publisher(for: NetworkStatus.cameBack)) { _ in
+      today = PlanDay.today()
+      if ReadRetry.onReconnect(hasError: errorText != nil, loadedDay: loadedDay, today: today, isLoading: isLoading) {
+        Task { await loadRead() }
+      }
+    }
+    // Midnight with the app open: the heading takes the read's date, and today's is asked for.
+    .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: DispatchQueue.main)) { _ in
+      today = PlanDay.today()
+      if loadedDay != nil, !isLoading, ReadDate.isOld(loadedDay: loadedDay, today: today) { Task { await loadRead() } }
+    }
     // Back from overnight in the background: yesterday's read is not today's.
     .onChange(of: scenePhase) { _, phase in
       guard phase == .active else { return }
+      today = PlanDay.today()
       // A new day, or a read over three hours old (a 6 AM read can predate
       // the Watch's sleep sync), is read again.
       let stale = loadedAt.map { Date().timeIntervalSince($0) > 3 * 3600 } ?? false
@@ -411,7 +523,7 @@ struct DashboardView: View {
 
   private var todaysRead: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("Today's Read")
+      Text(ReadDate.heading(loadedDay: read == nil ? nil : loadedDay, today: today))
         .font(.caption.bold())
         .foregroundColor(.gray)
         .textCase(.uppercase)
@@ -594,13 +706,34 @@ struct DashboardView: View {
     req.httpBody = try? JSONSerialization.data(withJSONObject: [
       "athleteId": tokenManager.athleteId, "cardId": cardId,
     ])
-    guard let (data, resp) = try? await URLSession.shared.data(for: req),
+    guard let (data, resp) = try? await API.slowSession.data(for: req),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(CardExpansion.self, from: data)
     else { return }
     await MainActor.run {
       if CardExpansion.isCurrent(requested: generation, current: readGeneration) { expansions[cardId] = decoded.reply }
     }
+  }
+
+  @MainActor
+  private func show(_ decoded: ReadResponse, day: String, at date: Date) {
+    read = decoded.read
+    posture = decoded.posture?.posture
+    week = decoded.weekSoFar
+    cards = decoded.cards
+    expansions = [:] // a new read means new numbers to interpret
+    readGeneration += 1
+    loadedDay = day
+    loadedAt = date
+  }
+
+  // Only before any read has landed; a live reply always wins.
+  @MainActor
+  private func showCachedRead() {
+    guard read == nil, loadGate.applied == 0,
+          let entry = ReadCache.load(athleteId: tokenManager.athleteId),
+          let decoded = entry.response else { return }
+    show(decoded, day: entry.day, at: entry.savedAt)
   }
 
   private func loadRead() async {
@@ -646,7 +779,7 @@ struct DashboardView: View {
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
-    let outcome = await ReadFetch.run { try await URLSession.shared.data(for: req) }
+    let outcome = await ReadFetch.run { try await API.slowSession.data(for: req) }
     guard case .data(let data) = outcome else {
       await MainActor.run {
         guard loadGate.isLatest(token) else { return }
@@ -657,17 +790,12 @@ struct DashboardView: View {
     }
     do {
       let decoded = try JSONDecoder().decode(ReadResponse.self, from: data)
+      let athleteId = tokenManager.athleteId
       await MainActor.run {
         // A newer reply already landed: this one is older news.
         guard loadGate.accept(token) else { return }
-        read = decoded.read
-        posture = decoded.posture?.posture
-        week = decoded.weekSoFar
-        cards = decoded.cards
-        expansions = [:] // a new read means new numbers to interpret
-        readGeneration += 1
-        loadedDay = day
-        loadedAt = Date()
+        show(decoded, day: day, at: Date())
+        ReadCache.save(data, day: day, athleteId: athleteId)
         // A newer load still in flight keeps the spinner.
         if loadGate.isLatest(token) { isLoading = false }
       }
@@ -696,7 +824,7 @@ enum ReadFetchOutcome: Equatable {
 }
 
 enum ReadFetch {
-  static let failureLine = "The read could not load. Pull to try again."
+  static let failureLine = NetworkText.read.other
 
   static func run(_ loader: () async throws -> (Data, URLResponse)) async -> ReadFetchOutcome {
     do {
@@ -706,7 +834,7 @@ enum ReadFetch {
       }
       return .data(data)
     } catch {
-      return isCancellation(error) ? .cancelled : .failed(failureLine)
+      return isCancellation(error) ? .cancelled : .failed(NetworkText.read.line(for: error))
     }
   }
 
