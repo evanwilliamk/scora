@@ -286,6 +286,31 @@ test('Oura connected: the read\'s date decides what counts as last night (review
   assert.ok(!stale.json().drivers.some((d: any) => d.value === '7:12'), 'no stale sleep value reaches the read');
 });
 
+test('Strava and Oura each slow by N ms: the read takes about N, not the sum (parallel fetch)', async () => {
+  const N = 600;
+  const ouraRow = { body: [{ oura_access_token: 'oura-tok', oura_refresh_token: 'oura-ref', oura_expires_at: Math.floor(now / 1000) + 3600 }] };
+  const night = { day: today, type: 'long_sleep', total_sleep_duration: 25920, average_hrv: 52, lowest_heart_rate: 48 };
+  connected();
+  rest.answer('athletes', ouraRow);
+  guard.stravaActivities(steady());
+  guard.oura({ sleep: { data: [night] }, daily_sleep: { data: [{ day: today, score: 84 }] }, daily_readiness: { data: [{ day: today, score: 80 }] } });
+  guard.openAi(CLEAN);
+  guard.delay('www.strava.com', N);
+  guard.delay('api.ouraring.com', N);
+  const t0 = performance.now();
+  const r = await read();
+  const elapsed = performance.now() - t0;
+  assert.equal(r.statusCode, 200, r.body);
+  // Both sources really landed in the read.
+  assert.equal(r.json().connections.oura, true);
+  assert.ok(r.json().drivers.some((d: any) => d.value === '7:12'), 'Oura sleep is a driver');
+  assert.equal(guard.calls.filter((c) => c.host === 'api.ouraring.com').length, 3);
+  // One after another this was at least 4N (Strava, then three Oura routes);
+  // side by side it is one N plus route overhead. 1.5N leaves room for a slow machine.
+  assert.ok(elapsed >= N, `elapsed ${Math.round(elapsed)} ms`);
+  assert.ok(elapsed < 1.5 * N, `elapsed ${Math.round(elapsed)} ms, expected about ${N} (sum would be ${2 * N} or more)`);
+});
+
 test('no rule fired: no POSTURE line, no posture to name, no badge (night fixes 10-30)', async () => {
   connected();
   guard.stravaActivities(steady());
