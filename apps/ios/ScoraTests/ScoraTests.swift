@@ -1307,7 +1307,7 @@ final class ScoraTests: XCTestCase {
     func testWeeklyDecodeFailureIsNotShownRaw() {
         let err = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "bad"))
         XCTAssertEqual(WeeklyText.failure(err), WeeklyText.unreadable)
-        XCTAssertEqual(WeeklyText.failure(URLError(.notConnectedToInternet)), URLError(.notConnectedToInternet).localizedDescription)
+        XCTAssertEqual(WeeklyText.failure(URLError(.notConnectedToInternet)), NetworkText.weekly.offline)
     }
 
 }

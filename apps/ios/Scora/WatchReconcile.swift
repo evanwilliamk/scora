@@ -274,7 +274,7 @@ enum WatchReconcile {
     var comps = URLComponents(string: "\(apiBase)/api/plan")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: athleteId), URLQueryItem(name: "today", value: today)]
     guard let url = comps?.url,
-          let (data, resp) = try? await URLSession.shared.data(from: url),
+          let (data, resp) = try? await API.session.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanListResponse.self, from: data)
     else { return }

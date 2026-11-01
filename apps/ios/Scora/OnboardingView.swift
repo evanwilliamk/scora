@@ -268,7 +268,7 @@ struct OnboardingView: View {
       "onboarded": true,
     ] as [String: Any])
     let ok: Bool
-    if let (_, resp) = try? await URLSession.shared.data(for: req) {
+    if let (_, resp) = try? await API.session.data(for: req) {
       ok = (resp as? HTTPURLResponse)?.statusCode == 200
       if ok {
         TimeZoneSync.remember(TimeZone.current.identifier)
@@ -305,7 +305,7 @@ enum TimeZoneSync {
     req.httpMethod = "PUT"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": athleteId, "timezone": current])
-    if let (_, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 {
+    if let (_, resp) = try? await API.session.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 {
       remember(current)
     }
   }
@@ -328,7 +328,7 @@ enum OnboardingSync {
   // Tests swap it for a stub, so they never reach the network.
   typealias Transport = (URLRequest) async -> (Int, Data)?
   static var transport: Transport = { req in
-    guard let (data, resp) = try? await URLSession.shared.data(for: req) else { return nil }
+    guard let (data, resp) = try? await API.session.data(for: req) else { return nil }
     return ((resp as? HTTPURLResponse)?.statusCode ?? 0, data)
   }
 
