@@ -307,7 +307,8 @@ export function templateWeekMinutes(t: PlanTemplate): number[] {
       const slot = t.weekly_pattern[day];
       if (slot === REST_SLOT) return sum;
       const def = t.workout_definitions[workoutFor(t, week, slot)];
-      return sum + structureMinutes(scaleStructure(def.structure, t.week_load_percent[i]));
+      // Whole minutes per session, as the assembler stores them.
+      return sum + Math.round(structureMinutes(scaleStructure(def.structure, t.week_load_percent[i])));
     }, 0);
   });
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import {
   AssemblyError, assemblePlan, evaluateAdaptation, loadTemplates, matchTemplate, scaleStructure,
-  startDateForRace, structureMinutes,
+  startDateForRace, structureMinutes, templateWeekMinutes,
 } from '../src/index';
 import type { PlanTemplate } from '../src/index';
 import { addDays } from '../src/dates';
@@ -149,4 +149,24 @@ test('rest posture in a three-quality-day week: no move window, so the session d
   assert.equal(r.reason_code, 'posture_rest_hard_no_window');
   assert.equal(r.to_intensity, 'easy');
   assert.equal(r.duration_min, tue.planned_duration_min);
+});
+
+test('review 2026-11-01: the template call per week matches the stored whole-minute sessions', () => {
+  const half: PlanTemplate = {
+    ...T,
+    workout_definitions: {
+      ...T.workout_definitions,
+      easy_run: {
+        intensity: 'easy',
+        structure: [
+          { type: 'steady', duration_min: 35, intensity: 'easy' },
+          { type: 'interval', reps: 6, work_duration_min: 0.5, work_intensity: 'sprint', rest_duration_min: 1.5, rest_intensity: 'easy' },
+        ],
+        duration_min: 45.5,
+      },
+    },
+  };
+  const p = assemblePlan({ template: half, start_date: MON });
+  assert.ok(p.workouts.every((w) => Number.isInteger(w.planned_duration_min)));
+  assert.deepEqual(templateWeekMinutes(half), p.week_minutes);
 });
