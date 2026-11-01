@@ -4,6 +4,8 @@ Working checklist for coding agents (Claude Code and OpenClaw). Source: `01_SCOR
 
 Legend: `[ ]` open, `[x]` done, `[~]` branch ready for review, `[!]` blocked or waiting on Evan.
 
+After merging `claude/integration-2026-10-28`: migrations, flags and smoke tests are in `docs/merge-checklist.md`.
+
 ## Done (Phase 0 and early Phase 1)
 
 - [x] Monorepo, Fastify API on Railway, Supabase Postgres
