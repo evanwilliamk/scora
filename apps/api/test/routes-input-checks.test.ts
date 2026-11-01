@@ -186,7 +186,7 @@ test('prediction and calories: no Strava token is a 401 asking to reconnect', as
     for (const url of ['/api/plan/prediction?athleteId=42&race=10k', '/api/calories?athleteId=42']) {
       const r = await get(url);
       assert.equal(r.statusCode, 401, url);
-      assert.match(r.json().error, /please reconnect Strava/);
+      assert.match(r.json().error, /Please reconnect Strava/);
       assert.equal(guard.calls.length, 0);
     }
   } finally {
