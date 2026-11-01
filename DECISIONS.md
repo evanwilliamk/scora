@@ -731,3 +731,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: the chart counted runs per weekday while the voice line counted weeks, so two runs on one Thursday made them disagree.
 - Choice: one shared helper; the chart shows weeks with a run (0 to 6), axis "Weeks with a run". Alternative: the voice counts runs.
 - To reverse: revert the cdv-chart.ts commits on the branch.
+
+### 2026-11-01: The same plan setup sent twice keeps the plan it made
+- Status: DECIDED
+- Branch: claude/plan-generate-review
+- Context: a double tap or a retried `POST /api/plan/generate` replaced the active plan with an identical copy, dropping done/missed marks and named plan changes.
+- Choice: `create_scora_plan` returns the active SCORA plan unchanged when template, version, race, race date, start, end and weekly km all match (checked under the per-athlete lock). Any difference still makes a new plan and replaces the old one. Alternative: a client idempotency key, or a time window; both still lose marks on a later identical resubmit.
+- Why: an identical setup has identical sessions, so the only effect of replacing was lost history. Regenerating is not a way to undo plan changes.
+- To reverse: drop migration `20261101000000_create_scora_plan_idempotent.sql` (re-run `20261030010000` after).

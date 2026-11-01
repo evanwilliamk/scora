@@ -245,3 +245,22 @@ test('review 2026-11-01: a race too close for the shortest template names the ea
     (e: any) => e.code === 'race_too_soon'
       && e.message === 'The shortest plan for this race is 4 weeks. It needs a race on or after 2026-11-09.');
 });
+
+test('review 2026-11-01: the same setup sent twice keeps one plan, with its done marks and changes', async () => {
+  const store = sqlGenerateStore(db);
+  const first = await generatePlan('d1', req, '2026-10-19', templates, store);
+  const w = (await db.query<any>(
+    `select id from scheduled_workouts where training_plan_id = $1 order by scheduled_date limit 1`, [first.planId])).rows[0];
+  await db.query(`update scheduled_workouts set athlete_completed = true where id = $1`, [w.id]);
+  const again = await generatePlan('d1', req, '2026-10-21', templates, store);
+  assert.equal(again.planId, first.planId);
+  const plans = (await db.query<any>(`select current_status from training_plans where athlete_id = 'd1'`)).rows;
+  assert.deepEqual(plans.map((r) => r.current_status), ['active']);
+  const done = (await db.query<any>(`select athlete_completed from scheduled_workouts where id = $1`, [w.id])).rows[0];
+  assert.equal(done.athlete_completed, true);
+  // A different race is a new plan, and replaces this one.
+  const other = await generatePlan('d1', { ...req, goal_race_date: '2026-11-14' }, '2026-10-21', templates, store);
+  assert.notEqual(other.planId, first.planId);
+  const after = (await db.query<any>(`select id, current_status from training_plans where athlete_id = 'd1' order by current_status`)).rows;
+  assert.deepEqual(after.map((r) => [r.id === other.planId, r.current_status]), [[true, 'active'], [false, 'replaced']]);
+});
