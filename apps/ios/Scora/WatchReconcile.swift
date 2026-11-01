@@ -13,6 +13,12 @@ import Foundation
 // - otherwise leaves a plain note next to the session (or its old day) so the
 //   athlete can see what changed on the Watch and send it again if they want.
 // Past days are never touched.
+//
+// A copy sent by this build carries its session's WatchPlanId, so the pass
+// finds its session by id, on any phone, even when two sessions on one day
+// share a name. Copies older builds sent (random ids) still match by day and
+// name, with the records below; those records also say whether a moved
+// session's steps are unchanged.
 
 // One Send to Watch made on this device.
 struct WatchSendRecord: Codable, Equatable {
@@ -67,8 +73,9 @@ struct WatchLedger: Codable, Equatable {
     return notes.filter { !keys.contains($0.key) }.map(\.text)
   }
 
-  // Kept on this device, per athlete. Losing it only means a moved session is
-  // removed rather than sent again.
+  // Kept on this device, per athlete. Copies sent under a plan id do not need
+  // it to be found; losing it only means a copy an older build sent is
+  // removed rather than sent again when its session moves.
   private static func storageKey(_ athleteId: String) -> String { "watchLedger.\(athleteId)" }
   static func load(athleteId: String, defaults: UserDefaults = .standard) -> WatchLedger {
     guard let data = defaults.data(forKey: storageKey(athleteId)),
@@ -82,7 +89,8 @@ struct WatchLedger: Codable, Equatable {
 
 enum WatchReconcile {
   enum Action: Equatable {
-    case remove(day: String, name: String)
+    // `id`: the copy's WatchPlanId; nil for an older build's copy, matched by day and name.
+    case remove(day: String, name: String, id: UUID?)
     case resend(rowId: String, from: String)
   }
 
@@ -121,7 +129,7 @@ enum WatchReconcile {
   // last plan day the list is known to be complete for (the API returns the
   // next 14 sessions); days after it are left alone.
   static func plan(
-    scheduled: [(name: String, at: DateComponents)],
+    scheduled: [WatchCopy],
     workouts: [PlanWorkout],
     coveredThrough: String?,
     ledger: WatchLedger,
@@ -132,11 +140,47 @@ enum WatchReconcile {
     var moveNoted = Set<String>() // a move's note outranks "changed" for the same session
     // Each scheduled copy on its own: a day can hold two sessions (a coach
     // plan), and only the copy that no longer matches is touched.
-    var copies: [(day: String, name: String)] = []
+    var copies: [(day: String, name: String)] = [] // older builds' copies, by day and name
+    var derived: [(day: String, copy: WatchCopy)] = [] // this build's, by id
     for s in scheduled {
       guard let d = day(s.at), d >= today else { continue } // never touch past days
       if let last = coveredThrough, d > last { continue }
-      if !copies.contains(where: { $0.day == d && $0.name == s.name }) { copies.append((day: d, name: s.name)) }
+      if WatchPlanId.isDerived(s.id) {
+        if !derived.contains(where: { $0.day == d && $0.copy.id == s.id }) { derived.append((day: d, copy: s)) }
+      } else if !copies.contains(where: { $0.day == d && $0.name == s.name }) {
+        copies.append((day: d, name: s.name))
+      }
+    }
+    for (d, c) in derived.sorted(by: { ($0.day, $0.copy.name) < ($1.day, $1.copy.name) }) {
+      let sessions = workouts.filter { $0.date == d && $0.intensity != "rest" }
+      let session = workouts.first { $0.rowId.map(WatchPlanId.forSession) == c.id }
+      let record = ledger.sends.first { $0.date == d && $0.rowId.map(WatchPlanId.forSession) == c.id }
+      if let w = session, w.date == d, w.intensity != "rest", w.steps != nil, w.detail == c.name,
+         record?.steps == nil || record?.steps == w.steps { continue } // still the plan's session
+      actions.append(.remove(day: d, name: c.name, id: c.id))
+      if let record { ledger.sends.removeAll { $0 == record } }
+      if let moved = session, moved.date != d {
+        moveNoted.insert(key(moved))
+        // Unchanged: the steps this device recorded, or (no record, another
+        // phone sent it) the Watch copy itself. When unsure, it is not resent.
+        let unchanged = record.map { $0.steps != nil && $0.steps == moved.steps }
+          ?? (c.workout != nil && c.workout == moved.steps.flatMap {
+            try? WorkoutExport.customWorkout(steps: $0, plannedType: moved.type, displayName: moved.detail)
+          })
+        if moved.date > d, unchanged,
+           WatchSend.canSend(type: moved.type, intensity: moved.intensity, steps: moved.steps, date: moved.date, today: today) {
+          actions.append(.resend(rowId: moved.rowId!, from: d))
+          ledger.notes.removeAll { $0.key == key(moved) }
+        } else if moved.date >= today {
+          ledger.note(key(moved), day: moved.date, movedNotSent(from: d))
+        }
+      } else if let w = session, w.intensity != "rest" {
+        if !moveNoted.contains(key(w)) { ledger.note(key(w), day: d, changed) }
+      } else if sessions.isEmpty {
+        ledger.note("day:\(d)", day: d, gone(d))
+      } else {
+        ledger.note("day:\(d)", day: d, goneOnDay(d))
+      }
     }
     for (d, name) in copies.sorted(by: { ($0.day, $0.name) < ($1.day, $1.name) }) {
       let sessions = workouts.filter { $0.date == d && $0.intensity != "rest" }
@@ -146,7 +190,7 @@ enum WatchReconcile {
           && (record.map { ($0.rowId == nil || $0.rowId == s.rowId) && ($0.steps == nil || $0.steps == s.steps) } ?? true)
       }
       if stillOnPlan { continue } // the Watch copy is still the plan's session
-      actions.append(.remove(day: d, name: name))
+      actions.append(.remove(day: d, name: name, id: nil))
       if let record { ledger.sends.removeAll { $0 == record } }
 
       if let rowId = record?.rowId, let moved = workouts.first(where: { $0.rowId == rowId && $0.date != d }) {
@@ -189,8 +233,12 @@ enum WatchReconcile {
     let scheduled = await scheduler.scheduledWorkouts()
     var pass = plan(scheduled: scheduled, workouts: workouts, coveredThrough: coveredThrough, ledger: ledger, today: today)
     // Every removal first, so a later day's stale copy never takes a resend with it.
-    for case .remove(let d, let name) in pass.actions {
-      await scheduler.removeScheduled { n, at in day(at) == d && n == name }
+    for case .remove(let d, let name, let id) in pass.actions {
+      await scheduler.removeScheduled { c in
+        guard day(c.at) == d else { return false }
+        if let id { return c.id == id }
+        return !WatchPlanId.isDerived(c.id) && c.name == name
+      }
     }
     for a in pass.actions {
       switch a {
@@ -199,7 +247,8 @@ enum WatchReconcile {
       case .resend(let rowId, let from):
         guard let w = workouts.first(where: { $0.rowId == rowId }), let steps = w.steps else { continue }
         let outcome = await WatchSend.send(
-          steps: steps, type: w.type, date: w.date, displayName: w.detail, dayLabel: w.dayLabel, scheduler: scheduler, now: now)
+          steps: steps, type: w.type, date: w.date, displayName: w.detail, dayLabel: w.dayLabel, rowId: rowId,
+          scheduler: scheduler, now: now)
         if case .sent = outcome {
           pass.ledger.recordSend(w)
           pass.ledger.note(key(w), day: w.date, movedAndSent(from: from))

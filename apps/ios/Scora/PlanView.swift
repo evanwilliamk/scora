@@ -1011,7 +1011,7 @@ struct PlanView: View {
     let id = tokenManager.athleteId
     let outcome = await WatchSend.send(
       steps: steps, type: w.type, date: w.date, displayName: w.detail, dayLabel: w.dayLabel,
-      replacing: WatchLedger.load(athleteId: id).lastSentName(w), scheduler: AppleWatchScheduler()
+      rowId: w.rowId, replacing: WatchLedger.load(athleteId: id).lastSentName(w), scheduler: AppleWatchScheduler()
     )
     await MainActor.run { watchNote = WatchSend.message(outcome); sendingId = nil }
     if case .sent = outcome {
