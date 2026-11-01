@@ -766,6 +766,60 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(out, ledger)
     }
 
+    @MainActor
+    func testTwoSameNameSessionsOnOneDayKeepTheirOwnCopies() async {
+        // A coach plan with two easy 40s on Wednesday: same Watch name.
+        let watch = FakeWatch()
+        let am = session("2026-11-04", "easy", 40, row: "am")
+        let pm = session("2026-11-04", "easy", 40, row: "pm")
+        for w in [am, pm, am] {
+            _ = await WatchSend.send(steps: w.steps!, type: w.type, date: w.date, displayName: w.detail, dayLabel: w.dayLabel,
+                                     rowId: w.rowId, scheduler: watch, now: reconcileNow)
+        }
+        XCTAssertEqual(Set(watch.scheduled.map(\.id)), [WatchPlanId.forSession(rowId: "am"), WatchPlanId.forSession(rowId: "pm")])
+        XCTAssertEqual(watch.scheduled.count, 2, "resending one replaced only its own copy")
+        // The coach drops the evening session: only its copy goes.
+        _ = await WatchReconcile.run(workouts: [am], coveredThrough: nil, ledger: WatchLedger(), scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.id), [WatchPlanId.forSession(rowId: "am")])
+    }
+
+    @MainActor
+    func testANewPhoneStillMovesASessionItDidNotSend() async {
+        // Sent from another phone: the Watch has the copy, this phone has no records.
+        let watch = FakeWatch()
+        _ = sent([session("2026-11-03", "tempo", 45, row: "r1")], to: watch)
+        let wed = session("2026-11-04", "tempo", 45, row: "r1")
+        let out = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: WatchLedger(), scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(4)], "moved, not just removed")
+        XCTAssertEqual(watch.scheduled.map(\.id), [WatchPlanId.forSession(rowId: "r1")])
+        XCTAssertEqual(out.note(for: wed), "Moved from Tue Nov 3. Its Watch copy moved with it.")
+        // Moved and changed from another phone: removed, not resent.
+        let other = FakeWatch()
+        _ = sent([session("2026-11-03", "tempo", 45, row: "r1")], to: other)
+        let wedEasy = session("2026-11-04", "endurance", 45, row: "r1")
+        _ = await WatchReconcile.run(workouts: [wedEasy], coveredThrough: nil, ledger: WatchLedger(), scheduler: other, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(other.scheduled.isEmpty)
+    }
+
+    @MainActor
+    func testCopiesFromOlderBuildsStillMatchByDayAndName() async {
+        // Moved after an older build sent it: found by name and the record, resent under its id.
+        let watch = FakeWatch()
+        let ledger = sent([session("2026-11-03", "tempo", 45, row: "r1")], to: watch, olderBuild: true)
+        let wed = session("2026-11-04", "tempo", 45, row: "r1")
+        _ = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(4)])
+        XCTAssertEqual(watch.scheduled.map(\.id), [WatchPlanId.forSession(rowId: "r1")])
+        // Sending again replaces an older build's same-day copy by name, renamed or not.
+        let older = FakeWatch()
+        let tempoName = session("2026-11-04", "tempo", 45, row: "r1").detail
+        older.scheduled = [WatchCopy(name: tempoName, at: at6(4))]
+        let downgraded = session("2026-11-04", "endurance", 45, row: "r1")
+        _ = await WatchSend.send(steps: downgraded.steps!, type: "run", date: downgraded.date, displayName: downgraded.detail, dayLabel: downgraded.dayLabel,
+                                 rowId: "r1", replacing: tempoName, scheduler: older, now: reconcileNow)
+        XCTAssertEqual(older.scheduled.map(\.name), [downgraded.detail])
+    }
+
     func testWatchPlanIdIsAStableUUIDv5() {
         // RFC 4122 v5 of "www.example.com" in the DNS namespace.
         let dns = UUID(uuidString: "6ba7b810-9dad-11d1-80b4-00c04fd430c8")!

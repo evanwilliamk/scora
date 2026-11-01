@@ -73,8 +73,9 @@ struct WatchLedger: Codable, Equatable {
     return notes.filter { !keys.contains($0.key) }.map(\.text)
   }
 
-  // Kept on this device, per athlete. Losing it only means a moved session is
-  // removed rather than sent again.
+  // Kept on this device, per athlete. Copies sent under a plan id do not need
+  // it to be found; losing it only means a copy an older build sent is
+  // removed rather than sent again when its session moves.
   private static func storageKey(_ athleteId: String) -> String { "watchLedger.\(athleteId)" }
   static func load(athleteId: String, defaults: UserDefaults = .standard) -> WatchLedger {
     guard let data = defaults.data(forKey: storageKey(athleteId)),
