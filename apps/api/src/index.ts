@@ -640,8 +640,8 @@ fastify.post('/api/read', async (request, reply) => {
     // deterministic adaptation rules (doc 07 v2 §6.2). Off unless
     // PLAN_ADAPTATIONS=on; never blocks or fails the read.
     if (adaptationsEnabled()) {
-      // The scheduler sends the athlete's local date; the app does not yet, so
-      // fall back to the newest activity's UTC offset, never the server's UTC day.
+      // The athlete's local date (sent by the app and the scheduler), else the
+      // newest activity's UTC offset, never the server's UTC day.
       const today = localToday;
       try {
         // Optional: gpt-4o-mini words the reason from the posture drivers,

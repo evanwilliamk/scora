@@ -7,10 +7,9 @@
 // Pipeline (doc 06 §2): posture -> selectPattern -> fillTemplate -> [LLM render]
 //                       -> driver-existence + banned-phrase validators (apps/api).
 //
-// NOT yet wired into the live daily read: firing needs a computed posture and a
-// scheduled_workout source, neither of which exists in apps/api today. This
-// package is proven standalone (see test/) and exposes MatchContext as the seam
-// for when those upstream pieces land.
+// Used by the daily read: apps/api knowledge-retrieval.ts selects a pattern
+// from the computed posture and today's planned session when library
+// retrieval is off or finds nothing.
 
 export type {
   Posture, Context, Tier, PatternEntry,

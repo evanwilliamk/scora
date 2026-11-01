@@ -1,8 +1,8 @@
 // SCORA plan generation (doc 07 v2 §6.1, CLAUDE.md §6.1). The athlete picks a
 // goal race; the plan engine picks a reviewed template and assembles it; this
 // module stores the result in one transaction (create_scora_plan, migration
-// 20261018020000). No LLM is involved: plain-English workout descriptions
-// come later, from the template values (CLAUDE.md §6.4).
+// 20261018020000). No LLM is involved; plain-English workout descriptions
+// come from the template values (plan-engine describeWorkout, CLAUDE.md §6.4).
 // Off unless PLAN_GENERATION=on. Plan tier gating waits for the Stripe item.
 
 import {
