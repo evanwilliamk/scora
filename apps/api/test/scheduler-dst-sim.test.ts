@@ -1,6 +1,6 @@
 // Morning delivery across DST changes, end to end on a simulated clock. The
-// production tick wiring (schedulerDeps) runs once per simulated minute for
-// 8 days against stateful fake Supabase tables, the real /api/read and
+// production tick wiring (schedulerDeps) runs over 8 simulated days against
+// stateful fake Supabase tables, the real /api/read and
 // /api/weekly routes (canned Strava, OpenAI down so the validated fallback),
 // the real APNs sender and a local HTTP/2 APNs stand-in. Nothing leaves the
 // machine. Checks: one daily push per athlete per local date at the chosen
@@ -8,6 +8,19 @@
 // minute after the gap), the free tier's weekly review on Monday (Sunday's
 // read, 24 hours delayed, CLAUDE.md §5.1), nothing twice in a repeated hour,
 // and a failed read released and retried once 15 minutes later.
+//
+// Each scenario runs twice: once with scora_due_deliveries missing (the tick
+// reads every athlete and decides in TypeScript) and once with it answered by
+// the migrated function on PGlite. Both must send the same pushes at the same
+// instants and leave the same claims, and on every SQL tick the function's
+// rows must equal dueDeliveries over every athlete.
+//
+// Ticks: every minute from 2 minutes before each athlete's set time to 20
+// after (the send and the 15-minute retry), around +60 (the repeated
+// fall-back hour) and +120 (the end of the late window), every 5 minutes in
+// between, and every 30 minutes otherwise. Outside those minutes nothing is
+// due under either rule, so a send there is still caught at the 30-minute
+// ticks; the claim state is the same at minute 23 as at 25.
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,6 +31,9 @@ import { fakeRest, type FakeRest } from './helpers/fake-rest';
 import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { installSchedulerDb, type SchedulerDb } from './helpers/fake-scheduler-db';
+import { migratedPglite, sqlDue } from './helpers/pglite-db';
+import type { PGlite } from '@electric-sql/pglite';
+import { dueDeliveries } from '../src/delivery';
 
 blankEnv();
 
@@ -42,6 +58,7 @@ let app: any;
 let sched: typeof import('../src/scheduler');
 let prefsStore: import('../src/preferences').PrefsStore;
 let push: typeof import('../src/push');
+let pg: PGlite;
 
 before(async () => {
   await new Promise<void>((r) => apns.listen(0, '127.0.0.1', () => r()));
@@ -63,8 +80,10 @@ before(async () => {
   const { supabasePrefsStore } = await import('../src/preferences');
   const { createClient } = await import('@supabase/supabase-js');
   prefsStore = supabasePrefsStore(createClient(rest.url, 'test-service-role'));
+  pg = await migratedPglite();
 });
 after(async () => {
+  await pg.close();
   await app.close();
   guard.restore();
   await rest.close();
@@ -93,15 +112,44 @@ const local = (at: number, tz: string) => {
 
 interface Athlete { id: string; tz: string; minute: number }
 
+type Path = 'typescript' | 'sql';
+
 interface Sim {
+  path: Path;
   db: SchedulerDb;
   pushes: Push[];
-  queries: number[];
+  // Scheduler queries per tick (device_tokens, athlete_preferences, the rpc),
+  // and whether anything was sent in it.
+  queries: { n: number; sent: boolean }[];
+  ticks: number;
+  // SQL path: rpc calls compared with dueDeliveries, and the mismatches.
+  rpcCompared: number;
+  rpcMismatches: string[];
   log: { info: string[]; warn: string[]; error: string[] };
 }
 
-// One tick per simulated minute over [startIso, startIso + days).
-async function simulate(athletes: Athlete[], startIso: string, days: number, setup?: (db: SchedulerDb) => void,
+const minuteFmt = new Map<string, Intl.DateTimeFormat>();
+const localMinute = (at: number, tz: string) => {
+  let f = minuteFmt.get(tz);
+  if (!f) minuteFmt.set(tz, f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+  const p = Object.fromEntries(f.formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+  return Number(p.hour) * 60 + Number(p.minute);
+};
+
+// The simulated minutes that get a tick (see the header).
+function tickTimes(athletes: Athlete[], start: number, days: number): number[] {
+  const out: number[] = [];
+  for (let t = start; t < start + days * DAY; t += 60_000) {
+    const near = (t - start) % (30 * 60_000) === 0 || athletes.some((a) => {
+      const d = (localMinute(t, a.tz) - a.minute + 1440) % 1440;
+      return d >= 1438 || d <= 20 || (d >= 58 && d <= 62) || (d >= 118 && d <= 122) || (d < 125 && d % 5 === 0);
+    });
+    if (near) out.push(t);
+  }
+  return out;
+}
+
+async function simulate(path: Path, athletes: Athlete[], startIso: string, days: number, setup?: (db: SchedulerDb) => void,
   onTick?: (at: number, db: SchedulerDb) => void): Promise<Sim> {
   rest.reset();
   guard.reset();
@@ -113,6 +161,21 @@ async function simulate(athletes: Athlete[], startIso: string, days: number, set
     db.prefs.set(a.id, { athlete_id: a.id, timezone: a.tz, delivery_minute: a.minute, onboarded_at: '2026-01-01T00:00:00Z', last_daily_sent_on: null, last_weekly_sent_on: null });
   }
   setup?.(db);
+  let rpcCompared = 0;
+  const rpcMismatches: string[] = [];
+  if (path === 'sql') {
+    rest.handle('rpc/scora_due_deliveries', sqlDue(pg, db, (args, rows) => {
+      // The same answer dueDeliveries gives over every athlete with a device.
+      const now = new Date(args.p_now);
+      const want = [...new Set(db.devices.map((d) => d.athlete_id as string))].sort().flatMap((id) => {
+        const d = dueDeliveries(db.prefs.get(id) as any, now);
+        return d.daily || d.weekly ? [`${id} ${d.localDate} ${d.daily} ${d.weekly}`] : [];
+      });
+      const got = rows.map((r) => `${r.athlete_id} ${r.local_date} ${r.daily} ${r.weekly}`);
+      rpcCompared++;
+      if (JSON.stringify(got) !== JSON.stringify(want)) rpcMismatches.push(`${args.p_now}: sql ${JSON.stringify(got)} ts ${JSON.stringify(want)}`);
+    }));
+  }
   const log = { info: [] as string[], warn: [] as string[], error: [] as string[] };
   const logger = { info: (m: string) => log.info.push(m), warn: (m: string) => log.warn.push(m), error: (m: string) => log.error.push(m) };
   const deps = sched.schedulerDeps('http://localhost:3000', logger, prefsStore, {
@@ -122,18 +185,47 @@ async function simulate(athletes: Athlete[], startIso: string, days: number, set
     sendPush: push.sendPush,
     removeDeviceToken: push.removeDeviceToken,
   });
-  const queries: number[] = [];
-  const start = Date.parse(startIso);
-  for (let t = start; t < start + days * DAY; t += 60_000) {
+  const queries: Sim['queries'] = [];
+  const times = tickTimes(athletes, Date.parse(startIso), days);
+  for (const t of times) {
     simNow = t;
     onTick?.(t, db);
     const before = rest.requests.length;
-    await sched.runTick(new Date(t), deps);
+    const r = await sched.runTick(new Date(t), deps);
     // Only the scheduler's own queries: the read pipeline's are app traffic.
-    queries.push(rest.requests.slice(before).filter((r) => r.table === 'device_tokens' || r.table === 'athlete_preferences').length);
+    const own = rest.requests.slice(before).filter((q) => ['device_tokens', 'athlete_preferences', 'rpc/scora_due_deliveries'].includes(q.table));
+    queries.push({ n: own.length, sent: r.daily + r.weekly > 0 });
     rest.requests.length = 0;
   }
-  return { db, pushes: [...pushes], queries, log };
+  return { path, db, pushes: [...pushes], queries, ticks: times.length, rpcCompared, rpcMismatches, log };
+}
+
+// Run a scenario on both paths: each passes the scenario's checks, and the
+// two send the same pushes at the same instants and end with the same claims.
+async function bothPaths(t: import('node:test').TestContext, run: (path: Path) => Promise<Sim>) {
+  const t0 = Date.now();
+  const ts = await run('typescript');
+  const t1 = Date.now();
+  const sql = await run('sql');
+  const ms = `typescript ${t1 - t0} ms, sql ${Date.now() - t1} ms`;
+  // Within one tick athletes go a few at a time (and the rpc lists them by
+  // id), so only the order inside a tick may differ.
+  const byTime = (s: Sim) => s.pushes.map((p) => `${p.at} ${p.token} ${p.kind} ${p.date}`).sort();
+  assert.deepEqual(byTime(sql), byTime(ts), 'same pushes at the same instants on both paths');
+  // updated_at is the real clock's, not the simulated one.
+  const claims = (s: Sim) => [...s.db.prefs.values()].map(({ updated_at: _u, ...p }) => p)
+    .sort((a, b) => a.athlete_id.localeCompare(b.athlete_id));
+  assert.deepEqual(claims(sql), claims(ts), 'same claims on both paths');
+  const tele = (s: Sim) => s.log.info.filter((l) => l.startsWith('telemetry ') && l.includes('push_delivery')).sort();
+  assert.deepEqual(tele(sql), tele(ts), 'same delivery telemetry on both paths');
+  assert.deepEqual(sql.rpcMismatches, []);
+  assert.ok(sql.rpcCompared >= sql.ticks, 'the SQL path asked the rpc every tick');
+  // The fallback path never asked PGlite; the SQL path never read every athlete.
+  assert.equal(ts.rpcCompared, 0);
+  const idle = (s: Sim) => [...new Set(s.queries.filter((q) => !q.sent).map((q) => q.n))].sort();
+  assert.deepEqual(idle(sql), [1], 'SQL path: one request per idle tick');
+  t.diagnostic(`${ts.ticks} ticks per path; idle tick requests: typescript ${idle(ts).join('/')} (2, plus the rpc ask every 15 min), sql ${idle(sql).join('/')}; ${ts.pushes.length} pushes; ${ms}`);
+  return { ts, sql };
 }
 
 const HHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -160,7 +252,7 @@ function checkAthlete(sim: Sim, a: Athlete, expectDates: string[], exceptions: R
 const dates = (from: string, n: number) =>
   Array.from({ length: n }, (_, i) => new Date(Date.parse(`${from}T00:00:00Z`) + i * DAY).toISOString().slice(0, 10));
 
-test('fall back: New York 2026-11-01 and London 2026-10-25, with Kolkata and Auckland alongside', async () => {
+test('fall back: New York 2026-11-01 and London 2026-10-25, with Kolkata and Auckland alongside', async (t) => {
   const athletes: Athlete[] = [
     { id: 'ny-0600', tz: 'America/New_York', minute: 360 },
     { id: 'ny-0130', tz: 'America/New_York', minute: 90 },
@@ -173,9 +265,10 @@ test('fall back: New York 2026-11-01 and London 2026-10-25, with Kolkata and Auc
   // The failing athlete's read fails once, at the first 01:30 on fall-back
   // day (05:30Z, EDT): Strava answers with no token for that one try.
   const failAt = Date.parse('2026-11-01T05:30:00Z');
+  await bothPaths(t, async (path) => {
   const releasedSeen: (string | null)[] = [];
-  const sim = await simulate(athletes, '2026-10-25T00:00:00Z', 8, undefined, (t, db) => {
-    if (t === failAt) db.disconnected.add('ny-0130-fails');
+  const sim = await simulate(path, athletes, '2026-10-25T00:00:00Z', 8, undefined, (at, db) => {
+    if (at === failAt) db.disconnected.add('ny-0130-fails');
     else if (db.disconnected.delete('ny-0130-fails')) releasedSeen.push(db.prefs.get('ny-0130-fails')!.last_daily_sent_on);
   });
 
@@ -209,15 +302,18 @@ test('fall back: New York 2026-11-01 and London 2026-10-25, with Kolkata and Auc
     .filter((e) => e.event === 'push_delivery' && e.athlete === 'ny-0130-fails' && e.date === '2026-11-01');
   assert.deepEqual(tele.map((e) => [e.delivered, e.late_min]), [[false, 0], [true, 15]]);
   assert.deepEqual(sim.log.error, []);
+  return sim;
+  });
 });
 
-test('spring forward: New York 2027-03-14, a 02:30 delivery that does not exist that day goes out at 03:00', async () => {
+test('spring forward: New York 2027-03-14, a 02:30 delivery that does not exist that day goes out at 03:00', async (t) => {
   const athletes: Athlete[] = [
     { id: 'ny-0230', tz: 'America/New_York', minute: 150 },
     { id: 'ny-0600', tz: 'America/New_York', minute: 360 },
     { id: 'kol-0530', tz: 'Asia/Kolkata', minute: 330 },
   ];
-  const sim = await simulate(athletes, '2027-03-10T00:00:00Z', 8);
+  await bothPaths(t, async (path) => {
+  const sim = await simulate(path, athletes, '2027-03-10T00:00:00Z', 8);
   checkAthlete(sim, athletes[0], dates('2027-03-10', 8), { '2027-03-14': '03:00' });
   checkAthlete(sim, athletes[1], dates('2027-03-10', 8));
   checkAthlete(sim, athletes[2], dates('2027-03-10', 8));
@@ -231,16 +327,23 @@ test('spring forward: New York 2027-03-14, a 02:30 delivery that does not exist 
   const late = sim.log.info.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice(10)))
     .filter((e) => e.event === 'push_delivery' && e.athlete === 'ny-0230' && e.date === '2027-03-14');
   assert.deepEqual(late.map((e) => [e.kind, e.late_min]), [['daily', 0]]);
+  assert.deepEqual(sim.log.error, []);
+  return sim;
+  });
 });
 
-test('spring forward: Auckland 2026-09-27, 02:30 goes out at 03:00 NZDT', async () => {
+test('spring forward: Auckland 2026-09-27, 02:30 goes out at 03:00 NZDT', async (t) => {
   const athletes: Athlete[] = [
     { id: 'akl-0230', tz: 'Pacific/Auckland', minute: 150 },
     { id: 'akl-0600', tz: 'Pacific/Auckland', minute: 360 },
   ];
-  const sim = await simulate(athletes, '2026-09-23T00:00:00Z', 8);
+  await bothPaths(t, async (path) => {
+  const sim = await simulate(path, athletes, '2026-09-23T00:00:00Z', 8);
   checkAthlete(sim, athletes[0], dates('2026-09-24', 8), { '2026-09-27': '03:00' });
   checkAthlete(sim, athletes[1], dates('2026-09-24', 8));
   const at = sim.pushes.find((p) => p.token === 'dev-akl-0230' && p.date === '2026-09-27')!.at;
   assert.equal(new Date(at).toISOString(), '2026-09-26T14:00:00.000Z');
+  assert.deepEqual(sim.log.error, []);
+  return sim;
+  });
 });

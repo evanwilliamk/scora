@@ -3,10 +3,13 @@ import {
   apnsConfigured,
   getAthletesWithDevices,
   getDeviceTokens,
+  getDueDeliveries,
+  MissingRpcError,
   removeDeviceToken,
   sendPush,
+  type DueRow,
 } from './push';
-import { dueDeliveries, minutesLate } from './delivery';
+import { dueDeliveries, minutesLate, LATE_WINDOW_MIN, type DueResult } from './delivery';
 import { pushDeliveryLine, pushSentLine } from './telemetry';
 import { pushBody } from './numeric-line';
 import type { PrefsStore } from './preferences';
@@ -91,6 +94,10 @@ export async function pushToAthlete(
 
 export interface TickDeps {
   listAthletes(): Promise<string[]>;
+  // Only the athletes due at `now`, computed in the database. Optional: while
+  // it is missing (MissingRpcError) or fails, the tick reads every athlete.
+  listDue?(now: Date): Promise<DueRow[]>;
+  dueState?: DueState;
   prefs: Pick<PrefsStore, 'getMany' | 'claim' | 'release'>;
   deliver(athleteId: string, kind: 'daily' | 'weekly', localDate: string): Promise<boolean>;
   log: Logger;
@@ -110,7 +117,52 @@ export interface PendingRelease {
   previous: string | null;
 }
 
+export interface DueState {
+  // Tick time (ms) before which listDue is not tried again after it was missing.
+  missingUntil: number;
+  reported: boolean;
+}
+
 export const RETRY_AFTER_MS = 15 * 60_000;
+// How long the tick reads every athlete before asking for the due-deliveries
+// function again, once it was found missing (the migration is applied by hand).
+export const DUE_RPC_RECHECK_MS = 15 * 60_000;
+
+type Loaded = {
+  athletes: string[];
+  prefs: Map<string, Pick<DueRow, 'timezone' | 'delivery_minute' | 'last_daily_sent_on' | 'last_weekly_sent_on'>>;
+  due?: Map<string, DueResult>;
+};
+
+// The due athletes from the database function, or null to read every athlete.
+async function loadDueFromSql(now: Date, deps: TickDeps): Promise<Loaded | null> {
+  if (!deps.listDue) return null;
+  const state = deps.dueState;
+  if (state && now.getTime() < state.missingUntil) return null;
+  let rows: DueRow[];
+  try {
+    rows = await deps.listDue(now);
+  } catch (e) {
+    if (e instanceof MissingRpcError) {
+      if (state) {
+        state.missingUntil = now.getTime() + DUE_RPC_RECHECK_MS;
+        if (!state.reported) deps.log.info('scheduler: scora_due_deliveries not found (migration 20261101010000), reading every athlete');
+        state.reported = true;
+      }
+    } else {
+      deps.log.error(`scheduler: due deliveries failed, reading every athlete: ${e instanceof Error ? e.message : e}`);
+    }
+    return null;
+  }
+  const out: Loaded = { athletes: [], prefs: new Map(), due: new Map() };
+  for (const r of rows) {
+    if (out.prefs.has(r.athlete_id)) continue;
+    out.athletes.push(r.athlete_id);
+    out.prefs.set(r.athlete_id, r);
+    out.due!.set(r.athlete_id, { daily: r.daily, weekly: r.weekly, localDate: r.local_date });
+  }
+  return out;
+}
 export const DELIVERY_CONCURRENCY = 4;
 
 // One scheduler tick: every athlete whose local delivery time has come and
@@ -127,20 +179,23 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
       deps.log.error(`scheduler: release retry for ${r.athleteId} ${r.kind} failed: ${e instanceof Error ? e.message : e}`);
     }
   }
-  let athletes: string[];
-  let prefs: Awaited<ReturnType<PrefsStore['getMany']>>;
-  try {
-    athletes = await deps.listAthletes();
-    if (athletes.length === 0) return { daily: 0, weekly: 0 };
-    prefs = await deps.prefs.getMany(athletes);
-  } catch (e) {
-    deps.log.error(`scheduler: failed to load athletes: ${e instanceof Error ? e.message : e}`);
-    return { daily: 0, weekly: 0 };
+  let loaded = await loadDueFromSql(now, deps);
+  if (!loaded) {
+    try {
+      const athletes = await deps.listAthletes();
+      if (athletes.length === 0) return { daily: 0, weekly: 0 };
+      loaded = { athletes, prefs: await deps.prefs.getMany(athletes) };
+    } catch (e) {
+      deps.log.error(`scheduler: failed to load athletes: ${e instanceof Error ? e.message : e}`);
+      return { daily: 0, weekly: 0 };
+    }
   }
+  const { athletes, prefs, due: dueSql } = loaded;
   const sent = { daily: 0, weekly: 0 };
   const one = async (athleteId: string) => {
     const p = prefs.get(athleteId)!;
-    const due = dueDeliveries(p, now);
+    // The database already applied dueDeliveries' rules (same tests).
+    const due = dueSql?.get(athleteId) ?? dueDeliveries(p, now);
     for (const kind of ['daily', 'weekly'] as const) {
       if (!due[kind]) continue;
       const previous = kind === 'daily' ? p.last_daily_sent_on : p.last_weekly_sent_on;
@@ -200,6 +255,8 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
 export function schedulerDeps(baseUrl: string, log: Logger, prefs: TickDeps['prefs'], io: PushIo = realIo): TickDeps {
   return {
     listAthletes: getAthletesWithDevices,
+    listDue: (now) => getDueDeliveries(now, LATE_WINDOW_MIN),
+    dueState: { missingUntil: 0, reported: false },
     prefs,
     deliver: (athleteId, kind, localDate) =>
       kind === 'daily'
@@ -224,8 +281,9 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
   // escape the cron callback (an unhandled rejection kills the process).
   let running = false;
   // Every minute: a 15-minute tick put a 6:05 read at 6:15, outside doc 10's
-  // 5-minute bar. A tick with nothing due is one device page per 1000 tokens
-  // and one preferences request per 500 athletes (both read every athlete).
+  // 5-minute bar. A tick with nothing due is one request (scora_due_deliveries);
+  // until that migration is applied, one device page per 1000 tokens and one
+  // preferences request per 500 athletes (both read every athlete).
   cron.schedule('* * * * *', () => {
     if (running) return;
     running = true;

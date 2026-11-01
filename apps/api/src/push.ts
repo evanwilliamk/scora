@@ -188,3 +188,60 @@ export async function getAthletesWithDevices(): Promise<string[]> {
     if ((data || []).length < DEVICE_PAGE) return [...ids];
   }
 }
+
+// The athletes whose push is due at `now`, from scora_due_deliveries
+// (migration 20261101010000): one request per 1000 due athletes, none per
+// idle athlete. Throws MissingRpcError until the migration is applied, so the
+// scheduler can fall back to reading every athlete's preferences.
+export interface DueRow {
+  athlete_id: string;
+  timezone: string;
+  delivery_minute: number;
+  last_daily_sent_on: string | null;
+  last_weekly_sent_on: string | null;
+  local_date: string;
+  daily: boolean;
+  weekly: boolean;
+}
+
+export class MissingRpcError extends Error {}
+
+// PostgREST says PGRST202 when the function is not in its schema cache;
+// Postgres says 42883 when no function matches the call.
+export function isMissingFunction(error: { code?: string; message?: string }): boolean {
+  return error.code === 'PGRST202' || error.code === '42883'
+    || /could not find the function|function .* does not exist/i.test(error.message ?? '');
+}
+
+export const DUE_PAGE = 1000;
+export async function getDueDeliveries(now: Date, windowMinutes: number): Promise<DueRow[]> {
+  const out: DueRow[] = [];
+  let after: string | null = null;
+  for (;;) {
+    const { data, error } = await getSupabase().rpc('scora_due_deliveries', {
+      p_now: now.toISOString(),
+      p_window_minutes: windowMinutes,
+      p_after: after,
+      p_limit: DUE_PAGE,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new MissingRpcError(`scora_due_deliveries: ${error.message}`);
+      throw new Error(`Failed to list due deliveries: ${error.message}`);
+    }
+    const rows = (data ?? []) as any[];
+    for (const r of rows) {
+      out.push({
+        athlete_id: String(r.athlete_id),
+        timezone: r.timezone,
+        delivery_minute: Number(r.delivery_minute),
+        last_daily_sent_on: r.last_daily_sent_on ?? null,
+        last_weekly_sent_on: r.last_weekly_sent_on ?? null,
+        local_date: r.local_date,
+        daily: r.daily === true,
+        weekly: r.weekly === true,
+      });
+    }
+    if (rows.length < DUE_PAGE) return out;
+    after = out[out.length - 1].athlete_id;
+  }
+}

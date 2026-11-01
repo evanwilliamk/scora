@@ -26,7 +26,8 @@ export interface FakeRest {
   answer(table: string, ...answers: RestAnswer[]): void;
   // A sticky responder for one table, used when its queue is empty, so a
   // test can keep state across requests (a simulated week of ticks).
-  handle(table: string, fn: (req: RestRequest) => RestAnswer): void;
+  // The responder may answer asynchronously (a PGlite query).
+  handle(table: string, fn: (req: RestRequest) => RestAnswer | Promise<RestAnswer>): void;
   reset(): void;
   close(): Promise<void>;
 }
@@ -34,11 +35,11 @@ export interface FakeRest {
 export async function fakeRest(): Promise<FakeRest> {
   const requests: RestRequest[] = [];
   let queues = new Map<string, RestAnswer[]>();
-  let handlers = new Map<string, (req: RestRequest) => RestAnswer>();
+  let handlers = new Map<string, (req: RestRequest) => RestAnswer | Promise<RestAnswer>>();
   const server: Server = createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
-    req.on('end', () => {
+    req.on('end', async () => {
       const u = new URL(req.url ?? '/', 'http://127.0.0.1');
       const table = u.pathname.replace(/^\/rest\/v1\//, '');
       let body: any = null;
@@ -47,7 +48,7 @@ export async function fakeRest(): Promise<FakeRest> {
       requests.push(entry);
       let next: RestAnswer;
       try {
-        next = queues.get(table)?.shift() ?? handlers.get(table)?.(entry) ?? {};
+        next = queues.get(table)?.shift() ?? (await handlers.get(table)?.(entry)) ?? {};
       } catch (e) {
         next = { status: 500, body: { message: e instanceof Error ? e.message : String(e) } };
       }

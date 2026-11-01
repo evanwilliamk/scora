@@ -14,6 +14,7 @@ Applying after the merge breaks things even with every flag off: the Plan Today 
 On without a flag once merged and deployed (with a new app build where it is iOS):
 
 - The push scheduler ticks every minute, retries a failed read every 15 minutes, sends to 4 athletes at a time, and logs `push_delivery` and `push_sent` lines.
+- Each tick asks `scora_due_deliveries` (migration 12) for the athletes due now; until it is applied the log says `scora_due_deliveries not found` once and the tick reads every athlete.
 - Push times follow each athlete's own time zone and delivery time from `athlete_preferences`; `PUSH_TZ` is no longer read.
 - Pushes carry a `scora` payload; a tap opens Today's Read (or This Week) and is reported to `POST /api/events/push-open`.
 - Plan Today card when the athlete has any plan; Share on This Week and under chat charts; past sessions, Watch send records.
@@ -45,6 +46,7 @@ All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrati
 9. `20261030000000_ical_refresh_pairing.sql`: calendar refresh keeps each done/missed mark and the Watch send on its own session; redefines `refresh_ical_plan()` only.
 10. `20261030010000_create_scora_plan_lock.sql`: plan setup takes the same per-athlete lock as a calendar paste or refresh; redefines `create_scora_plan()` only.
 11. `20261101000000_create_scora_plan_idempotent.sql`: the same plan setup sent twice keeps the plan it made, with its marks and changes; redefines `create_scora_plan()` only.
+12. `20261101010000_due_deliveries.sql`: `scora_due_deliveries()` and `scora_delivery_zone()`, so an idle push scheduler tick is one request instead of reading every athlete's preferences. Optional for correctness (without it the scheduler reads every athlete, as before, and checks again every 15 minutes), needed for scale; can be applied before or after the merge.
 
 Later 2026-11-01 migrations, if any, follow in filename order.
 
