@@ -21,7 +21,7 @@ numeric_slots:
   - hrv_pct_change
   - sleep_hours_minutes
 template: |
-  HRV up {{hrv_pct_change}}% and sleep held. The plan lines up with the body this morning — {{scheduled_workout.planned_intensity}} will land on a rested system.
+  HRV up {{hrv_pct_change}}% and sleep held. The plan lines up with the body this morning: {{scheduled_workout.planned_intensity}} will land on a rested system.
 llm_hint: |
   Never "crush it" or "get after it." Just: the alignment is real. Athletes
   reading this will feel seen without being pumped up.

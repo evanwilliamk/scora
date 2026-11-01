@@ -15,7 +15,7 @@ tone_notes: |
 slot_drivers:
   - coach_name
 template: |
-  {{coach_name}} sent you a note yesterday — worth a look before today.
+  {{coach_name}} sent you a note yesterday, worth a look before today.
 llm_hint: |
   Never summarize the coach's message. That's coach-competing. Just point to it.
 exclude_if_recently_fired: 2
