@@ -52,6 +52,12 @@ enum PushRoute: Equatable {
   }
 }
 
+// A push that lands while SCORA is open is still shown (iOS drops it
+// otherwise), so the morning read is never missed and its tap still routes.
+enum PushPresentation {
+  static let foreground: UNNotificationPresentationOptions = [.banner, .list, .sound]
+}
+
 final class PushManager {
   static let shared = PushManager()
 
@@ -207,6 +213,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     didFailToRegisterForRemoteNotificationsWithError error: Error
   ) {
     print("APNs registration failed: \(error.localizedDescription)")
+  }
+
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    completionHandler(PushPresentation.foreground)
   }
 
   func userNotificationCenter(
