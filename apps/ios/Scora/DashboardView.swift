@@ -308,6 +308,7 @@ struct DashboardView: View {
         _ = await HealthManager.shared.requestAuthorization()
         await loadRead()
         await TimeZoneSync.syncIfChanged(athleteId: tokenManager.athleteId)
+        await WatchReconcile.refresh(athleteId: tokenManager.athleteId, apiBase: apiBase)
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
@@ -334,6 +335,8 @@ struct DashboardView: View {
       let stale = loadedAt.map { Date().timeIntervalSince($0) > 3 * 3600 } ?? false
       if loadedDay != nil, !isLoading, loadedDay != PlanDay.today() || stale { Task { await loadRead() } }
       Task { await TimeZoneSync.syncIfChanged(athleteId: tokenManager.athleteId) }
+      // A session moved overnight: take its stale copy off the Watch.
+      Task { await WatchReconcile.refresh(athleteId: tokenManager.athleteId, apiBase: apiBase) }
     }
   }
 

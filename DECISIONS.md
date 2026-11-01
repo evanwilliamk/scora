@@ -771,3 +771,27 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: show it as a banner, in Notification Center and with sound; a tap routes as usual. Alternative: show it silently in the list only, or reload the dashboard instead.
 - Why: the morning read push is the doorbell; it should not disappear because the app happened to be open.
 - To reverse: change PushPresentation.foreground in PushManager.swift.
+
+### 2026-11-01: Last night's HRV comes from last night's sleep, one source
+- Status: DECIDED
+- Branch: claude/watch-reconcile-hrv-night
+- Context: the HealthKit summary sent the newest HRV sample of the last 36 hours as last night's, so a midday refresh could cite a reading taken after a run, and Watch and Oura-written readings mixed freely.
+- Choice: a night's HRV uses only readings inside that night's sleep window (the wake day's longest sleep session, plus 30 minutes after waking). Without sleep data for that day, 20:00 the evening before to 10:00 that morning in the device's time zone. Inside the window, one source: the app with the most readings that night; on a tie, the one with the latest reading. The value is that source's latest reading in the window. The dated nights (charts and the week baseline) follow the same rule. No reading in the window means no HRV for last night (nil), never an older stand-in. Resting HR keeps its 36-hour rule. Alternatives: average the chosen source's readings; prefer Oura whenever it wrote one.
+- Why: the read calls it last night's HRV, so only last night's readings back it (CLAUDE.md §3.2), and one source keeps one night's number comparable with the next.
+- To reverse: HealthNights.nightWindow / nightHRV in HealthManager.swift (change afterWake, the 20:00 to 10:00 hours, or the source pick).
+
+### 2026-11-01: Send to Watch replaces only the same session's copy, and a late send stays on its day
+- Status: DECIDED
+- Branch: claude/watch-reconcile-hrv-night
+- Context: a resend removed every SCORA workout on that day, so a coach plan with two sessions in a day lost the other one; and a send after 23:59 rolled the time past midnight and said the day had passed. Supersedes "Send to Watch replaces the day's earlier send, whatever its name".
+- Choice: a send removes only copies that day under the session's own name, or the name it was last sent under (kept per session row on this device, so a renamed adaptation is still replaced). WorkoutKit stores no session id, so two sessions with the same name on one day would still replace each other. In the day's last minute the time is clamped to 23:59:59 that day. Alternative: encode the row id in the Watch display name (visible on the Watch).
+- Why: the Watch should hold every session the plan has that day, and a session sent while its day is running should land on that day.
+- To reverse: the removeScheduled predicate and scheduleTime in WorkoutExport.swift.
+
+### 2026-11-01: Watch copies follow plan changes (reconcile pass)
+- Status: DECIDED
+- Branch: claude/watch-reconcile-hrv-night
+- Context: when the plan engine moved, downgraded or removed a session after Send to Watch, the copy for its old day stayed in WorkoutKit.
+- Choice: each time Your Plan loads the plan, and when the app starts or comes to the foreground (a quiet GET /api/plan), a pass checks every SCORA workout scheduled for today or later. A copy stays only if a session on that day still has its name and, when this device recorded the send, the same row and steps. Otherwise that copy alone is removed. It is sent again for the new day only when this device sent the original, the same row moved to a later day with identical steps, and that day is inside the Send to Watch window; anything else (moved and changed, moved earlier, no record) is removed, not resent. Every change leaves a plain note next to the session or its old day ("Moved from Tue Nov 3. Its Watch copy moved with it.", "...was removed and has not been sent for this day.", "...no longer on your plan, so its Watch copy was removed."). Past days are never touched; days after the last date of a full 14-session page are left alone. The pass never asks for Watch permission (runs only if already authorized). Sends are recorded in a per-athlete ledger in UserDefaults on this device. Alternatives: never resend (always remove and note); keep the record server-side on the watch-sent row.
+- Why: the Watch should never hold a session the plan engine already changed, and every change to it is named (CLAUDE.md §6.2). Resending only the provably same session keeps it conservative.
+- To reverse: WatchReconcile.plan in apps/ios/Scora/WatchReconcile.swift (drop the .resend branch to always remove), and the two WatchReconcile calls in PlanView.loadPlan and DashboardView.

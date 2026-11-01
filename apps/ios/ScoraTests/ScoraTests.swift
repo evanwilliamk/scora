@@ -273,8 +273,8 @@ final class ScoraTests: XCTestCase {
             // 23:00 to 06:30 local (two pieces), waking on the 18th
             sleep: [(start: at("2026-10-18T03:00:00Z"), end: at("2026-10-18T07:00:00Z")),
                     (start: at("2026-10-18T07:30:00Z"), end: at("2026-10-18T10:30:00Z"))],
-            hrv: [(date: at("2026-10-18T10:00:00Z"), value: 50), (date: at("2026-10-18T11:00:00Z"), value: 54),
-                  (date: at("2026-10-17T11:00:00Z"), value: 44)],
+            hrv: [HRVSample(date: at("2026-10-18T10:00:00Z"), value: 50), HRVSample(date: at("2026-10-18T11:00:00Z"), value: 54),
+                  HRVSample(date: at("2026-10-17T11:00:00Z"), value: 44)],
             restingHr: [(date: at("2026-10-18T12:00:00Z"), value: 48.4)],
             calendar: cal)
         XCTAssertEqual(nights, [
@@ -283,23 +283,81 @@ final class ScoraTests: XCTestCase {
         ])
     }
 
-    func testLastNightHRVAndRestingHRAreTheNewestWithin36Hours() {
+    func testLastNightRestingHRIsTheNewestWithin36Hours() {
         let f = ISO8601DateFormatter()
         let at = { (s: String) in f.date(from: s)! }
-        // A 6 AM read: no HRV or resting HR dated today yet.
         let now = at("2026-10-19T10:00:00Z")
-        let hrv: [(date: Date, value: Double)] = [(date: at("2026-10-15T09:00:00Z"), value: 70),
-                                                   (date: at("2026-10-18T09:00:00Z"), value: 54.04),
-                                                   (date: at("2026-10-18T06:00:00Z"), value: 60)]
         let rhr: [(date: Date, value: Double)] = [(date: at("2026-10-18T20:00:00Z"), value: 48.4)]
-        XCTAssertEqual(HealthNights.lastNightHRV(hrv, now: now), 54, "yesterday's newest sample counts at 6 AM")
         XCTAssertEqual(HealthNights.lastNightRestingHR(rhr, now: now), 48)
-        // Beyond 36 hours: stale values are not sent as last night's, even
-        // though they are the newest samples ever.
-        let later = at("2026-10-21T10:00:00Z")
-        XCTAssertNil(HealthNights.lastNightHRV(hrv, now: later))
-        XCTAssertNil(HealthNights.lastNightRestingHR(rhr, now: later))
-        XCTAssertNil(HealthNights.lastNightHRV([], now: now))
+        XCTAssertNil(HealthNights.lastNightRestingHR(rhr, now: at("2026-10-21T10:00:00Z")), "stale values are not last night's")
+    }
+
+    // A fake HealthKit night in New York: asleep 23:00 to 06:30 local.
+    private var newYork: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+        return cal
+    }
+    private func at(_ s: String) -> Date { ISO8601DateFormatter().date(from: s)! }
+    private var lastNightSleep: [(start: Date, end: Date)] {
+        [(start: at("2026-10-19T03:00:00Z"), end: at("2026-10-19T10:30:00Z"))]
+    }
+
+    func testLastNightHRVIgnoresDaytimeReadings() {
+        let hrv = [
+            HRVSample(date: at("2026-10-19T07:00:00Z"), value: 52.04, source: "com.apple.health"), // 03:00, asleep
+            HRVSample(date: at("2026-10-19T16:00:00Z"), value: 31, source: "com.apple.health"), // 12:00, after a run
+        ]
+        // A 2 PM refresh still cites the overnight reading, not the newest one.
+        let afternoon = at("2026-10-19T18:00:00Z")
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: lastNightSleep, now: afternoon, calendar: newYork), 52)
+        // A reading just after waking (within 30 minutes) still counts; an hour later does not.
+        let justAfter = [HRVSample(date: at("2026-10-19T10:50:00Z"), value: 60)]
+        XCTAssertEqual(HealthNights.lastNightHRV(justAfter, sleep: lastNightSleep, now: afternoon, calendar: newYork), 60)
+        let later = [HRVSample(date: at("2026-10-19T11:30:00Z"), value: 60)]
+        XCTAssertNil(HealthNights.lastNightHRV(later, sleep: lastNightSleep, now: afternoon, calendar: newYork))
+        // Only daytime readings: no HRV last night, so nil, never a stand-in.
+        XCTAssertNil(HealthNights.lastNightHRV([hrv[1]], sleep: lastNightSleep, now: afternoon, calendar: newYork))
+        // The night before's reading is not last night's.
+        let nightBefore = [HRVSample(date: at("2026-10-18T07:00:00Z"), value: 70)]
+        XCTAssertNil(HealthNights.lastNightHRV(nightBefore, sleep: lastNightSleep, now: afternoon, calendar: newYork))
+        XCTAssertNil(HealthNights.lastNightHRV([], sleep: lastNightSleep, now: afternoon, calendar: newYork))
+    }
+
+    func testLastNightHRVWithoutSleepUsesTheOvernightHours() {
+        // No sleep recorded: 20:00 to 10:00 New York time.
+        let hrv = [
+            HRVSample(date: at("2026-10-18T23:30:00Z"), value: 40), // 19:30 the evening before: out
+            HRVSample(date: at("2026-10-19T05:00:00Z"), value: 48), // 01:00: in
+            HRVSample(date: at("2026-10-19T15:00:00Z"), value: 30), // 11:00: out
+        ]
+        let noon = at("2026-10-19T16:00:00Z")
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: [], now: noon, calendar: newYork), 48)
+        // The window is in the athlete's zone: in Los Angeles 01:00 New York is 22:00, still in;
+        // 11:00 New York is 08:00 Los Angeles, also in, and it is the latest.
+        var la = Calendar(identifier: .gregorian)
+        la.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: [], now: noon, calendar: la), 30)
+    }
+
+    func testLastNightHRVReadsOneSourceNotAMix() {
+        // The Watch writes several readings overnight; Oura writes one into Health.
+        let watch = "com.apple.health.watch", oura = "com.ouraring.oura"
+        let hrv = [
+            HRVSample(date: at("2026-10-19T05:00:00Z"), value: 44, source: watch),
+            HRVSample(date: at("2026-10-19T07:00:00Z"), value: 46, source: watch),
+            HRVSample(date: at("2026-10-19T10:15:00Z"), value: 70, source: oura), // newest overall
+        ]
+        let noon = at("2026-10-19T16:00:00Z")
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: lastNightSleep, now: noon, calendar: newYork), 46,
+                       "the source with the most readings that night, its latest reading")
+        // A tie goes to the source with the latest reading.
+        let tie = [hrv[1], hrv[2]]
+        XCTAssertEqual(HealthNights.lastNightHRV(tie, sleep: lastNightSleep, now: noon, calendar: newYork), 70)
+        // The dated nights for the charts and the week baseline follow the same rule.
+        let nights = HealthNights.group(sleep: lastNightSleep, hrv: hrv + [HRVSample(date: at("2026-10-19T16:00:00Z"), value: 20, source: watch)],
+                                        restingHr: [], calendar: newYork)
+        XCTAssertEqual(nights.first { $0.day == "2026-10-19" }?.hrvMs, 46)
     }
 
     func testHealthNightsCountOverlapsOnceAndIgnoreNaps() {
@@ -366,7 +424,9 @@ final class ScoraTests: XCTestCase {
         var maxScheduled = 15
         var scheduled: [(name: String, at: DateComponents)] = []
         func authorize() async -> Bool { allow }
+        func isAuthorized() async -> Bool { allow }
         func scheduledCount() async -> Int { scheduled.count }
+        func scheduledWorkouts() async -> [(name: String, at: DateComponents)] { scheduled }
         func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async {
             scheduled.removeAll { match($0.name, $0.at) }
         }
@@ -526,8 +586,6 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual([c.year, c.month, c.day, c.hour, c.minute], [2026, 10, 22, 9, 31])
         let five = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 5))!
         XCTAssertEqual(WatchSend.scheduleTime(for: "2026-10-22", now: five), DateComponents(year: 2026, month: 10, day: 22, hour: 6, minute: 0))
-        let lateNight = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 23, minute: 59, second: 30))!
-        XCTAssertNil(WatchSend.scheduleTime(for: "2026-10-22", now: lateNight), "the day is over")
     }
 
     func testSendToWatchOnlyOffersSessionsItCanCopyThisWeek() {
@@ -569,8 +627,149 @@ final class ScoraTests: XCTestCase {
         let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-24", displayName: "long · 90 min", dayLabel: "Sat Oct 24", scheduler: watch, now: early)
-        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "endurance · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "endurance · 40 min", dayLabel: "Fri Oct 23",
+                                 replacing: "tempo · 40 min", scheduler: watch, now: early)
         XCTAssertEqual(watch.scheduled.map(\.name).sorted(), ["endurance · 40 min", "long · 90 min"], "Friday's stale tempo is gone, Saturday stays")
+    }
+
+    func testResendingOneSessionKeepsTheDaysOtherSession() async {
+        // A coach plan can hold two sessions in a day; sending one again must
+        // replace only its own earlier copy.
+        let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        let watch = FakeWatch()
+        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "easy · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "ride", date: "2026-10-23", displayName: "recovery · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "easy · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        XCTAssertEqual(watch.scheduled.map(\.name).sorted(), ["easy · 40 min", "recovery · 40 min"])
+    }
+
+    func testASendJustBeforeMidnightStaysOnItsDay() {
+        let cal = Calendar.current
+        let lateNight = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 23, minute: 59, second: 30))!
+        let c = WatchSend.scheduleTime(for: "2026-10-22", now: lateNight)
+        XCTAssertEqual(c.map { [$0.year, $0.month, $0.day] }, [2026, 10, 22], "the day is still running")
+        let nextDay = cal.date(from: DateComponents(year: 2026, month: 10, day: 23, hour: 0, minute: 0, second: 30))!
+        XCTAssertNil(WatchSend.scheduleTime(for: "2026-10-22", now: nextDay), "the day is over")
+    }
+
+    // MARK: Watch reconcile
+
+    private func session(_ date: String, _ intensity: String, _ min: Int, row: String?, steps: [PlanStep]? = nil, type: String = "run") -> PlanWorkout {
+        var w = PlanWorkout(date: date, type: type, intensity: intensity, durationMin: min, distanceKm: nil, description: nil)
+        w.rowId = row
+        w.steps = steps ?? [PlanStep(type: "steady", durationMin: Double(min), intensity: intensity, reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        return w
+    }
+    private func at6(_ day: Int) -> DateComponents { DateComponents(year: 2026, month: 11, day: day, hour: 6, minute: 0) }
+    private var reconcileNow: Date { Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
+
+    // Sends `w` with the fake Watch and records it, as Your Plan does.
+    private func sent(_ ws: [PlanWorkout], to watch: FakeWatch) -> WatchLedger {
+        var ledger = WatchLedger()
+        for w in ws { watch.scheduled.append((name: w.detail, at: at6(Int(w.date.suffix(2))!))); ledger.recordSend(w) }
+        return ledger
+    }
+
+    @MainActor
+    func testAMovedSessionMovesOnTheWatchWhenTheAthleteSentIt() async {
+        let watch = FakeWatch()
+        let tue = session("2026-11-03", "tempo", 45, row: "r1")
+        let ledger = sent([tue], to: watch)
+        // The plan engine moved it to Wednesday, unchanged otherwise.
+        let wed = session("2026-11-04", "tempo", 45, row: "r1")
+        let out = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(4)], "Tuesday's copy is gone, Wednesday's is on the Watch")
+        XCTAssertEqual(out.note(for: wed), "Moved from Tue Nov 3. Its Watch copy moved with it.")
+        XCTAssertEqual(out.sends.map(\.date), ["2026-11-04"])
+        // Running again changes nothing.
+        let again = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: out, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(4)])
+        XCTAssertEqual(again, out)
+    }
+
+    @MainActor
+    func testAMovedAndChangedSessionIsRemovedAndNotSentAgain() async {
+        let watch = FakeWatch()
+        let ledger = sent([session("2026-11-03", "tempo", 45, row: "r1")], to: watch)
+        let wed = session("2026-11-04", "endurance", 45, row: "r1") // moved and downgraded
+        let out = await WatchReconcile.run(workouts: [wed], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(watch.scheduled.isEmpty, "unsure it is the same session: removed, not resent")
+        XCTAssertEqual(out.note(for: wed), "Moved from Tue Nov 3. Its Watch copy for Tue Nov 3 was removed and has not been sent for this day.")
+    }
+
+    @MainActor
+    func testADowngradedOrRemovedSessionLeavesTheWatchWithANote() async {
+        let watch = FakeWatch()
+        let ledger = sent([session("2026-11-03", "tempo", 45, row: "r1"), session("2026-11-05", "long", 90, row: "r2")], to: watch)
+        let tueEasy = session("2026-11-03", "endurance", 45, row: "r1") // downgraded in place
+        let thuRest = session("2026-11-05", "rest", 0, row: "r3") // Thursday's run is gone
+        let plan = [tueEasy, thuRest]
+        let out = await WatchReconcile.run(workouts: plan, coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(watch.scheduled.isEmpty)
+        XCTAssertEqual(out.note(for: tueEasy), WatchReconcile.changed)
+        XCTAssertEqual(out.note(for: thuRest), "Thu Nov 5's session is no longer on your plan, so its Watch copy was removed.")
+        XCTAssertEqual(out.unattachedNotes([tueEasy]), ["Thu Nov 5's session is no longer on your plan, so its Watch copy was removed."])
+        for n in out.notes.map(\.text) {
+            XCTAssertFalse(n.contains("\u{2014}"))
+            XCTAssertFalse(n.lowercased().contains("you should"))
+        }
+    }
+
+    @MainActor
+    func testReconcileLeavesPastDaysMatchingCopiesAndUnlistedDaysAlone() async {
+        let watch = FakeWatch()
+        let mon = session("2026-11-02", "tempo", 45, row: "r0") // yesterday
+        let tue = session("2026-11-03", "easy", 40, row: "r1")
+        let far = session("2026-11-09", "long", 90, row: "r9")
+        let ledger = sent([mon, tue, far], to: watch)
+        // Yesterday's row is no longer listed, and the list (a full page) ends on Nov 8.
+        let out = await WatchReconcile.run(workouts: [tue], coveredThrough: "2026-11-08", ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.at), [at6(2), at6(3), at6(9)], "nothing removed")
+        XCTAssertNil(out.note(for: tue))
+        // A copy sent before this device kept records still counts when its name matches.
+        let older = FakeWatch()
+        older.scheduled = [(name: tue.detail, at: at6(3))]
+        _ = await WatchReconcile.run(workouts: [tue], coveredThrough: nil, ledger: WatchLedger(), scheduler: older, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(older.scheduled.count, 1)
+        XCTAssertNil(WatchReconcile.coveredThrough([tue]), "a short page is the whole plan")
+    }
+
+    @MainActor
+    func testReconcileTouchesOnlyTheStaleCopyOnADayWithTwoSessions() async {
+        let watch = FakeWatch()
+        let run = session("2026-11-04", "easy", 40, row: "a")
+        let ride = session("2026-11-04", "recovery", 30, row: "b", type: "ride")
+        let ledger = sent([run, ride], to: watch)
+        // The coach drops the ride; the run stays.
+        let out = await WatchReconcile.run(workouts: [run], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.map(\.name), [run.detail])
+        XCTAssertEqual(out.sends.map(\.rowId), ["a"])
+        // The day's note shows under the run, the row left on that day; it names neither as changed.
+        XCTAssertEqual(out.notes.map(\.key), ["day:2026-11-04"])
+        XCTAssertEqual(out.notes.first?.text, "One of Wed Nov 4's sessions is no longer on your plan, so its Watch copy was removed.")
+    }
+
+    @MainActor
+    func testReconcileNeverAsksForWatchPermission() async {
+        let watch = FakeWatch()
+        let ledger = sent([session("2026-11-03", "tempo", 45, row: "r1")], to: watch)
+        watch.allow = false
+        let out = await WatchReconcile.run(workouts: [], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertEqual(watch.scheduled.count, 1)
+        XCTAssertEqual(out, ledger)
+    }
+
+    func testWatchLedgerRemembersTheNameASessionWasSentUnder() {
+        var ledger = WatchLedger()
+        let tempo = session("2026-11-03", "tempo", 45, row: "r1")
+        ledger.recordSend(tempo)
+        XCTAssertEqual(ledger.lastSentName(session("2026-11-03", "endurance", 45, row: "r1")), tempo.detail)
+        let defaults = UserDefaults(suiteName: "watch-ledger-test")!
+        defer { defaults.removePersistentDomain(forName: "watch-ledger-test") }
+        ledger.save(athleteId: "a1", defaults: defaults)
+        XCTAssertEqual(WatchLedger.load(athleteId: "a1", defaults: defaults), ledger)
+        XCTAssertEqual(WatchLedger.load(athleteId: "other", defaults: defaults), WatchLedger())
     }
 
     func testASessionWhoseDayHasPassedSaysSo() async {
