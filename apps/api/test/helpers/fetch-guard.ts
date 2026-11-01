@@ -23,6 +23,8 @@ export interface FetchGuard {
   oura(routes: Record<string, unknown>): void;
   // Queue OpenAI chat replies (message content), used in order.
   openAi(...replies: (string | Answer)[]): void;
+  // Hold every answer from a host for ms before it is returned; sticky.
+  delay(host: string, ms: number): void;
   reset(): void;
   restore(): void;
 }
@@ -42,6 +44,7 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
   let activities: unknown[] = [];
   let llm: (string | Answer)[] = [];
   let ouraRoutes: Record<string, unknown> | null = null;
+  let delays: Record<string, number> = {};
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -52,6 +55,7 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
     let body: any = null;
     try { body = typeof init?.body === 'string' ? JSON.parse(init.body) : null; } catch { body = init?.body; }
     calls.push({ host: u.hostname, url, init, body });
+    if (delays[u.hostname]) await new Promise((r) => setTimeout(r, delays[u.hostname]));
     if (u.hostname === 'www.strava.com' && u.pathname === '/api/v3/athlete/activities') {
       return json(200, Number(u.searchParams.get('page') ?? '1') > 1 ? [] : activities);
     }
@@ -74,7 +78,8 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
     stravaActivities(list) { activities = list; },
     oura(routes) { ouraRoutes = routes; },
     openAi(...replies) { llm.push(...replies); },
-    reset() { calls.length = 0; llm = []; activities = []; ouraRoutes = null; },
+    delay(host, ms) { delays[host] = ms; },
+    reset() { calls.length = 0; llm = []; activities = []; ouraRoutes = null; delays = {}; },
     restore() { globalThis.fetch = real; (http2 as any).connect = realConnect; },
   };
 }

@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
+import { settle, unwrap } from './settle';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
@@ -549,6 +550,34 @@ fastify.post('/api/read', async (request, reply) => {
       });
     }
 
+    // Independent reads start together once the Strava token resolves (a
+    // missing Strava still answers 401 before any of them): Oura, the active
+    // plan's race date, and, with adaptations off, the plan rows. Each outcome
+    // is read, logged and fallen back on at the same point as before, so a
+    // slow read costs the slowest source, not the sum. Oura's day is the
+    // app's local date; without one it waits on the activities below.
+    const clientDay = nearToday(clientToday);
+    const ouraToken = settle(() => getValidOuraToken(athleteId));
+    // Oura if connected; else the Sleep + Recovery cards show connect prompts.
+    const loadOura = async (day: string) => {
+      const token = await ouraToken;
+      if (!token.ok) return { connected: false, summary: null, error: token.error };
+      try {
+        return { connected: true, summary: await fetchOuraSummary(token.value, { localToday: day }), error: null };
+      } catch (e) {
+        return { connected: true, summary: null, error: e as unknown };
+      }
+    };
+    let ouraLoad = clientDay ? loadOura(clientDay) : null;
+    const activePlan = generationEnabled()
+      ? settle(() => withTimeout(adaptStore().activeScoraPlan(String(athleteId)), 2000))
+      : null;
+    // Plan rows are read after adaptTomorrow, which may move tomorrow's
+    // workout (read-after-write), so they start early only with adaptations off.
+    const loadPlanRows = (day: string) =>
+      settle(() => planStore().workoutsBetween(String(athleteId), mondayOf(day), addDays(day, 6)));
+    let planRows = clientDay && !adaptationsEnabled() ? loadPlanRows(clientDay) : null;
+
     // Everything since 35 days ago (the driver record needs a full 28 days;
     // 50 most recent activities can fall short for multi-sport athletes).
     let activities: any[];
@@ -560,17 +589,16 @@ fastify.post('/api/read', async (request, reply) => {
 
     // The athlete's local date for "last night" and calendar-day counts: the
     // app's, else the newest activity's offset.
-    const localToday = nearToday(clientToday) ?? athleteLocalToday(activities);
+    const localToday = clientDay ?? athleteLocalToday(activities);
+    ouraLoad ??= loadOura(localToday);
+    if (!planRows && !adaptationsEnabled()) planRows = loadPlanRows(localToday);
 
-    // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
-    // cards fall back to connect prompts. Never blocks the read on Oura errors.
-    let ouraSummary = null;
-    let ouraConnected = false;
-    try {
-      const ouraToken = await getValidOuraToken(athleteId);
-      ouraConnected = true;
-      ouraSummary = await fetchOuraSummary(ouraToken, { localToday });
-    } catch (e) {
+    // Never blocks the read on Oura errors.
+    const oura = await ouraLoad;
+    const ouraSummary = oura.summary;
+    const ouraConnected = oura.connected;
+    if (oura.error != null) {
+      const e = oura.error;
       fastify.log.info(`Oura not available for ${athleteId}: ${e instanceof Error ? e.message : e}`);
     }
 
@@ -616,9 +644,9 @@ fastify.post('/api/read', async (request, reply) => {
     // plan /api/plan/block shows); no plan or no date leaves it null. Never
     // blocks the read.
     let raceInNext7d: boolean | null = null;
-    if (generationEnabled()) {
+    if (activePlan) {
       try {
-        const active = await withTimeout(adaptStore().activeScoraPlan(String(athleteId)), 2000);
+        const active = unwrap(await activePlan);
         raceInNext7d = raceWithinWeek(active?.goal_race_date, localToday);
       } catch (e) {
         fastify.log.warn(`Race date not loaded for read: ${e instanceof Error ? e.message : e}`);
@@ -679,7 +707,7 @@ fastify.post('/api/read', async (request, reply) => {
     try {
       // From this Monday (for Week So Far) to a week ahead, so "nothing
       // scheduled today" is known when a plan exists.
-      const rows = await planStore().workoutsBetween(String(athleteId), mondayOf(today), addDays(today, 6));
+      const rows = unwrap(await (planRows ?? loadPlanRows(today)));
       weekPlanRows = rows;
       plan = planForRead(rows.filter((r) => r.scheduled_date >= today), today);
       // PRD §5.A.3: a Plan Today card when a plan exists, before Connections.
@@ -714,19 +742,16 @@ fastify.post('/api/read', async (request, reply) => {
 
     // Plan changes the engine made that touch today: the read may observe
     // them (CLAUDE.md §1.3). Only when adaptations are on; never blocks.
-    let planChange = planChangeContext([]);
-    if (adaptationsEnabled()) {
-      try {
-        planChange = planChangeContext(await withTimeout(adaptStore().forDay(String(athleteId), today), 2000));
-      } catch (e) {
-        fastify.log.warn(`Plan changes not loaded for read: ${e instanceof Error ? e.message : e}`);
-      }
-    }
+    // Read after adaptTomorrow (it may have written one), side by side with
+    // the knowledge lookup, which does not depend on it.
+    const dayChanges = adaptationsEnabled()
+      ? settle(() => withTimeout(adaptStore().forDay(String(athleteId), today), 2000))
+      : null;
 
     // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
     // else the curated pattern library, else nothing. Never blocks the read.
     const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
-    const knowledge = await knowledgeForRead(
+    const knowledgeLoad = settle(() => knowledgeForRead(
       {
         posture: posture.result.posture,
         postureBacked: posture.backed,
@@ -736,7 +761,19 @@ fastify.post('/api/read', async (request, reply) => {
         sleepSeconds: recovery?.sleepSeconds ?? null,
       },
       knowledgeDeps
-    );
+    ));
+
+    let planChange = planChangeContext([]);
+    if (dayChanges) {
+      try {
+        planChange = planChangeContext(unwrap(await dayChanges));
+      } catch (e) {
+        fastify.log.warn(`Plan changes not loaded for read: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    // knowledgeForRead catches its own failures; anything else still ends in
+    // the outer 'Read failed' as before.
+    const knowledge = unwrap(await knowledgeLoad);
 
     // The numbers behind the posture are drivers too, so naming it is backed.
     // The numbers behind the posture and today's planned session are drivers

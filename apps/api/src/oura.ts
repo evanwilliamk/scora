@@ -246,11 +246,24 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
     hrvWeekAvgMs: null,
   };
 
+  // The three routes are requested together (same order, same budget) and
+  // read in turn below: the daily sleep score needs the night the sleep
+  // periods chose. The no-op catch only marks a failure handled until its
+  // own try below rethrows it.
+  const request = (url: string) => {
+    const p = fetch(url, auth);
+    p.catch(() => {});
+    return p;
+  };
+  const sleepReq = request(`${OURA_API}/sleep?${scoreRange}`);
+  const dailySleepReq = request(`${OURA_API}/daily_sleep?${scoreRange}`);
+  const readinessReq = request(`${OURA_API}/daily_readiness?${range}`);
+
   // Detailed sleep periods: total_sleep_duration, average_hrv, lowest_heart_rate.
   try {
     // 29 days so the inline charts can show a month; the 7-night fields
     // below still read only the newest nights.
-    const res = await fetch(`${OURA_API}/sleep?${scoreRange}`, auth);
+    const res = await sleepReq;
     if (res.ok) {
       const json: any = await res.json();
       // One period per night: the longest non-nap one (Oura can split a night
@@ -297,7 +310,7 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
 
   // Daily sleep score.
   try {
-    const res = await fetch(`${OURA_API}/daily_sleep?${scoreRange}`, auth);
+    const res = await dailySleepReq;
     if (res.ok) {
       const json: any = await res.json();
       const rows: any[] = (json.data || []).slice().sort((a: any, b: any) => (a.day < b.day ? 1 : -1));
@@ -320,7 +333,7 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
 
   // Daily readiness score.
   try {
-    const res = await fetch(`${OURA_API}/daily_readiness?${range}`, auth);
+    const res = await readinessReq;
     if (res.ok) {
       const json: any = await res.json();
       const rows: any[] = (json.data || []).slice().sort((a: any, b: any) => (a.day < b.day ? 1 : -1));
