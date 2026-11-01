@@ -20,7 +20,12 @@ export interface ValidationResult {
 const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\b(your|an?)\s+ai[\s-]+coach\b/i, label: 'ai coach' },
   // "I'm your coach", "I'm a coach", "I am an endurance coach", "SCORA is your coach".
-  { re: /\b(i'?m|as|i am)\s+your\s+(?:\w+\s+)?coach\b|\b(?:i'?m|i am|scora is)\s+(?:your|an?)\s+(?:\w+\s+)?coach\b|\byour coach here\b|\bcoaching you\b/i, label: 'coach self-reference' },
+  // The athlete's real coach as the subject stays allowed (Coach tier): "As
+  // your coach planned it", "Sarah has been coaching you".
+  {
+    re: /\b(i'?m|i am)\s+your\s+(?:\w+\s+)?coach\b|\bas\s+your\s+(?:\w+\s+)?coach\b(?!'s|\s+(?:has|had|planned|plans|wrote|writes|set|sets|put|built|scheduled|noted|said|says|moved|added|laid|asked|called|mentioned|marked|expects|expected|intended|wants|wanted)\b)|\b(?:i'?m|i am|scora is)\s+(?:your|an?)\s+(?:\w+\s+)?coach\b|\byour coach here\b|\b(?:i'?m|i am|i'?ve been|i have been|i'?ll be|i will be|i'?ll keep|we'?re|scora is|scora'?s)\s+coaching you\b|(?:^|[.;!?]\s+)coaching you\b/i,
+    label: 'coach self-reference',
+  },
   { re: /\bas an ai\b|\b(?:i'?m|i am) an ai\b/i, label: 'as an ai' },
   { re: /\bi'?m just an ai\b/i, label: 'just an ai' },
   { re: /\byou should\b/i, label: 'you should' },
