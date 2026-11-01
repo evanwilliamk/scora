@@ -139,9 +139,9 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertEqual(ReadStatus.of(hasRead: true, isLoading: false, error: urlCancelled.errorLine), .shown)
 
     let offline = await ReadFetch.run { throw URLError(.notConnectedToInternet) }
-    XCTAssertEqual(offline, .failed(ReadFetch.failureLine))
+    XCTAssertEqual(offline, .failed(NetworkText.read.offline))
     XCTAssertEqual(ReadStatus.of(hasRead: true, isLoading: false, error: offline.errorLine),
-                   .staleWithError(ReadFetch.failureLine))
+                   .staleWithError(NetworkText.read.offline))
   }
 
   // A 200 hands the body on; any other status is a failure with the server's line.
@@ -174,6 +174,141 @@ final class DashboardReviewTests: XCTestCase {
       XCTAssertFalse(line.contains("!"), line)
       XCTAssertFalse(line.unicodeScalars.contains { $0.properties.isEmojiPresentation }, line)
       XCTAssertFalse(line.contains("\u{2014}"), line)
+    }
+  }
+}
+
+// A URLProtocol that answers every request with a canned failure, or never.
+final class StubURLProtocol: URLProtocol {
+  enum Behavior { case fail(URLError.Code), hang }
+  static var behavior: Behavior = .fail(.notConnectedToInternet)
+
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func startLoading() {
+    switch Self.behavior {
+    case .fail(let code): client?.urlProtocol(self, didFailWithError: URLError(code))
+    case .hang: break // the session's own timeout ends it
+    }
+  }
+  override func stopLoading() {}
+}
+
+// Offline, a slow network, and what each screen says and does about it.
+final class OfflineReviewTests: XCTestCase {
+  private let url = URL(string: "https://example.invalid/api/read")!
+
+  // URLSession.shared waits 60 s; every API call now gives up much sooner,
+  // and an offline phone fails at once instead of waiting for a route.
+  func testAPISessionsDoNotWaitSixtySeconds() {
+    XCTAssertEqual(API.session.configuration.timeoutIntervalForRequest, 15)
+    XCTAssertEqual(API.slowSession.configuration.timeoutIntervalForRequest, 30)
+    XCTAssertLessThanOrEqual(API.slowSession.configuration.timeoutIntervalForResource, 60)
+    XCTAssertFalse(API.session.configuration.waitsForConnectivity)
+    XCTAssertFalse(API.slowSession.configuration.waitsForConnectivity)
+  }
+
+  func testOfflineReadSaysOfflineInPlainWords() async {
+    StubURLProtocol.behavior = .fail(.notConnectedToInternet)
+    let session = API.make(timeout: 5, protocolClasses: [StubURLProtocol.self])
+    let req = URLRequest(url: url)
+    let outcome = await ReadFetch.run { try await session.data(for: req) }
+    XCTAssertEqual(outcome, .failed(NetworkText.read.offline))
+  }
+
+  // A request the server never answers ends at the session's timeout with
+  // its own line, not a minute of spinner and the system's error text.
+  func testHungReadTimesOutWithItsOwnLine() async {
+    StubURLProtocol.behavior = .hang
+    let session = API.make(timeout: 0.5, protocolClasses: [StubURLProtocol.self])
+    let req = URLRequest(url: url)
+    let started = Date()
+    let outcome = await ReadFetch.run { try await session.data(for: req) }
+    XCTAssertEqual(outcome, .failed(NetworkText.read.timedOut))
+    XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+  }
+
+  func testFailuresNeverShowSystemErrorText() {
+    let codes: [URLError.Code] = [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost, .secureConnectionFailed]
+    for code in codes {
+      let raw = URLError(code).localizedDescription
+      XCTAssertNotEqual(WeeklyText.failure(URLError(code)), raw)
+      for lines in NetworkText.every { XCTAssertNotEqual(lines.line(for: URLError(code)), raw) }
+    }
+    XCTAssertEqual(NetworkFailure.of(URLError(.cannotFindHost)), .other)
+    XCTAssertEqual(NetworkFailure.of(URLError(.dataNotAllowed)), .offline)
+    XCTAssertEqual(WeeklyText.failure(URLError(.timedOut)), NetworkText.weekly.timedOut)
+  }
+
+  // A question that never reached the server is not lost: it goes back in
+  // the box, unless the athlete has already started typing another.
+  func testChatNetworkFailureKeepsTheQuestion() {
+    let offline = CDVFailure.after(URLError(.notConnectedToInternet), question: "How was my week?", input: "")
+    XCTAssertEqual(offline.bubble, NetworkText.chat.offline)
+    XCTAssertEqual(offline.input, "How was my week?")
+    let typing = CDVFailure.after(URLError(.timedOut), question: "How was my week?", input: "And sleep?")
+    XCTAssertEqual(typing.bubble, NetworkText.chat.timedOut)
+    XCTAssertEqual(typing.input, "And sleep?")
+  }
+
+  // CLAUDE.md 3.2: a read from another day never sits under "Today's Read".
+  func testReadFromAnotherDaySaysItsDate() {
+    XCTAssertEqual(ReadDate.heading(loadedDay: "2026-11-01", today: "2026-11-01"), "Today's Read")
+    XCTAssertEqual(ReadDate.heading(loadedDay: nil, today: "2026-11-01"), "Today's Read")
+    XCTAssertEqual(ReadDate.heading(loadedDay: "2026-10-31", today: "2026-11-01"), "Read for Saturday, October 31")
+    XCTAssertTrue(ReadDate.isOld(loadedDay: "2026-10-31", today: "2026-11-01"))
+    XCTAssertFalse(ReadDate.isOld(loadedDay: "2026-11-01", today: "2026-11-01"))
+  }
+
+  private func tempCache() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("read-cache-\(UUID().uuidString)/last-read.json")
+  }
+
+  // Cold launch offline shows the last read (with its date), only this
+  // athlete's, only up to a week old, and nothing after sign-out.
+  func testLastReadIsKeptOnDeviceForThisAthlete() throws {
+    let file = tempCache()
+    let body = Data(#"{"read":{"voice":"Body is settled."},"cards":[]}"#.utf8)
+    let saved = Date(timeIntervalSince1970: 1_793_000_000)
+    ReadCache.save(body, day: "2026-10-31", athleteId: "a1", at: saved, to: file)
+
+    let back = try XCTUnwrap(ReadCache.load(athleteId: "a1", now: saved.addingTimeInterval(3600), from: file))
+    XCTAssertEqual(back.day, "2026-10-31")
+    XCTAssertEqual(back.body, body)
+    XCTAssertNotNil(back.response, "the cached body decodes like a live reply")
+    XCTAssertNil(ReadCache.load(athleteId: "a2", now: saved, from: file), "another athlete never sees it")
+    XCTAssertNil(ReadCache.load(athleteId: "a1", now: saved.addingTimeInterval(8 * 86_400), from: file), "older than a week")
+
+    let values = try file.resourceValues(forKeys: [.isExcludedFromBackupKey])
+    XCTAssertEqual(values.isExcludedFromBackup, true, "health-derived data stays on this phone")
+
+    ReadCache.clear(at: file)
+    XCTAssertNil(ReadCache.load(athleteId: "a1", now: saved, from: file))
+  }
+
+  // When the connection comes back, a screen that failed, or still shows an
+  // older day's read, loads again on its own.
+  func testReconnectReloadsWhatFailed() {
+    XCTAssertTrue(NetworkStatus.didComeBack(wasOnline: false, isOnline: true))
+    XCTAssertFalse(NetworkStatus.didComeBack(wasOnline: true, isOnline: true))
+    XCTAssertFalse(NetworkStatus.didComeBack(wasOnline: true, isOnline: false))
+
+    XCTAssertTrue(ReadRetry.onReconnect(hasError: true, loadedDay: "2026-11-01", today: "2026-11-01", isLoading: false))
+    XCTAssertTrue(ReadRetry.onReconnect(hasError: false, loadedDay: "2026-10-31", today: "2026-11-01", isLoading: false))
+    XCTAssertFalse(ReadRetry.onReconnect(hasError: false, loadedDay: "2026-11-01", today: "2026-11-01", isLoading: false))
+    XCTAssertFalse(ReadRetry.onReconnect(hasError: true, loadedDay: nil, today: "2026-11-01", isLoading: true))
+
+    XCTAssertTrue(PlanSheet.reloadsOnReconnect(loadFailed: true, changesFailed: false))
+    XCTAssertTrue(PlanSheet.reloadsOnReconnect(loadFailed: false, changesFailed: true))
+    XCTAssertFalse(PlanSheet.reloadsOnReconnect(loadFailed: false, changesFailed: false))
+  }
+
+  func testOfflineCopyIsCalm() {
+    let lines = NetworkText.every.flatMap(\.all) + [ReadDate.heading(loadedDay: "2026-10-31", today: "2026-11-01")]
+    for line in lines {
+      XCTAssertFalse(line.contains("!"), line)
+      XCTAssertFalse(line.contains("\u{2014}"), line)
+      XCTAssertFalse(line.unicodeScalars.contains { $0.properties.isEmojiPresentation }, line)
     }
   }
 }
