@@ -1,6 +1,7 @@
 import Foundation
 import WorkoutKit
 import HealthKit
+import CryptoKit
 
 // Apple WorkoutKit export (Plan tier, CLAUDE.md §5.2): a plan session's
 // stored structure (scheduled_workouts.workout_structure_json, built by
@@ -118,6 +119,29 @@ enum WorkoutExport {
 }
 
 // MARK: - Send to Watch
+
+// The Watch keeps each scheduled plan's id (WorkoutPlan.id, read back from
+// WorkoutScheduler.scheduledWorkouts), so a session's copy carries an id
+// derived from its plan row: the same row always gives the same id, on any
+// phone. Name-based UUID v5 (RFC 4122) over a fixed SCORA namespace.
+enum WatchPlanId {
+  // Fixed forever: changing it orphans every copy already on a Watch.
+  static let namespace = UUID(uuidString: "5c0a7e2a-9d4b-4f61-8a3e-2b7f0c1d6e58")!
+
+  static func forSession(rowId: String) -> UUID { uuid5(namespace: namespace, name: "session:\(rowId)") }
+
+  // Copies sent by builds before this one carry a random (v4) id.
+  static func isDerived(_ id: UUID) -> Bool { (id.uuid.6 >> 4) == 5 }
+
+  static func uuid5(namespace: UUID, name: String) -> UUID {
+    var data = withUnsafeBytes(of: namespace.uuid) { Data($0) }
+    data.append(Data(name.utf8))
+    var b = Array(Insecure.SHA1.hash(data: data).prefix(16))
+    b[6] = (b[6] & 0x0F) | 0x50
+    b[8] = (b[8] & 0x3F) | 0x80
+    return UUID(uuid: (b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]))
+  }
+}
 
 // WorkoutScheduler behind a protocol so the flow is testable without a Watch.
 protocol WatchScheduling {

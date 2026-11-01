@@ -760,6 +760,16 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(out, ledger)
     }
 
+    func testWatchPlanIdIsAStableUUIDv5() {
+        // RFC 4122 v5 of "www.example.com" in the DNS namespace.
+        let dns = UUID(uuidString: "6ba7b810-9dad-11d1-80b4-00c04fd430c8")!
+        XCTAssertEqual(WatchPlanId.uuid5(namespace: dns, name: "www.example.com").uuidString.lowercased(), "2ed6657d-e927-568b-95e1-2665a8aea6a2")
+        XCTAssertEqual(WatchPlanId.forSession(rowId: "r1"), WatchPlanId.forSession(rowId: "r1"))
+        XCTAssertNotEqual(WatchPlanId.forSession(rowId: "r1"), WatchPlanId.forSession(rowId: "r2"))
+        XCTAssertTrue(WatchPlanId.isDerived(WatchPlanId.forSession(rowId: "r1")))
+        XCTAssertFalse(WatchPlanId.isDerived(UUID()), "older builds sent random v4 ids")
+    }
+
     func testWatchLedgerRemembersTheNameASessionWasSentUnder() {
         var ledger = WatchLedger()
         let tempo = session("2026-11-03", "tempo", 45, row: "r1")
