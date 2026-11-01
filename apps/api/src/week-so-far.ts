@@ -21,11 +21,6 @@ export interface WeekSoFar {
   line: string;
 }
 
-export const mondayOf = (day: string): string => {
-  const t = Date.parse(`${day}T00:00:00Z`);
-  return iso(t - ((new Date(t).getUTCDay() + 6) % 7) * DAY);
-};
-
 // Planned run minutes per day from the plan's rows (rest days and other
 // sports count 0). Only stored durations: nothing is estimated.
 // A run session with no stored duration (a distance-only long run) makes the

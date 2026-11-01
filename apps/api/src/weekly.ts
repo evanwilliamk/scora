@@ -4,12 +4,7 @@ import type { Driver } from './metrics';
 import type { StoredWorkout } from './plan-store';
 import { isRun } from './activity-types';
 import { plannedRunMinutes } from './week-so-far';
-
-const addDay = (day: string, n: number) => {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
+import { addDays } from './dates';
 
 // How the 7 complete days [from, to] tracked against the athlete's plan, as
 // one driver ("150 of 150 planned run min"). Counted exactly as the Week So
@@ -28,7 +23,7 @@ export function weeklyPlanDriver(
   const runs = activities.filter((a) => isRun(a) && typeof a.start_date_local === 'string');
   let plan = 0;
   let done = 0;
-  for (let day = from; day <= to; day = addDay(day, 1)) {
+  for (let day = from; day <= to; day = addDays(day, 1)) {
     const p = planned.get(day);
     if (p === null) return null;
     plan += p ?? 0;

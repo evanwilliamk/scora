@@ -40,7 +40,8 @@ import { importIcs, IcalImportError } from './plan-ical';
 import { planForRead, planTodayCard, readNamesPlan, todayLine } from './plan-read';
 import { weeklyPlanDriver } from './weekly';
 import { numericLine } from './numeric-line';
-import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
+import { weekSoFar, plannedRunMinutes } from './week-so-far';
+import { addDays, isCalendarDay, mondayOf } from './dates';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planBlock, planOptions, supabaseGenerateStore,
@@ -927,13 +928,7 @@ fastify.put('/api/preferences', async (request, reply) => {
 // a plan; gpt-4o-mini transcribes it and plan-parse.ts keeps only rows whose
 // dates resolve and whose numbers appear in the pasted text.
 // A real calendar date or null: 2026-13-01 and 2026-02-31 do not pass.
-const isoDay = (v: unknown): string | null => {
-  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
-  const t = Date.parse(`${v}T00:00:00Z`);
-  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v ? v : null;
-};
-const addDays = (day: string, n: number) =>
-  new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const isoDay = (v: unknown): string | null => (isCalendarDay(v) ? v : null);
 // The /api/read reply when no Strava token resolves.
 const STRAVA_RECONNECT = 'Strava not connected or refresh failed. Please reconnect Strava.';
 

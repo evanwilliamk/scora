@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { weekSoFar, plannedRunMinutes, mondayOf } from '../src/week-so-far';
+import { weekSoFar, plannedRunMinutes } from '../src/week-so-far';
+import { mondayOf } from '../src/dates';
 import { validateVoice } from '../src/validator';
 
 const run = (d: string, min: number) => ({ type: 'Run', start_date_local: `${d}T07:00:00Z`, moving_time: min * 60 });

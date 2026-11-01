@@ -7,6 +7,7 @@
 // reason text below only states the decision. Off unless PLAN_ADAPTATIONS=on.
 
 import type { Driver } from './metrics';
+import { addDays, mondayOf } from './dates';
 import {
   ADAPTATION_ENGINE_VERSION, evaluateAdaptation, structureMinutes, templateWeekMinutes, validateTemplate,
 } from '../../../packages/plan-engine/src/index';
@@ -78,9 +79,7 @@ export interface AdaptStore {
 }
 
 const DAY = 86_400_000;
-const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const weekday = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`)).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
-const mondayOf = (d: string) => addDays(d, -((new Date(Date.parse(`${d}T00:00:00Z`)).getUTCDay() + 6) % 7));
 
 const INTENSITY_WORDS: Record<Intensity, string> = {
   rest: 'rest day', recovery: 'recovery run', easy: 'easy run', moderate: 'moderate run', endurance: 'endurance run',
