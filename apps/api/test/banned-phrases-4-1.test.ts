@@ -18,6 +18,9 @@ const BANNED: [string, string][] = [
   ["I'm a coach that reads the record.", 'coach self-reference'],
   ['I am an endurance coach.', 'coach self-reference'],
   ['SCORA is your coach today.', 'coach self-reference'],
+  ["I'm coaching you through this block.", 'coach self-reference'],
+  ['As your coach, I read a settled body.', 'coach self-reference'],
+  ['As your running coach I see the load holding.', 'coach self-reference'],
   ['Your AI coach sees a settled body.', 'ai coach'],
   // "you should" / "you need to" / "you must"
   ['You should hold back.', 'you should'],
@@ -71,6 +74,11 @@ const ALLOWED = [
   'Your coach: Sarah Jones.',
   'Your coach wrote a note this week.',
   'Your coach has the long run on Saturday.',
+  // Coach tier: the athlete's real coach as the subject (second pass, 2026-11-01)
+  "Your coach's plan has a long run Saturday.",
+  'Sarah has been coaching you through this build, and the body is settled.',
+  'As your coach planned it, the long run is Saturday.',
+  'As your coach wrote, the tempo sits on Wednesday.',
   // history, not orders
   'Your last long run a week ago held steady.',
   'The body is settled this morning.',

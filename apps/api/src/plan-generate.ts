@@ -87,7 +87,9 @@ export function parseGenerateRequest(body: any): GenerateRequest {
     sport: body.sport,
     goal_type: body.goal_type.trim(),
     experience_level: body.experience_level,
-    current_weekly_km: km,
+    // At the stored precision (weekly_volume_start_km numeric(6, 2)), so the
+    // same setup sent again compares equal in create_scora_plan.
+    current_weekly_km: Math.round(km * 100) / 100,
     goal_race_date: body.goal_race_date,
   };
 }

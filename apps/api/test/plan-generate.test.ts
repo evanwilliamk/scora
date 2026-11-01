@@ -264,3 +264,18 @@ test('review 2026-11-01: the same setup sent twice keeps one plan, with its done
   const after = (await db.query<any>(`select id, current_status from training_plans where athlete_id = 'd1' order by current_status`)).rows;
   assert.deepEqual(after.map((r) => [r.id === other.planId, r.current_status]), [[true, 'active'], [false, 'replaced']]);
 });
+
+test('review 2026-11-01 (second pass): a weekly km with more than two decimals is still the same setup', async () => {
+  // weekly_volume_start_km is numeric(6, 2): 40.2336 (25 mi) is stored as
+  // 40.23, so comparing the raw request with the stored value saw a new setup
+  // and replaced the plan on every resend, losing its done marks.
+  const store = sqlGenerateStore(db);
+  const fine = parseGenerateRequest({
+    sport: 'run', goal_type: '10k', experience_level: 'regular', current_weekly_km: 25 * 1.609344, goal_race_date: '2026-11-15',
+  });
+  const first = await generatePlan('k1', fine, '2026-10-21', templates, store);
+  const again = await generatePlan('k1', fine, '2026-10-21', templates, store);
+  assert.equal(again.planId, first.planId);
+  const plans = (await db.query<any>(`select current_status from training_plans where athlete_id = 'k1'`)).rows;
+  assert.deepEqual(plans.map((r) => r.current_status), ['active']);
+});
