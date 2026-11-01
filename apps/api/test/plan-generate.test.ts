@@ -220,3 +220,28 @@ test('review 2026-11-01: a session with half-minute steps saves as whole minutes
     `select planned_duration_min from scheduled_workouts where training_plan_id = $1 and planned_intensity = 'easy' order by scheduled_date limit 1`, [planId])).rows[0];
   assert.equal(w.planned_duration_min, 46);
 });
+
+test('review 2026-11-01: a missing or non-numeric weekly km is refused, not read as 0 km', () => {
+  const base = { sport: 'run', goal_type: '10k', experience_level: 'regular', goal_race_date: '2026-11-15' };
+  for (const km of [undefined, null, '', ' ', true, [35], {}]) {
+    assert.throws(() => parseGenerateRequest({ ...base, current_weekly_km: km }),
+      (e: unknown) => e instanceof GenerateError && e.code === 'bad_request' && /current_weekly_km/.test(e.message), String(km));
+  }
+  assert.equal(parseGenerateRequest({ ...base, current_weekly_km: '35' }).current_weekly_km, 35);
+  assert.equal(parseGenerateRequest({ ...base, current_weekly_km: 0 }).current_weekly_km, 0);
+});
+
+test('review 2026-11-01: a race already past is named as past, not "pick a shorter plan"', async () => {
+  const store = sqlGenerateStore(db);
+  await assert.rejects(generatePlan('p1', { ...req, goal_race_date: '2026-10-20' }, '2026-10-21', templates, store),
+    (e: any) => e.code === 'race_too_soon' && e.message === 'That race date has already passed.');
+  assert.equal((await db.query(`select 1 from training_plans where athlete_id = 'p1'`)).rows.length, 0);
+});
+
+test('review 2026-11-01: a race too close for the shortest template names the earliest race date that fits', async () => {
+  // 4-week fixture, today Wed 10-21: week 4 opens Mon 11-09. A race on 11-08
+  // would need a plan that started 10-12. There is no shorter plan to pick.
+  await assert.rejects(generatePlan('p2', { ...req, goal_race_date: '2026-11-08' }, '2026-10-21', templates, sqlGenerateStore(db)),
+    (e: any) => e.code === 'race_too_soon'
+      && e.message === 'The shortest plan for this race is 4 weeks. It needs a race on or after 2026-11-09.');
+});
