@@ -194,3 +194,29 @@ test('planBlock: week of the plan, phases with their weeks, the current one, the
   assert.equal(b.starts_on, null);
   assert.equal(planBlock(plan, '2027-02-01').week, 12, 'after the end stays on the last week');
 });
+
+// Review 2026-11-01: plan generation path.
+
+test('review 2026-11-01: a session with half-minute steps saves as whole minutes, not a failed save', async () => {
+  // In-memory variant of the fixture: strides-style steps add up to 45.5 min
+  // (the README's own example shape). planned_duration_min is a smallint.
+  const [t] = templates;
+  const half = {
+    ...t, slug: 'test-fixture-half-min', version: '0.0.1',
+    workout_definitions: {
+      ...t.workout_definitions,
+      easy_run: {
+        intensity: 'easy' as const,
+        structure: [
+          { type: 'steady' as const, duration_min: 35, intensity: 'easy' as const },
+          { type: 'interval' as const, reps: 6, work_duration_min: 0.5, work_intensity: 'sprint' as const, rest_duration_min: 1.5, rest_intensity: 'easy' as const },
+        ],
+        duration_min: 45.5,
+      },
+    },
+  };
+  const { planId } = await generatePlan('h1', req, '2026-10-21', [half], sqlGenerateStore(db));
+  const w = (await db.query<any>(
+    `select planned_duration_min from scheduled_workouts where training_plan_id = $1 and planned_intensity = 'easy' order by scheduled_date limit 1`, [planId])).rows[0];
+  assert.equal(w.planned_duration_min, 46);
+});

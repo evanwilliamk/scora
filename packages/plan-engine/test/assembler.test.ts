@@ -36,7 +36,7 @@ test('every number traces to the template: no invented workouts, durations or st
     assert.ok(def, w.workout_key);
     assert.equal(w.planned_intensity, def.intensity);
     assert.deepEqual(w.structure, scaleStructure(def.structure, T.week_load_percent[w.week - 1]));
-    assert.equal(w.planned_duration_min, structureMinutes(w.structure));
+    assert.equal(w.planned_duration_min, Math.round(structureMinutes(w.structure)));
   }
   for (let wk = 1; wk <= 4; wk++) {
     const sum = p.workouts.filter((w) => w.week === wk).reduce((s, w) => s + w.planned_duration_min, 0);
