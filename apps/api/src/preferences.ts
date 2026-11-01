@@ -108,7 +108,7 @@ export function sqlPrefsStore(db: Db): PrefsStore {
 }
 
 export function supabasePrefsStore(sb: { from: (t: string) => any }): PrefsStore {
-  const check = (r: { error: any }, what: string) => {
+  const check = (r: { error: { message: string } | null }, what: string) => {
     if (r.error) throw new Error(`${what}: ${r.error.message}`);
   };
   const store: PrefsStore = {

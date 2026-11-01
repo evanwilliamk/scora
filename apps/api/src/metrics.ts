@@ -317,12 +317,12 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null,
   const day = 86400000;
   const runs = activities.filter(isRun);
 
-  const inDays = (a: any, from: number, to: number) => {
+  const inDays = (a: any, t: string, from: number, to: number) => {
     const d = localDay(a);
-    return d >= shiftDay(today!, from) && d <= shiftDay(today!, to);
+    return d >= shiftDay(t, from) && d <= shiftDay(t, to);
   };
-  const thisWeek = runs.filter((a) => (today ? inDays(a, -7, -1) : inWindow(a, now - 7 * day, now)));
-  const lastWeek = runs.filter((a) => (today ? inDays(a, -14, -8) : inWindow(a, now - 14 * day, now - 7 * day)));
+  const thisWeek = runs.filter((a) => (today ? inDays(a, today, -7, -1) : inWindow(a, now - 7 * day, now)));
+  const lastWeek = runs.filter((a) => (today ? inDays(a, today, -14, -8) : inWindow(a, now - 14 * day, now - 7 * day)));
 
   const stats: WeeklyStat[] = [];
   const drivers: Driver[] = [];

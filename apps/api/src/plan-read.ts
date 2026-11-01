@@ -8,7 +8,6 @@
 import type { StoredWorkout } from './plan-store';
 import type { Card, Driver } from './metrics';
 import { toScheduledWorkout } from './plan-parse';
-import { isRun } from './activity-types';
 
 // When a day has more than one session, the read keys off the hardest.
 const WEIGHT: Record<string, number> = {
@@ -58,31 +57,6 @@ export function planForRead(rows: StoredWorkout[], today: string): PlanForRead {
     // read that cited them would fail validation.
     promptLine: `PLAN TODAY (the athlete's own plan; you may name it, never change, move or add to it): ${driver.value}`,
   };
-}
-
-// For the weekly review: how the last 7 complete days tracked against the athlete's
-// plan, as one driver ("180 of 210 planned run min"). Planned minutes are
-// stored durations of run sessions only; run minutes come from Strava. Null
-// when the plan has no run minutes in the window (nothing to compare).
-export function weeklyPlanDriver(
-  rows: Pick<StoredWorkout, 'scheduled_date' | 'planned_type' | 'planned_intensity' | 'planned_duration_min'>[],
-  activities: any[],
-  from: string,
-  to: string,
-): Driver | null {
-  const runRows = rows.filter((r) => r.scheduled_date >= from && r.scheduled_date <= to && r.planned_type === 'run' && r.planned_intensity !== 'rest');
-  // A run with no stored duration (a distance-only long run) makes the plan's
-  // minutes unknown: no driver rather than one that understates the plan.
-  if (runRows.some((r) => r.planned_duration_min == null)) return null;
-  const planned = runRows.reduce((s, r) => s + (r.planned_duration_min ?? 0), 0);
-  if (planned <= 0) return null;
-  const done = Math.round(activities
-    .filter((a) => isRun(a) && typeof a.start_date_local === 'string')
-    .filter((a) => a.start_date_local.slice(0, 10) >= from && a.start_date_local.slice(0, 10) <= to)
-    .reduce((s, a) => s + (a.moving_time || 0) / 60, 0));
-  // Complete days only (a Sunday-morning review must not count Sunday's run
-  // as missed), named so the voice never reads it as the same week as Load.
-  return { metric: 'Plan, last 7 full days', value: `${done} of ${planned} planned run min` };
 }
 
 // Whether a read names today's planned session (doc 10 2.1.8: plan reference

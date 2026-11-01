@@ -12,8 +12,8 @@ export const EMBEDDING_DIMS = 1536;
 
 // Chunk size in characters. Roughly 300 to 400 tokens, small enough that one
 // chunk is one idea, large enough to keep the author's argument intact.
-export const CHUNK_MAX_CHARS = 1500;
-export const CHUNK_OVERLAP_CHARS = 200;
+const CHUNK_MAX_CHARS = 1500;
+const CHUNK_OVERLAP_CHARS = 200;
 // Entry ids per delete during a sync prune. 100 UUIDs keep a PostgREST
 // `in.(...)` filter near 4 KB, well under URL limits.
 export const PRUNE_BATCH = 100;

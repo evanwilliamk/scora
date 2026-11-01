@@ -47,7 +47,7 @@ const timesWhole = (t: string) => t.replace(/\b(\d{1,2}):([0-5]\d)\b/g, '$1.$2')
 // its measured value stay ("steady" meaning flat must not lose a real value).
 const POSTURE_WORD = /\b(?:primed|steady|moderate|back[\s-]?off|rest(?:ing)?|taper(?:ing)?)\b/i;
 const SHORT_TREND = /^(?:(?:up|down|flat)(?:\s+[+-]?\d+(?:\.\d+)?\s?%)?|[+-]?\d+(?:\.\d+)?\s?%(?:\s+(?:up|down))?)(?:\s+(?:wk|week|w\/w|vs last week|on the week))?$/i;
-export function trendIssue(trend: string | undefined): 'posture' | 'long' | null {
+function trendIssue(trend: string | undefined): 'posture' | 'long' | null {
   if (!trend) return null;
   if (POSTURE_WORD.test(trend)) return 'posture';
   return SHORT_TREND.test(trend.trim()) ? null : 'long';

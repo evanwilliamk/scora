@@ -11,7 +11,7 @@ import { isOutdoorRun } from './activity-types';
 
 export const predictionsEnabled = () => process.env.RACE_PREDICTIONS === 'on';
 
-export const RACE_DISTANCES_M: Record<string, number> = {
+const RACE_DISTANCES_M: Record<string, number> = {
   '5k': 5000,
   '10k': 10000,
   half_marathon: 21097.5,

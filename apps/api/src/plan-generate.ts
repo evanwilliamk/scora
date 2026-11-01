@@ -1,8 +1,8 @@
 // SCORA plan generation (doc 07 v2 §6.1, CLAUDE.md §6.1). The athlete picks a
 // goal race; the plan engine picks a reviewed template and assembles it; this
 // module stores the result in one transaction (create_scora_plan, migration
-// 20261018020000). No LLM is involved: plain-English workout descriptions
-// come later, from the template values (CLAUDE.md §6.4).
+// 20261018020000). No LLM is involved; plain-English workout descriptions
+// come from the template values (plan-engine describeWorkout, CLAUDE.md §6.4).
 // Off unless PLAN_GENERATION=on. Plan tier gating waits for the Stripe item.
 
 import {
@@ -10,6 +10,7 @@ import {
 } from '../../../packages/plan-engine/src/index';
 import type { AssembledPlan, ExperienceLevel, PlanTemplate, Sport } from '../../../packages/plan-engine/src/index';
 import { EXPERIENCE_LEVELS, SPORTS } from '../../../packages/plan-engine/src/index';
+import { addDays, isCalendarDay, mondayOf } from './dates';
 
 export const generationEnabled = () => process.env.PLAN_GENERATION === 'on';
 
@@ -49,20 +50,6 @@ export interface CreatePlanPayload {
   workouts: AssembledPlan['workouts'];
 }
 
-const DAY = 86_400_000;
-// A real calendar day: Date.parse rolls 2026-02-30 over to March 2, so the
-// parsed day must print back as the same string.
-const isoDay = (v: unknown): v is string => {
-  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-  const t = Date.parse(`${v}T00:00:00Z`);
-  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
-};
-const mondayOf = (d: string) => {
-  const t = Date.parse(`${d}T00:00:00Z`);
-  return new Date(t - ((new Date(t).getUTCDay() + 6) % 7) * DAY).toISOString().slice(0, 10);
-};
-
-const addDaysIso = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 
 // scheduled_workouts.planned_type per template sport. Triathlon templates do
 // not yet say which discipline each session is, so they store 'other'.
@@ -82,7 +69,7 @@ export function parseGenerateRequest(body: any): GenerateRequest {
   const rawKm = body.current_weekly_km;
   const km = typeof rawKm === 'number' || (typeof rawKm === 'string' && rawKm.trim() !== '') ? Number(rawKm) : NaN;
   if (!Number.isFinite(km) || km < 0 || km > 500) bad('current_weekly_km must be a number from 0 to 500');
-  if (!isoDay(body.goal_race_date)) bad('goal_race_date must be YYYY-MM-DD');
+  if (!isCalendarDay(body.goal_race_date)) bad('goal_race_date must be YYYY-MM-DD');
   return {
     sport: body.sport,
     goal_type: body.goal_type.trim(),
@@ -130,7 +117,7 @@ export async function generatePlan(
     // matchTemplate puts a template that fits first, so this one is the
     // shortest there is: name the earliest race it can still reach (the
     // Monday of its final week, counted from this week).
-    const earliest = addDaysIso(mondayOf(today), 7 * (template.duration_weeks - 1));
+    const earliest = addDays(mondayOf(today), 7 * (template.duration_weeks - 1));
     throw new GenerateError(
       'race_too_soon',
       `The shortest plan for this race is ${template.duration_weeks} weeks. It needs a race on or after ${earliest}.`,

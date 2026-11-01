@@ -4,8 +4,8 @@
 // evaluateAdaptation -> (API) plan_adaptations row + scheduled_workouts update
 // -> adaptation-reason prompt words the decision. No LLM decides it.
 //
-// NOT yet wired into apps/api: there is no training_plans table and no plan
-// generation yet. Template loader and assembler come next.
+// Used by apps/api: plan generation (plan-generate.ts), adaptation
+// (plan-adapt.ts) and workout descriptions (describe).
 
 export type {
   AdaptationDecision, AdaptationFacts, AdaptationInput, DowngradeAdaptation, Intensity, MoveAdaptation,

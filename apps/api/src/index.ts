@@ -40,7 +40,8 @@ import { importIcs, IcalImportError } from './plan-ical';
 import { planForRead, planTodayCard, readNamesPlan, todayLine } from './plan-read';
 import { weeklyPlanDriver } from './weekly';
 import { numericLine } from './numeric-line';
-import { weekSoFar, plannedRunMinutes, mondayOf } from './week-so-far';
+import { weekSoFar, plannedRunMinutes } from './week-so-far';
+import { addDays, isCalendarDay, mondayOf } from './dates';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planBlock, planOptions, supabaseGenerateStore,
@@ -559,7 +560,7 @@ fastify.post('/api/read', async (request, reply) => {
 
     // The athlete's local date for "last night" and calendar-day counts: the
     // app's, else the newest activity's offset.
-    const localToday = nearToday((request.body as any)?.today) ?? athleteLocalToday(activities);
+    const localToday = nearToday(clientToday) ?? athleteLocalToday(activities);
 
     // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
     // cards fall back to connect prompts. Never blocks the read on Oura errors.
@@ -640,8 +641,8 @@ fastify.post('/api/read', async (request, reply) => {
     // deterministic adaptation rules (doc 07 v2 §6.2). Off unless
     // PLAN_ADAPTATIONS=on; never blocks or fails the read.
     if (adaptationsEnabled()) {
-      // The scheduler sends the athlete's local date; the app does not yet, so
-      // fall back to the newest activity's UTC offset, never the server's UTC day.
+      // The athlete's local date (sent by the app and the scheduler), else the
+      // newest activity's UTC offset, never the server's UTC day.
       const today = localToday;
       try {
         // Optional: gpt-4o-mini words the reason from the posture drivers,
@@ -927,13 +928,7 @@ fastify.put('/api/preferences', async (request, reply) => {
 // a plan; gpt-4o-mini transcribes it and plan-parse.ts keeps only rows whose
 // dates resolve and whose numbers appear in the pasted text.
 // A real calendar date or null: 2026-13-01 and 2026-02-31 do not pass.
-const isoDay = (v: unknown): string | null => {
-  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
-  const t = Date.parse(`${v}T00:00:00Z`);
-  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v ? v : null;
-};
-const addDays = (day: string, n: number) =>
-  new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const isoDay = (v: unknown): string | null => (isCalendarDay(v) ? v : null);
 // The /api/read reply when no Strava token resolves.
 const STRAVA_RECONNECT = 'Strava not connected or refresh failed. Please reconnect Strava.';
 
@@ -948,16 +943,14 @@ const nearToday = (v: unknown, now: Date = new Date()): string | null => {
   return day >= addDays(server, -1) && day <= addDays(server, 1) ? day : null;
 };
 let _planSb: ReturnType<typeof createClient> | null = null;
-const planStore = () => {
+const planClient = () => {
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase env not configured');
   _planSb = _planSb ?? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  return supabasePlanStore(_planSb);
+  return _planSb;
 };
-const adaptStore = () => {
-  planStore(); // same env check and client
-  return supabaseAdaptStore(_planSb!);
-};
+const planStore = () => supabasePlanStore(planClient());
+const adaptStore = () => supabaseAdaptStore(planClient());
 
 fastify.post('/api/plan/manual', async (request, reply) => {
   const { athleteId, text, today: clientToday } = (request.body as any) || {};
@@ -1100,8 +1093,7 @@ fastify.get('/api/plan/options', async (request, reply) => {
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {
     _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
-    planStore(); // same env check and client
-    if (await supabaseGenerateStore(_planSb!).hasActiveCoachPlan(String(athleteId))) return reply.send({ goals: [] });
+    if (await supabaseGenerateStore(planClient()).hasActiveCoachPlan(String(athleteId))) return reply.send({ goals: [] });
     return reply.send({ goals: planOptions(_templates) });
   } catch (e) {
     fastify.log.error(`Plan options failed: ${e instanceof Error ? e.message : e}`);
@@ -1141,8 +1133,7 @@ fastify.post('/api/plan/generate', async (request, reply) => {
     // Refuse a bad request (a race date like 2026-02-30) before any loading.
     const req = parseGenerateRequest(body);
     _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
-    planStore(); // same env check and client
-    const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(_planSb!));
+    const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(planClient()));
     return reply.send({
       planId,
       template: { slug: plan.template_slug, version: plan.template_version },
