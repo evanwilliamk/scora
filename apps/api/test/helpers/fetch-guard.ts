@@ -27,10 +27,17 @@ export interface FetchGuard {
   restore(): void;
 }
 
-export function installFetchGuard(allowOrigin: string): FetchGuard {
+// `allowHttp2` lets http2.connect reach one local origin (an APNs stand-in
+// on 127.0.0.1); every other authority still throws.
+export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: string } = {}): FetchGuard {
   const real = globalThis.fetch;
   const realConnect = http2.connect;
-  (http2 as any).connect = (authority: any) => { throw new Error(`fetch-guard: blocked http2 to ${String(authority)}`); };
+  const h2 = opts.allowHttp2 ? new URL(opts.allowHttp2) : null;
+  if (h2 && !['127.0.0.1', 'localhost', '[::1]'].includes(h2.hostname)) throw new Error('fetch-guard: allowHttp2 must be local');
+  (http2 as any).connect = (authority: any, ...rest: any[]) => {
+    if (h2 && new URL(String(authority)).origin === h2.origin) return (realConnect as any)(authority, ...rest);
+    throw new Error(`fetch-guard: blocked http2 to ${String(authority)}`);
+  };
   const calls: GuardCall[] = [];
   let activities: unknown[] = [];
   let llm: (string | Answer)[] = [];

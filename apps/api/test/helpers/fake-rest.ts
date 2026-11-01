@@ -24,6 +24,9 @@ export interface FakeRest {
   requests: RestRequest[];
   // Queue answers for one table, used in order.
   answer(table: string, ...answers: RestAnswer[]): void;
+  // A sticky responder for one table, used when its queue is empty, so a
+  // test can keep state across requests (a simulated week of ticks).
+  handle(table: string, fn: (req: RestRequest) => RestAnswer): void;
   reset(): void;
   close(): Promise<void>;
 }
@@ -31,6 +34,7 @@ export interface FakeRest {
 export async function fakeRest(): Promise<FakeRest> {
   const requests: RestRequest[] = [];
   let queues = new Map<string, RestAnswer[]>();
+  let handlers = new Map<string, (req: RestRequest) => RestAnswer>();
   const server: Server = createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
@@ -39,8 +43,14 @@ export async function fakeRest(): Promise<FakeRest> {
       const table = u.pathname.replace(/^\/rest\/v1\//, '');
       let body: any = null;
       try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }
-      requests.push({ method: req.method ?? 'GET', table, params: u.searchParams, body, headers: req.headers });
-      const next = queues.get(table)?.shift() ?? {};
+      const entry: RestRequest = { method: req.method ?? 'GET', table, params: u.searchParams, body, headers: req.headers };
+      requests.push(entry);
+      let next: RestAnswer;
+      try {
+        next = queues.get(table)?.shift() ?? handlers.get(table)?.(entry) ?? {};
+      } catch (e) {
+        next = { status: 500, body: { message: e instanceof Error ? e.message : String(e) } };
+      }
       let out = next.body ?? [];
       // .single() / .maybeSingle() ask for one object.
       if (String(req.headers.accept ?? '').includes('vnd.pgrst.object') && Array.isArray(out)) {
@@ -63,9 +73,13 @@ export async function fakeRest(): Promise<FakeRest> {
     answer(table, ...answers) {
       queues.set(table, [...(queues.get(table) ?? []), ...answers]);
     },
+    handle(table, fn) {
+      handlers.set(table, fn);
+    },
     reset() {
       requests.length = 0;
       queues = new Map();
+      handlers = new Map();
     },
     close: () => new Promise<void>((r) => server.close(() => r())),
   };
