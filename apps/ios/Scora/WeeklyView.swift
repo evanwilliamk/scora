@@ -38,10 +38,10 @@ struct WeeklyResponse: Decodable {
 enum WeeklyText {
   static let unreadable = "This week's review came back unreadable. Pull to try again."
 
-  // A network error reads as the system's own sentence; a body that did not
-  // decode never shows the decoder's message.
+  // A body that did not decode never shows the decoder's message, and a
+  // network failure never shows the system's.
   static func failure(_ error: Error) -> String {
-    error is DecodingError ? unreadable : error.localizedDescription
+    error is DecodingError ? unreadable : NetworkText.weekly.line(for: error)
   }
 }
 
@@ -104,6 +104,10 @@ struct WeeklyView: View {
         .padding()
       }
       .refreshable { await loadWeekly() }
+    }
+    // Back online after a failed load: try again without a pull.
+    .onReceive(NotificationCenter.default.publisher(for: NetworkStatus.cameBack)) { _ in
+      if errorText != nil, !isLoading { Task { await loadWeekly() } }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)
@@ -178,9 +182,9 @@ struct WeeklyView: View {
     req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId, "today": PlanDay.today()])
 
     do {
-      let (data, resp) = try await URLSession.shared.data(for: req)
+      let (data, resp) = try await API.slowSession.data(for: req)
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        let msg = APIErrorText.message(from: data, fallback: "This week's review could not load. Try again in a moment.")
+        let msg = APIErrorText.message(from: data, fallback: NetworkText.weekly.other)
         await MainActor.run { errorText = msg; isLoading = false }
         return
       }

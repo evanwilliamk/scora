@@ -277,6 +277,17 @@ extension ChatMessage {
   }
 }
 
+// A question that never reached the server (offline, timed out) says so in
+// plain words and goes back in the box to send again, unless the athlete has
+// already started typing another. It is not sent again on its own: a resend
+// the athlete did not ask for would spend one of the day's questions.
+enum CDVFailure {
+  static func after(_ error: Error, question: String, input: String) -> (bubble: String, input: String) {
+    let kept = input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? question : input
+    return (NetworkText.chat.line(for: error), kept)
+  }
+}
+
 struct ChatView: View {
   @ObservedObject var tokenManager: TokenManager
   @State private var messages: [ChatMessage] = []
@@ -466,7 +477,7 @@ struct ChatView: View {
     req.httpBody = try? JSONSerialization.data(withJSONObject: body)
     
     do {
-      let (data, resp) = try await URLSession.shared.data(for: req)
+      let (data, resp) = try await API.slowSession.data(for: req)
       
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
         // Prefer the server's `error` message (e.g. the daily-limit text);
@@ -492,7 +503,9 @@ struct ChatView: View {
       }
     } catch {
       await MainActor.run {
-        messages.append(.error(error.localizedDescription))
+        let failure = CDVFailure.after(error, question: message, input: input)
+        messages.append(.error(failure.bubble))
+        input = failure.input
         isLoading = false
       }
     }

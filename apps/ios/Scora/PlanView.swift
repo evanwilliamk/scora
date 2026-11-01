@@ -510,10 +510,14 @@ struct PlanSetupView: View {
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: PlanSetup.body(
       athleteId: athleteId, goal: goal, raceDate: raceDate, weeklyKm: weeklyKm, level: level))
-    let result = try? await URLSession.shared.data(for: req)
+    var result: (Data, URLResponse)?
+    var failure: Error?
+    do { result = try await API.slowSession.data(for: req) } catch { failure = error }
     let status = (result?.1 as? HTTPURLResponse)?.statusCode ?? 0
-    // The server's own sentence on a refusal (no template yet, race too soon).
+    // The server's own sentence on a refusal (no template yet, race too soon);
+    // no answer at all says why in plain words.
     let error = result.flatMap { try? JSONDecoder().decode(CDVError.self, from: $0.0) }?.error
+      ?? failure.map { NetworkText.planBuild.line(for: $0) }
     await MainActor.run {
       isBuilding = false
       if status == 200 {
@@ -628,6 +632,8 @@ enum PlanSheet {
   // that did not load may still exist on the server.
   static func buildReplaces(loaded: Bool, workouts: [PlanWorkout]) -> Bool { !loaded || !workouts.isEmpty }
   static let loadFailed = "Your plan did not load. Try again in a moment."
+  // Back online: whatever did not load is asked for again.
+  static func reloadsOnReconnect(loadFailed: Bool, changesFailed: Bool) -> Bool { loadFailed || changesFailed }
   static let markFailed = "That session could not be marked just now. Try again in a moment."
   static let dismissFailed = "That change could not be cleared just now. Try again in a moment."
   static let changesFailed = "Plan changes did not load, so the reasons for any moved or changed sessions are not shown."
@@ -759,6 +765,9 @@ struct PlanView: View {
         await task.value
       }
     }
+    .onReceive(NotificationCenter.default.publisher(for: NetworkStatus.cameBack)) { _ in
+      if PlanSheet.reloadsOnReconnect(loadFailed: loadFailed, changesFailed: extras.changesFailed) { Task { await loadPlan(quiet: true) } }
+    }
     .task { await loadPrediction() } // independent: shown even if the plan list fails
     .task { await loadOptions() }
     .task { await loadBlock() }
@@ -778,7 +787,7 @@ struct PlanView: View {
     var comps = URLComponents(string: "\(apiBase)/api/plan/block")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId), URLQueryItem(name: "today", value: PlanDay.today())]
     guard let url = comps?.url,
-          let (data, resp) = try? await URLSession.shared.data(from: url),
+          let (data, resp) = try? await API.session.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanBlockResponse.self, from: data)
     else { await MainActor.run { block = nil }; return }
@@ -793,7 +802,7 @@ struct PlanView: View {
     var comps = URLComponents(string: "\(apiBase)/api/plan/options")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
     guard let url = comps?.url,
-          let (data, resp) = try? await URLSession.shared.data(from: url),
+          let (data, resp) = try? await API.session.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanOptionsResponse.self, from: data)
     else { return }
@@ -1036,7 +1045,7 @@ struct PlanView: View {
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId])
-    _ = try? await URLSession.shared.data(for: req)
+    _ = try? await API.session.data(for: req)
   }
 
   // MARK: Networking
@@ -1057,7 +1066,7 @@ struct PlanView: View {
       "athleteId": tokenManager.athleteId, "status": done ? "done" : "missed", "today": PlanDay.today(),
     ])
     let status: Int
-    if let (_, resp) = try? await URLSession.shared.data(for: req) {
+    if let (_, resp) = try? await API.session.data(for: req) {
       status = (resp as? HTTPURLResponse)?.statusCode ?? 0
     } else {
       status = 0
@@ -1084,7 +1093,7 @@ struct PlanView: View {
     var comps = URLComponents(string: "\(apiBase)/api/plan")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId), URLQueryItem(name: "today", value: today)]
     guard let url = comps?.url,
-          let (data, resp) = try? await URLSession.shared.data(from: url),
+          let (data, resp) = try? await API.session.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanListResponse.self, from: data)
     else {
@@ -1113,7 +1122,7 @@ struct PlanView: View {
     var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
     guard let url = comps?.url else { return }
-    let result = try? await URLSession.shared.data(from: url)
+    let result = try? await API.session.data(from: url)
     let status = (result?.1 as? HTTPURLResponse)?.statusCode ?? 0
     let decoded = result.flatMap { try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: $0.0) }
     switch (PlanChanges.loadOutcome(status: status), decoded) {
@@ -1132,7 +1141,7 @@ struct PlanView: View {
     var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations/history")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
     guard let url = comps?.url,
-          let (data, resp) = try? await URLSession.shared.data(from: url),
+          let (data, resp) = try? await API.session.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: data)
     else { return false }
@@ -1148,7 +1157,7 @@ struct PlanView: View {
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId])
     let status: Int
-    if let (_, resp) = try? await URLSession.shared.data(for: req) {
+    if let (_, resp) = try? await API.session.data(for: req) {
       status = (resp as? HTTPURLResponse)?.statusCode ?? 0
     } else {
       status = 0
@@ -1167,7 +1176,7 @@ struct PlanView: View {
     var comps = URLComponents(string: "\(apiBase)/api/plan/prediction")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId), URLQueryItem(name: "today", value: PlanDay.today())]
     guard let url = comps?.url,
-          let (data, resp) = try? await URLSession.shared.data(from: url),
+          let (data, resp) = try? await API.session.data(from: url),
           (resp as? HTTPURLResponse)?.statusCode == 200,
           let decoded = try? JSONDecoder().decode(PredictionResponse.self, from: data)
     else { return }
@@ -1184,7 +1193,7 @@ struct PlanView: View {
       "athleteId": tokenManager.athleteId, "text": text, "today": PlanDay.today(),
     ])
     do {
-      let (data, resp) = try await URLSession.shared.data(for: req)
+      let (data, resp) = try await API.session.data(for: req)
       let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
       if status == 200, let saved = try? JSONDecoder().decode(PlanSaveResponse.self, from: data) {
         // Show what was saved, even when the plan starts weeks from now.
@@ -1205,7 +1214,7 @@ struct PlanView: View {
         await MainActor.run { errorText = msg; isSaving = false }
       }
     } catch {
-      await MainActor.run { errorText = error.localizedDescription; isSaving = false }
+      await MainActor.run { errorText = NetworkText.planSave.line(for: error); isSaving = false }
     }
   }
 
@@ -1224,7 +1233,7 @@ struct PlanView: View {
     let stillWanted = { () async -> Bool in
       await MainActor.run { !silent || (!Task.isCancelled && !isEditing && !isSaving && CalendarFeed.savedLink(for: athleteId) == link) }
     }
-    guard let (feedData, feedResp) = try? await URLSession.shared.data(from: feed),
+    guard let (feedData, feedResp) = try? await API.session.data(from: feed),
           (feedResp as? HTTPURLResponse)?.statusCode == 200 else {
       return await fail("Could not open that calendar link.")
     }
@@ -1239,7 +1248,7 @@ struct PlanView: View {
       "athleteId": athleteId, "ics": ics, "today": PlanDay.today(), "timeZone": TimeZone.current.identifier, "refresh": refresh,
     ])
     do {
-      let (data, resp) = try await URLSession.shared.data(for: req)
+      let (data, resp) = try await API.session.data(for: req)
       let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
       if status == 200, let saved = try? JSONDecoder().decode(PlanSaveResponse.self, from: data) {
         // A paste that finished meanwhile wins on screen too.
@@ -1266,7 +1275,7 @@ struct PlanView: View {
         await fail((try? JSONDecoder().decode(PlanErrorResponse.self, from: data))?.error ?? "Importing the calendar failed.")
       }
     } catch {
-      await fail(error.localizedDescription)
+      await fail(NetworkText.planImport.line(for: error))
     }
   }
 }
