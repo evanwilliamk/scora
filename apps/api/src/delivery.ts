@@ -92,11 +92,31 @@ export function dueDeliveries(prefs: DeliveryPrefs, now: Date): DueResult {
   return { daily: false, weekly: false, localDate: date };
 }
 
-// Minutes between the athlete's set delivery time on `localDate` and `at`,
-// for the on-time gate (doc 10 1.1.1). Crosses midnight once at most, since
-// a read more than LATE_WINDOW_MIN late is never sent.
-export function minutesLate(prefs: Pick<DeliveryPrefs, 'timezone' | 'delivery_minute'>, localDate: string, at: Date): number {
+// The instant the athlete's local clock first reads the set time on
+// `localDate`: the first of the two on a fall-back day, and the first minute
+// after the gap when spring-forward skips it (02:30 -> 03:00), which is when
+// dueDeliveries first sends it.
+export function setTimeInstant(prefs: Pick<DeliveryPrefs, 'timezone' | 'delivery_minute'>, localDate: string): number {
   const tz = isValidTimezone(prefs.timezone) ? prefs.timezone : DEFAULT_TIMEZONE;
-  const { date, minute } = localClock(at, tz);
-  return minute - prefs.delivery_minute + (date > localDate ? 1440 : 0);
+  const wall = Date.parse(`${localDate}T00:00:00Z`) + prefs.delivery_minute * 60_000;
+  const offset = (t: number) => {
+    const c = localClock(new Date(t), tz);
+    return Date.parse(`${c.date}T00:00:00Z`) + c.minute * 60_000 - Math.floor(t / 60_000) * 60_000;
+  };
+  // The offsets a day either side bracket any change; start from the earlier
+  // candidate and walk forward to the first minute that reaches the set time.
+  let t = Math.min(wall - offset(wall - 86_400_000), wall - offset(wall + 86_400_000));
+  for (let i = 0; i < 1440; i++, t += 60_000) {
+    const c = localClock(new Date(t), tz);
+    if (c.date > localDate || (c.date === localDate && c.minute >= prefs.delivery_minute)) return t;
+  }
+  return t;
+}
+
+// Minutes from the set time on `localDate` to `at` by the clock, for the
+// on-time gate (doc 10 1.1.1). Counted on the clock, not the wall: a read at
+// 03:00 for a 02:30 that spring-forward skipped is on time, and one at the
+// second 01:30 of a fall-back day is an hour late.
+export function minutesLate(prefs: Pick<DeliveryPrefs, 'timezone' | 'delivery_minute'>, localDate: string, at: Date): number {
+  return Math.floor((at.getTime() - setTimeInstant(prefs, localDate)) / 60_000);
 }

@@ -227,6 +227,10 @@ test('spring forward: New York 2027-03-14, a 02:30 delivery that does not exist 
     '2027-03-14T07:00:00.000Z', // 03:00 EDT, the first minute after the gap
     '2027-03-15T06:30:00.000Z', // 02:30 EDT
   ]);
+  // On time by the clock: 03:00 is the first minute the athlete's 02:30 is reached.
+  const late = sim.log.info.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice(10)))
+    .filter((e) => e.event === 'push_delivery' && e.athlete === 'ny-0230' && e.date === '2027-03-14');
+  assert.deepEqual(late.map((e) => [e.kind, e.late_min]), [['daily', 0]]);
 });
 
 test('spring forward: Auckland 2026-09-27, 02:30 goes out at 03:00 NZDT', async () => {
