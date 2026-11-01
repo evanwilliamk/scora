@@ -24,7 +24,7 @@ numeric_slots:
   - sleep_hours_minutes
   - hrv_pct_change
 template: |
-  Sleep {{sleep_hours}}:{{sleep_minutes_padded}} and HRV down {{hrv_pct_change}}% from last week. The plan calls for {{scheduled_workout.planned_intensity}} today — a call worth thinking about consciously.
+  Sleep {{sleep_hours}}:{{sleep_minutes_padded}} and HRV down {{hrv_pct_change}}% from last week. The plan calls for {{scheduled_workout.planned_intensity}} today. A call worth thinking about consciously.
 llm_hint: |
   Numeric first. Never prescriptive. "A call worth thinking about" is the
   intervention ceiling.

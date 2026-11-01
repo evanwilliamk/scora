@@ -20,7 +20,7 @@ slot_drivers:
 numeric_slots:
   - hrv_pct_change
 template: |
-  Body is primed — HRV up {{hrv_pct_change}}% from last week. The plan calls for {{scheduled_workout.planned_intensity}} today, and it knows what it's doing. Easy days are what let the hard days work.
+  Body is primed: HRV up {{hrv_pct_change}}% from last week. The plan calls for {{scheduled_workout.planned_intensity}} today, and it knows what it's doing. Easy days are what let the hard days work.
 llm_hint: |
   "Easy days are what let the hard days work" is a training truth that can
   appear when this fires. Never say "push through" or "you can do more."

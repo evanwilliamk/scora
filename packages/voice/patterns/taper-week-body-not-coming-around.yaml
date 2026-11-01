@@ -21,7 +21,7 @@ numeric_slots:
   - hrv_pct_change
   - days_to_race
 template: |
-  {{days_to_race}} days out and HRV is still {{hrv_pct_change}}% below baseline. The body is stubborn this week — the plan gives it time.
+  {{days_to_race}} days out and HRV is still {{hrv_pct_change}}% below baseline. The body is stubborn this week. The plan gives it time.
 llm_hint: |
   Never say "you'll be fine" or "this will pass." "The plan gives it time"
   acknowledges the taper without predicting the future.
