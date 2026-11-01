@@ -731,3 +731,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: the chart counted runs per weekday while the voice line counted weeks, so two runs on one Thursday made them disagree.
 - Choice: one shared helper; the chart shows weeks with a run (0 to 6), axis "Weeks with a run". Alternative: the voice counts runs.
 - To reverse: revert the cdv-chart.ts commits on the branch.
+
+### 2026-11-01: Long Effort card driver renamed Longest run (30d) (Q31 B)
+- Status: DECIDED (Evan silent 3 days, bucket 2, reversible)
+- Branch: claude/longest-run-card
+- Context: the Long Effort card (longest run by distance in 30 days, "8 mi, 2 days ago") and the posture's long effort (last run of 90+ moving minutes, "10 days since long effort") reached the voice under the same words and could disagree in one read.
+- Choice: option B. Keep both; the card's driver is now "Longest run (30d)" and its title "Longest Run (30d)" (card id long_effort kept so app builds stay compatible). No numbers change. The posture driver "Days since long effort" and its chart are unchanged. The validator already reads "(30d)" in a driver name as a day window, so the voice may quote the name; tests cover it, and the card driver stays not chartable, so it links nothing. Alternatives: A (one definition for both) or C (drop one from the voice).
+- Why: cheapest change that makes the two read as different claims, with no change to posture or numbers.
+- To reverse: revert the metrics.ts, card-expand.ts and driver-links.ts rename commit on the branch (and its tests).
