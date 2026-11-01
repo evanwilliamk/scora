@@ -41,7 +41,7 @@ test('snapshot cache expires after its TTL and evicts the oldest at capacity', (
 
 test('related drivers put the card metric first and skip missing ones', () => {
   assert.deepEqual(relatedDrivers('recovery_signal', withOura.drivers).map((d) => d.metric), ['HRV', 'Resting HR', 'Sleep', 'Load']);
-  assert.deepEqual(relatedDrivers('training_load', noOura.drivers).map((d) => d.metric), ['Load', 'Weekly volume', 'Peak avg HR (7d)', 'Long effort']);
+  assert.deepEqual(relatedDrivers('training_load', noOura.drivers).map((d) => d.metric), ['Load', 'Weekly volume', 'Peak avg HR (7d)', 'Longest run (30d)']);
   assert.deepEqual(relatedDrivers('connections', withOura.drivers), []);
 });
 

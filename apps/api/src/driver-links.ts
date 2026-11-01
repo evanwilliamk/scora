@@ -72,7 +72,7 @@ export const NOT_CHARTABLE: Record<string, string> = {
   'Low sleep score nights in a row': '28-night baseline, not enough fetched history for 28 points',
   // Longest run in the 30 days before each day: the fetch holds 35 days, so
   // only the newest few points would cover their window.
-  'Long effort': '30-day window, not enough fetched history for 28 points',
+  'Longest run (30d)': '30-day window, not enough fetched history for 28 points',
   // The plan, not body data. The Plan Today card shows it.
   'Plan today': 'the plan, shown on the Plan Today card',
   'Plan change': 'the plan, shown on the Plan Today card',

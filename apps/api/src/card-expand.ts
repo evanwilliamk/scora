@@ -44,10 +44,10 @@ export class SnapshotCache {
 // Which drivers give a card its context. The card's own metric comes first.
 const RELATED: Record<string, string[]> = {
   sleep: ['Sleep', 'HRV', 'Resting HR', 'Load'],
-  training_load: ['Load', 'Weekly volume', 'Peak avg HR (7d)', 'Long effort'],
+  training_load: ['Load', 'Weekly volume', 'Peak avg HR (7d)', 'Longest run (30d)'],
   recent_intensity: ['Peak avg HR (7d)', 'Load', 'Sleep', 'HRV'],
   recovery_signal: ['HRV', 'Resting HR', 'Sleep', 'Load'],
-  long_effort: ['Long effort', 'Weekly volume', 'Load'],
+  long_effort: ['Longest run (30d)', 'Weekly volume', 'Load'],
 };
 
 export const EXPANDABLE_CARDS = Object.keys(RELATED);
