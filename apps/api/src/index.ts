@@ -943,16 +943,14 @@ const nearToday = (v: unknown, now: Date = new Date()): string | null => {
   return day >= addDays(server, -1) && day <= addDays(server, 1) ? day : null;
 };
 let _planSb: ReturnType<typeof createClient> | null = null;
-const planStore = () => {
+const planClient = () => {
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Supabase env not configured');
   _planSb = _planSb ?? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  return supabasePlanStore(_planSb);
+  return _planSb;
 };
-const adaptStore = () => {
-  planStore(); // same env check and client
-  return supabaseAdaptStore(_planSb!);
-};
+const planStore = () => supabasePlanStore(planClient());
+const adaptStore = () => supabaseAdaptStore(planClient());
 
 fastify.post('/api/plan/manual', async (request, reply) => {
   const { athleteId, text, today: clientToday } = (request.body as any) || {};
@@ -1095,8 +1093,7 @@ fastify.get('/api/plan/options', async (request, reply) => {
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {
     _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
-    planStore(); // same env check and client
-    if (await supabaseGenerateStore(_planSb!).hasActiveCoachPlan(String(athleteId))) return reply.send({ goals: [] });
+    if (await supabaseGenerateStore(planClient()).hasActiveCoachPlan(String(athleteId))) return reply.send({ goals: [] });
     return reply.send({ goals: planOptions(_templates) });
   } catch (e) {
     fastify.log.error(`Plan options failed: ${e instanceof Error ? e.message : e}`);
@@ -1136,8 +1133,7 @@ fastify.post('/api/plan/generate', async (request, reply) => {
     // Refuse a bad request (a race date like 2026-02-30) before any loading.
     const req = parseGenerateRequest(body);
     _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
-    planStore(); // same env check and client
-    const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(_planSb!));
+    const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(planClient()));
     return reply.send({
       planId,
       template: { slug: plan.template_slug, version: plan.template_version },

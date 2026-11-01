@@ -255,16 +255,18 @@ export function parseHealthNights(raw: unknown): NonNullable<OuraSummary['nights
   const out: NonNullable<OuraSummary['nights']> = [];
   for (const n of raw.slice(-35)) {
     if (!n || typeof n !== 'object') continue;
-    const day = (n as any).day;
+    const rec = n as Record<string, unknown>;
+    const day = rec.day;
+    if (typeof day !== 'string') continue;
     // A real calendar day: 2026-02-31 rolls over in Date.parse, so round-trip it.
-    const t = typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? Date.parse(`${day}T00:00:00Z`) : NaN;
+    const t = /^\d{4}-\d{2}-\d{2}$/.test(day) ? Date.parse(`${day}T00:00:00Z`) : NaN;
     if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== day || seen.has(day)) continue;
     seen.add(day);
     const night = {
       day,
-      sleepSeconds: num((n as any).sleepSeconds, 1, 86_400),
-      hrvMs: num((n as any).hrvMs, 1, 300),
-      restingHr: num((n as any).restingHr, 20, 200),
+      sleepSeconds: num(rec.sleepSeconds, 1, 86_400),
+      hrvMs: num(rec.hrvMs, 1, 300),
+      restingHr: num(rec.restingHr, 20, 200),
     };
     if (night.sleepSeconds != null || night.hrvMs != null || night.restingHr != null) out.push(night);
   }

@@ -96,7 +96,7 @@ export function sqlPlanStore(db: Db): PlanStore {
 
 // Production store over supabase-js (service role).
 export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: string, args: any) => any }): PlanStore {
-  const check = (r: { error: any }, what: string) => {
+  const check = (r: { error: { message: string } | null }, what: string) => {
     if (r.error) throw new Error(`${what}: ${r.error.message}`);
   };
   return {
