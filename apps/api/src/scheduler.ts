@@ -224,7 +224,8 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
   // escape the cron callback (an unhandled rejection kills the process).
   let running = false;
   // Every minute: a 15-minute tick put a 6:05 read at 6:15, outside doc 10's
-  // 5-minute bar. A tick with nothing due is two small queries.
+  // 5-minute bar. A tick with nothing due is one device page per 1000 tokens
+  // and one preferences request per 500 athletes (both read every athlete).
   cron.schedule('* * * * *', () => {
     if (running) return;
     running = true;
