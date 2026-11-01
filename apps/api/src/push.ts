@@ -172,9 +172,19 @@ export async function removeDeviceToken(token: string): Promise<void> {
 }
 
 // Distinct athlete ids that have at least one registered device — the audience
-// for scheduled pushes.
+// for scheduled pushes. Paged: Supabase answers at most 1000 rows a request
+// (the project's max-rows setting), and a short page would drop athletes.
+export const DEVICE_PAGE = 1000;
 export async function getAthletesWithDevices(): Promise<string[]> {
-  const { data, error } = await getSupabase().from('device_tokens').select('athlete_id');
-  if (error) throw new Error(`Failed to list device athletes: ${error.message}`);
-  return [...new Set((data || []).map((r: any) => String(r.athlete_id)))];
+  const ids = new Set<string>();
+  for (let from = 0; ; from += DEVICE_PAGE) {
+    const { data, error } = await getSupabase()
+      .from('device_tokens')
+      .select('athlete_id')
+      .order('id')
+      .range(from, from + DEVICE_PAGE - 1);
+    if (error) throw new Error(`Failed to list device athletes: ${error.message}`);
+    for (const r of data || []) ids.add(String((r as any).athlete_id));
+    if ((data || []).length < DEVICE_PAGE) return [...ids];
+  }
 }

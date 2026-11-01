@@ -33,6 +33,10 @@ const withDefaults = (athleteId: string, row?: Partial<AthletePrefs> | null): At
   ...(row ?? {}),
 });
 
+// Ids per preferences request: under Supabase's 1000-row cap, and a URL of a
+// few kilobytes whatever the athlete count.
+export const PREFS_CHUNK = 500;
+
 const COLS = 'athlete_id, timezone, delivery_minute, onboarded_at, last_daily_sent_on, last_weekly_sent_on';
 
 type Db = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
@@ -120,9 +124,11 @@ export function supabasePrefsStore(sb: { from: (t: string) => any }): PrefsStore
     async getMany(ids) {
       const out = new Map<string, AthletePrefs>();
       if (ids.length === 0) return out;
-      const r = await sb.from('athlete_preferences').select(COLS).in('athlete_id', ids);
-      check(r, 'Load preferences');
-      for (const row of r.data ?? []) out.set(row.athlete_id, withDefaults(row.athlete_id, row));
+      for (let i = 0; i < ids.length; i += PREFS_CHUNK) {
+        const r = await sb.from('athlete_preferences').select(COLS).in('athlete_id', ids.slice(i, i + PREFS_CHUNK));
+        check(r, 'Load preferences');
+        for (const row of r.data ?? []) out.set(row.athlete_id, withDefaults(row.athlete_id, row));
+      }
       for (const id of ids) if (!out.has(id)) out.set(id, withDefaults(id));
       return out;
     },
@@ -144,15 +150,21 @@ export function supabasePrefsStore(sb: { from: (t: string) => any }): PrefsStore
     },
     async claim(id, kind, date) {
       const col = kind === 'daily' ? 'last_daily_sent_on' : 'last_weekly_sent_on';
-      check(await sb.from('athlete_preferences').upsert({ athlete_id: id }, { onConflict: 'athlete_id', ignoreDuplicates: true }), 'Ensure preferences');
       // Conditional update: only one caller sees the row come back.
-      const r = await sb.from('athlete_preferences')
-        .update({ [col]: date, updated_at: new Date().toISOString() })
-        .eq('athlete_id', id)
-        .or(`${col}.is.null,${col}.neq.${date}`)
-        .select('athlete_id');
-      check(r, 'Claim delivery');
-      return (r.data ?? []).length === 1;
+      const tryClaim = async () => {
+        const r = await sb.from('athlete_preferences')
+          .update({ [col]: date, updated_at: new Date().toISOString() })
+          .eq('athlete_id', id)
+          .or(`${col}.is.null,${col}.neq.${date}`)
+          .select('athlete_id');
+        check(r, 'Claim delivery');
+        return (r.data ?? []).length === 1;
+      };
+      // Almost every athlete has a row: one request. Nothing matched means
+      // already claimed or no row yet; ensure the row and try once more.
+      if (await tryClaim()) return true;
+      check(await sb.from('athlete_preferences').upsert({ athlete_id: id }, { onConflict: 'athlete_id', ignoreDuplicates: true }), 'Ensure preferences');
+      return tryClaim();
     },
     async release(id, kind, date, previous) {
       const col = kind === 'daily' ? 'last_daily_sent_on' : 'last_weekly_sent_on';

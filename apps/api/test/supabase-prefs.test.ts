@@ -6,11 +6,11 @@ import assert from 'node:assert/strict';
 import { supabasePrefsStore } from '../src/preferences';
 import { fakeSupabase } from './helpers/fake-supabase';
 
-test('claim: ensure the row, then a conditional update only one caller wins', async () => {
-  const sb = fakeSupabase([{}, { data: [{ athlete_id: 'a1' }] }]);
+test('claim: one conditional update when the row exists; only one caller wins', async () => {
+  const sb = fakeSupabase([{ data: [{ athlete_id: 'a1' }] }]);
   assert.equal(await supabasePrefsStore(sb).claim('a1', 'daily', '2026-10-22'), true);
-  const [ensure, claim] = sb.queries;
-  assert.deepEqual(ensure.calls, [['upsert', { athlete_id: 'a1' }, { onConflict: 'athlete_id', ignoreDuplicates: true }]]);
+  assert.equal(sb.queries.length, 1, 'no ensure upsert for an existing row');
+  const [claim] = sb.queries;
   assert.equal(claim.table, 'athlete_preferences');
   assert.deepEqual(claim.calls.map((c) => c[0]), ['update', 'eq', 'or', 'select']);
   assert.equal((claim.calls[0][1] as any).last_daily_sent_on, '2026-10-22');
@@ -18,10 +18,17 @@ test('claim: ensure the row, then a conditional update only one caller wins', as
   assert.deepEqual(claim.calls[2], ['or', 'last_daily_sent_on.is.null,last_daily_sent_on.neq.2026-10-22']);
 });
 
-test('claim: no row back means another tick already sent it', async () => {
-  const sb = fakeSupabase([{}, { data: [] }]);
+test('claim: no row yet is ensured, then claimed', async () => {
+  const sb = fakeSupabase([{ data: [] }, {}, { data: [{ athlete_id: 'a1' }] }]);
+  assert.equal(await supabasePrefsStore(sb).claim('a1', 'daily', '2026-10-22'), true);
+  assert.deepEqual(sb.queries[1].calls, [['upsert', { athlete_id: 'a1' }, { onConflict: 'athlete_id', ignoreDuplicates: true }]]);
+  assert.deepEqual(sb.queries[2].calls.map((c) => c[0]), ['update', 'eq', 'or', 'select']);
+});
+
+test('claim: no row back, twice, means another tick already sent it', async () => {
+  const sb = fakeSupabase([{ data: [] }, {}, { data: [] }]);
   assert.equal(await supabasePrefsStore(sb).claim('a1', 'weekly', '2026-10-26'), false);
-  assert.deepEqual(sb.queries[1].calls[2], ['or', 'last_weekly_sent_on.is.null,last_weekly_sent_on.neq.2026-10-26']);
+  assert.deepEqual(sb.queries[2].calls[2], ['or', 'last_weekly_sent_on.is.null,last_weekly_sent_on.neq.2026-10-26']);
 });
 
 test('release only undoes its own claim (matches the claimed date)', async () => {
@@ -36,7 +43,9 @@ test('release only undoes its own claim (matches the claimed date)', async () =>
 
 test('errors surface with what failed', async () => {
   const sb = fakeSupabase([{ error: { message: 'permission denied' } }]);
-  await assert.rejects(supabasePrefsStore(sb).claim('a1', 'daily', '2026-10-22'), /Ensure preferences: permission denied/);
+  await assert.rejects(supabasePrefsStore(sb).claim('a1', 'daily', '2026-10-22'), /Claim delivery: permission denied/);
+  const sb2 = fakeSupabase([{ data: [] }, { error: { message: 'permission denied' } }]);
+  await assert.rejects(supabasePrefsStore(sb2).claim('a1', 'daily', '2026-10-22'), /Ensure preferences: permission denied/);
 });
 
 test('getMany fills defaults for athletes with no row; update keeps onboarded_at once set', async () => {

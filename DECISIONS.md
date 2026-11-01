@@ -804,3 +804,19 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Why: the id is the session's identity on any phone; derived ids need no storage and survive reinstalling.
 - Not verified: id round-trip on a paired Watch (simulator and fake only). If the Watch does not keep the id, copies look like older-build copies and the name/day rule applies.
 - To reverse: drop `id:` from `schedule` in `AppleWatchScheduler` and the derived branch in `WatchReconcile.plan`; never change `WatchPlanId.namespace` (it would orphan sent copies).
+
+### 2026-11-01: Delivery times that DST skips or repeats
+- Status: DECIDED
+- Branch: claude/dst-delivery-sim
+- Context: an 8-day simulated-clock test (test/scheduler-dst-sim.test.ts) pinned what the scheduler already did on DST days; the on-time telemetry disagreed with it.
+- Choice: kept the existing delivery rule. A time that spring-forward skips (02:30 in New York on 2027-03-14) goes out at the first minute after the gap (03:00). A time that fall-back repeats (01:30 on 2026-11-01) goes out at its first occurrence, never at the second. Changed only minutesLate: lateness is now clock minutes since the set time was first reached, so the 03:00 send is 0 late (was 30, a late morning in the gate report) and a retry at the second 01:30 is 60 late (was 0). Alternative: send a skipped time an hour early (01:30, yesterday's offset).
+- Why: 03:00 is the first moment the athlete's clock has passed their time, and the gate should measure what the athlete waited.
+- To reverse: restore the wall-minute formula in minutesLate (apps/api/src/delivery.ts); setTimeInstant can stay.
+
+### 2026-11-01: Scheduler reads past Supabase's 1000-row cap; one-query claim
+- Status: DECIDED
+- Branch: claude/dst-delivery-sim
+- Context: the tick listed device athletes and loaded preferences in one request each; Supabase answers at most 1000 rows (the default max-rows), so past 1000 rows athletes got no read or the New York 06:00 default time. Each claim also spent an ensure-row upsert first.
+- Choice: device athletes paged 1000 at a time (ordered by id); preferences loaded 500 ids a request (also keeps the URL a few KB); claim runs the conditional update first and only ensures the row and retries when nothing matched. Queries per idle tick: 2 for up to 500 athletes, then 1 per 1000 device rows plus 1 per 500 athletes (8 at 2500). The scheduler's own queries per delivery: 3 to 2. Not done: selecting only the athletes due in the window, which needs the zone math in SQL (an RPC and a migration); every tick still reads every athlete's preferences. Also not done: reusing the tick's device scan for the push tokens (would push to a token list up to a few minutes old).
+- Why: correctness at scale with no schema change; the claim keeps its one-winner guarantee.
+- To reverse: getAthletesWithDevices (apps/api/src/push.ts), PREFS_CHUNK and claim in supabasePrefsStore (apps/api/src/preferences.ts).

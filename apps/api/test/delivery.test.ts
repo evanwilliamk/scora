@@ -150,6 +150,21 @@ test('minutesLate counts from the set time in the athlete zone, across midnight'
   assert.equal(minutesLate({ timezone: 'Not/AZone', delivery_minute: 360 }, '2026-10-19', new Date(Date.UTC(2026, 9, 19, 10, 0))), 0, 'bad zone falls back to New York');
 });
 
+test('minutesLate is clock time since the set time was first reached, across DST', () => {
+  // 02:30 does not exist in New York on 2027-03-14: 03:00 EDT (07:00Z) is the
+  // first minute the athlete's 02:30 is reached, so a read then is on time.
+  const gap = { timezone: 'America/New_York', delivery_minute: 150 };
+  assert.equal(minutesLate(gap, '2027-03-14', new Date(Date.UTC(2027, 2, 14, 7, 0))), 0);
+  assert.equal(minutesLate(gap, '2027-03-14', new Date(Date.UTC(2027, 2, 14, 7, 10))), 10);
+  // 01:30 happens twice on 2026-11-01: lateness counts from the first (05:30Z).
+  const repeated = { timezone: 'America/New_York', delivery_minute: 90 };
+  assert.equal(minutesLate(repeated, '2026-11-01', new Date(Date.UTC(2026, 10, 1, 5, 30))), 0);
+  assert.equal(minutesLate(repeated, '2026-11-01', new Date(Date.UTC(2026, 10, 1, 6, 45))), 75);
+  // Auckland's gap (02:00 to 03:00 on 2026-09-27) and Kolkata's half-hour offset.
+  assert.equal(minutesLate({ timezone: 'Pacific/Auckland', delivery_minute: 150 }, '2026-09-27', new Date(Date.UTC(2026, 8, 26, 14, 0))), 0);
+  assert.equal(minutesLate({ timezone: 'Asia/Kolkata', delivery_minute: 360 }, '2026-10-26', new Date(Date.UTC(2026, 9, 26, 0, 32))), 2);
+});
+
 test('a failed read waits 15 minutes before the next try; a log that throws still releases', async () => {
   const failedAt = new Map<string, number>();
   let tries = 0;
