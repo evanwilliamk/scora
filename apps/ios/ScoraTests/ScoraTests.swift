@@ -7,6 +7,7 @@
 
 import XCTest
 import WorkoutKit
+import UserNotifications
 @testable import Scora
 
 final class ScoraTests: XCTestCase {
@@ -366,8 +367,8 @@ final class ScoraTests: XCTestCase {
         var scheduled: [(name: String, at: DateComponents)] = []
         func authorize() async -> Bool { allow }
         func scheduledCount() async -> Int { scheduled.count }
-        func removeSameDay(named name: String, day: DateComponents) async {
-            scheduled.removeAll { $0.name == name && $0.at.day == day.day && $0.at.month == day.month && $0.at.year == day.year }
+        func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async {
+            scheduled.removeAll { match($0.name, $0.at) }
         }
         func schedule(_ workout: CustomWorkout, at date: DateComponents) async { scheduled.append((workout.displayName ?? "", date)) }
     }
@@ -558,6 +559,37 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(PlanSheet.markLabel(w, done: true), "Mark Tue Oct 20, tempo, 45 min, as completed")
         XCTAssertEqual(PlanSheet.markLabel(w, done: false), "Mark Tue Oct 20, tempo, 45 min, as missed")
         XCTAssertEqual(PlanSheet.watchLabel(w), "Send Tue Oct 20, tempo, 45 min, to Watch")
+    }
+
+    func testSendingAnAdaptedSessionReplacesTheEarlierSendThatDay() async {
+        // The plan engine downgraded Friday's tempo after it was sent: its
+        // name changed, but the Watch must still hold one session for Friday.
+        let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        let watch = FakeWatch()
+        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-24", displayName: "long · 90 min", dayLabel: "Sat Oct 24", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "endurance · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        XCTAssertEqual(watch.scheduled.map(\.name).sorted(), ["endurance · 40 min", "long · 90 min"], "Friday's stale tempo is gone, Saturday stays")
+    }
+
+    func testASessionWhoseDayHasPassedSaysSo() async {
+        // The plan screen was left open overnight: yesterday's session still shows.
+        let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        let watch = FakeWatch()
+        let nextMorning = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 7))!
+        let o = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "Fri Oct 23", scheduler: watch, now: nextMorning)
+        XCTAssertEqual(o, .dayPassed("Fri Oct 23"))
+        XCTAssertTrue(watch.scheduled.isEmpty)
+        XCTAssertEqual(WatchSend.message(o), "Fri Oct 23 has passed, so this session was not sent.")
+    }
+
+    func testPushThatArrivesWithTheAppOpenIsShown() {
+        // Without willPresent, iOS drops a push that lands while SCORA is open.
+        let sel = #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))
+        XCTAssertTrue(AppDelegate().responds(to: sel))
+        XCTAssertTrue(PushPresentation.foreground.contains(.banner))
+        XCTAssertTrue(PushPresentation.foreground.contains(.list))
     }
 
     func testSendToWatchCountsDaysAcrossTheDSTChange() {

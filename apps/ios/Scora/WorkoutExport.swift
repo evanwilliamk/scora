@@ -125,8 +125,8 @@ protocol WatchScheduling {
   var maxScheduled: Int { get }
   func authorize() async -> Bool
   func scheduledCount() async -> Int
-  // Removes an earlier send of the same session (same name, same day).
-  func removeSameDay(named name: String, day: DateComponents) async
+  // Removes this app's scheduled workouts that match (display name, date).
+  func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async
   func schedule(_ workout: CustomWorkout, at date: DateComponents) async
 }
 
@@ -139,10 +139,9 @@ struct AppleWatchScheduler: WatchScheduling {
   func scheduledCount() async -> Int {
     await WorkoutScheduler.shared.scheduledWorkouts.count
   }
-  func removeSameDay(named name: String, day: DateComponents) async {
+  func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async {
     for s in await WorkoutScheduler.shared.scheduledWorkouts {
-      guard s.date.year == day.year, s.date.month == day.month, s.date.day == day.day,
-            case .custom(let w) = s.plan.workout, w.displayName == name else { continue }
+      guard case .custom(let w) = s.plan.workout, match(w.displayName ?? "", s.date) else { continue }
       await WorkoutScheduler.shared.remove(s.plan, at: s.date)
     }
   }
@@ -158,6 +157,7 @@ enum WatchSend {
     case notAuthorized
     case cannotCopy
     case full
+    case dayPassed(String) // the day label of a session whose day is over
   }
 
   // Only sessions the Watch can run as written, from today to a week out.
@@ -194,11 +194,19 @@ enum WatchSend {
     scheduler: WatchScheduling, now: Date = Date()
   ) async -> Outcome {
     guard scheduler.isSupported else { return .unsupported }
-    guard let workout = try? WorkoutExport.customWorkout(steps: steps, plannedType: type, displayName: displayName),
-          let when = scheduleTime(for: date, now: now) else { return .cannotCopy }
+    guard let workout = try? WorkoutExport.customWorkout(steps: steps, plannedType: type, displayName: displayName)
+    else { return .cannotCopy }
+    guard let when = scheduleTime(for: date, now: now) else {
+      // A screen left open overnight still shows yesterday's session.
+      return day(date) != nil ? .dayPassed(dayLabel) : .cannotCopy
+    }
     guard await scheduler.authorize() else { return .notAuthorized }
-    // Sending again replaces the earlier send rather than adding a copy.
-    await scheduler.removeSameDay(named: displayName, day: when)
+    // Sending again replaces whatever SCORA sent for that day, even under an
+    // older name: an adaptation renames the session (tempo to endurance), and
+    // a plan has one session a day. The scheduler only lists SCORA's sends.
+    await scheduler.removeScheduled { _, at in
+      at.year == when.year && at.month == when.month && at.day == when.day
+    }
     guard await scheduler.scheduledCount() < scheduler.maxScheduled else { return .full }
     await scheduler.schedule(workout, at: when)
     return .sent(dayLabel)
@@ -211,6 +219,7 @@ enum WatchSend {
     case .notAuthorized: return "SCORA needs permission to send workouts to your Watch (Settings > Privacy > Health)."
     case .cannotCopy: return "This session cannot be copied to the Watch as written."
     case .full: return "Your Watch has as many scheduled workouts as it can hold. Remove one in the Workout app, then send again."
+    case .dayPassed(let day): return "\(day) has passed, so this session was not sent."
     }
   }
 
