@@ -284,3 +284,25 @@ test('sleep score: a chart whose newest point is not the cited score is not buil
   ], new Set<SeriesKey>(['sleep', 'sleep_score']));
   assert.deepEqual(links.map((l) => [l.key, span(voice, l)]), [['sleep', '7:12'], ['sleep_score', 'sleep score']]);
 });
+
+test('Longest run (30d) is never linked, and its words do not link the long effort chart (Q31 B)', async () => {
+  const { NOT_CHARTABLE, METRIC_KEYS } = await import('../src/driver-links');
+  assert.ok('Longest run (30d)' in NOT_CHARTABLE);
+  assert.ok(!('Longest run (30d)' in METRIC_KEYS));
+  assert.ok(!('Long effort' in NOT_CHARTABLE) && !('Long effort' in METRIC_KEYS));
+  const avail = new Set<SeriesKey>(['days_since_long_effort', 'volume', 'load']);
+  const ds: Driver[] = [
+    { metric: 'Longest run (30d)', value: '8 mi', trend: '2d ago' },
+    { metric: 'Days since long effort', value: '10' },
+    { metric: 'Weekly volume', value: '24.9 mi' },
+  ];
+  // The card driver first: its name and number link nothing.
+  const voice = 'Longest run (30d) is 8 mi, 2 days ago, and the long effort was 10 days ago. Volume sits at 24.9 mi.';
+  const links = linkDrivers(voice, ds, avail);
+  assert.deepEqual(links.map((l) => [l.key, span(voice, l)]), [
+    ['days_since_long_effort', 'long effort'],
+    ['volume', '24.9 mi'],
+  ]);
+  // The name alone never reaches the long effort chart.
+  assert.deepEqual(linkDrivers('Longest run (30d) is 8 mi.', ds, avail), []);
+});
