@@ -23,14 +23,30 @@ export const defaultPrefs = (): DeliveryPrefs => ({
   last_weekly_sent_on: null,
 });
 
+// One formatter per zone: building an Intl.DateTimeFormat costs far more than
+// using one, and the scheduler asks for every athlete every minute. Bounded
+// (cleared past MAX_ZONES) so stray zone strings cannot grow it forever.
+const MAX_ZONES = 1000;
+const clockFormats = new Map<string, Intl.DateTimeFormat | null>();
+function clockFormat(tz: string): Intl.DateTimeFormat | null {
+  let f = clockFormats.get(tz);
+  if (f !== undefined) return f;
+  try {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short',
+    });
+  } catch {
+    f = null;
+  }
+  if (clockFormats.size >= MAX_ZONES) clockFormats.clear();
+  clockFormats.set(tz, f);
+  return f;
+}
+
 export function isValidTimezone(tz: unknown): tz is string {
   if (typeof tz !== 'string' || tz.length === 0 || tz.length > 64) return false;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
+  return clockFormat(tz) !== null;
 }
 
 export function isValidDeliveryMinute(m: unknown): m is number {
@@ -39,12 +55,9 @@ export function isValidDeliveryMinute(m: unknown): m is number {
 
 // Local date (YYYY-MM-DD), minute of day and weekday (0 = Sunday) in `tz`.
 export function localClock(now: Date, tz: string): { date: string; minute: number; weekday: number } {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short',
-    }).formatToParts(now).map((p) => [p.type, p.value])
-  );
+  const f = clockFormat(tz);
+  if (!f) throw new RangeError(`Invalid time zone specified: ${tz}`);
+  const parts = Object.fromEntries(f.formatToParts(now).map((p) => [p.type, p.value]));
   const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
   return {
     date: `${parts.year}-${parts.month}-${parts.day}`,
