@@ -829,12 +829,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Why: a dated read reads as what it is (CLAUDE.md 3.2), and is more useful offline than an empty screen. Alternative: no cache, an offline line only.
 - To reverse: drop `ReadCache` and `showCachedRead()` (apps/ios/Scora/DashboardView.swift) and the `ReadCache.clear()` in TokenManager.logout; `ReadDate` heading can stay.
 
-### 2026-11-01: API timeouts 15 s, 30 s for calls that write with OpenAI
+### 2026-11-01: API timeouts 15 s, 60 s for calls that write with OpenAI
 - Status: DECIDED
 - Branch: claude/ios-offline
 - Context: every call used URLSession.shared, which waits 60 s, so a weak signal looked like a hung spinner.
-- Choice: `API.session` (15 s per request, 30 s resource) for plan, onboarding and Watch calls; `API.slowSession` (30 s, 60 s resource) for the read, weekly review, chat, card expansions and plan build. Neither waits for connectivity, so offline fails at once. PushManager keeps URLSession.shared (its retry queue was reviewed separately).
-- Why: the server caps OpenAI at 20 s and then sends its validated fallback, so a healthy read lands inside 30 s. If reads on cold Strava and Oura tokens turn out slower, raise `API.slowTimeout`.
+- Choice: `API.session` (15 s per request, 30 s resource) for plan, onboarding and Watch calls; `API.slowSession` (60 s, 120 s resource) for the read, weekly review, chat, card expansions and plan build. Neither waits for connectivity, so offline fails at once. PushManager keeps URLSession.shared (its retry queue was reviewed separately).
+- Why: the server calls Strava (15 s cap), Oura (20 s cap) and OpenAI (20 s cap, then the validated fallback) one after another, so a slow but healthy read can near 55 s; 30 s (first pick) would have cut those off while the server still finished. Lower `API.slowTimeout` once real read times are measured.
 - To reverse: `API.quickTimeout` / `API.slowTimeout` in apps/ios/Scora/Network.swift.
 
 ### 2026-11-01: Offline lines, and screens reload when the connection returns

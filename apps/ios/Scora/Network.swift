@@ -4,11 +4,12 @@ import Network
 // The sessions every API call goes through. URLSession.shared waits 60 s
 // before giving up, which on a weak signal looks like a hung screen.
 // Calls that make the server write with OpenAI (the read, the weekly review,
-// chat) get longer: the server caps OpenAI at 20 s and then sends its
-// validated fallback, so a healthy reply lands well inside 30 s.
+// chat) get longer: the server fetches Strava (15 s cap) and Oura (20 s cap)
+// before OpenAI (20 s cap, then its validated fallback), one after another,
+// so a slow but healthy read can take close to a minute.
 enum API {
   static let quickTimeout: TimeInterval = 15
-  static let slowTimeout: TimeInterval = 30
+  static let slowTimeout: TimeInterval = 60
 
   static let session = make(timeout: quickTimeout)
   static let slowSession = make(timeout: slowTimeout)
