@@ -14,7 +14,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { openAiEmbedder, EMBEDDING_DIMS } from './knowledge-ingest';
 import type { Embedder } from './knowledge-ingest';
 
-export const RETRIEVAL_TOP_K = 4;
+const RETRIEVAL_TOP_K = 4;
 // Cosine similarity below this is noise for text-embedding-3-small.
 export const RETRIEVAL_MIN_SIMILARITY = 0.3;
 
@@ -100,7 +100,7 @@ ${items.join('\n')}
 Use the library to explain what the athlete's numbers mean. Paraphrase; never quote more than a short phrase. Never take a number from the library: every number must come from DRIVERS. The library may describe workouts; the read still never tells the athlete what to do.`;
 }
 
-export function patternPromptBlock(p: PatternEntry): string {
+function patternPromptBlock(p: PatternEntry): string {
   const lines = [`PATTERN (curated read for this situation, ${p.id}):`, `Shape: ${p.template.trim()}`];
   if (p.tone_notes) lines.push(`Tone: ${p.tone_notes.trim().replace(/\s+/g, ' ')}`);
   if (p.llm_hint) lines.push(`Hint: ${p.llm_hint.trim().replace(/\s+/g, ' ')}`);

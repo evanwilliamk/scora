@@ -64,7 +64,7 @@ export type ReplyCommand =
   | { cmd: 'help' }
   | { cmd: 'unknown' };
 
-export const PAUSE_DEFAULT_DAYS = 3;
+const PAUSE_DEFAULT_DAYS = 3;
 export const PAUSE_MAX_DAYS = 30;
 
 // Opt-out words carriers and WhatsApp users expect to work, beyond "stop".

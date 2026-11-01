@@ -19,10 +19,10 @@ export interface GateReport {
 }
 
 // doc 10 §6.1: banned-phrase hit rate < 0.5%.
-export const BANNED_RATE_MAX = 0.005;
+const BANNED_RATE_MAX = 0.005;
 
 // Every `telemetry {...}` payload in a log export, plain or JSON-wrapped.
-export function telemetryEvents(logText: string): any[] {
+function telemetryEvents(logText: string): any[] {
   const out: any[] = [];
   for (const line of logText.split('\n')) {
     const i = line.indexOf('telemetry {');
@@ -75,11 +75,11 @@ export function voiceGateReport(logText: string): GateReport {
 
 // doc 10 1.1.1: the morning read lands within 5 minutes of the set time on
 // at least 13 of 14 mornings.
-export const ON_TIME_MAX_LATE_MIN = 5;
-export const ON_TIME_RATE_MIN = 13 / 14;
+const ON_TIME_MAX_LATE_MIN = 5;
+const ON_TIME_RATE_MIN = 13 / 14;
 
 // Gates are judged on an athlete's last 14 mornings; fewer is not enough data.
-export const GATE_WINDOW_DAYS = 14;
+const GATE_WINDOW_DAYS = 14;
 
 export interface AthleteDelivery {
   mornings: number; // local days in the window (the last 14 up to the last logged daily)
@@ -153,8 +153,8 @@ export function deliveryGateReport(logText: string): DeliveryReport {
 
 // doc 10 1.1.2: the app is opened from the push within 4 hours on at least 12
 // of 14 mornings. doc 10 1.1.7: every morning message leads with the numbers.
-export const OPEN_WITHIN_MIN = 240;
-export const OPEN_RATE_MIN = 12 / 14;
+const OPEN_WITHIN_MIN = 240;
+const OPEN_RATE_MIN = 12 / 14;
 
 export interface MorningReport {
   byAthlete: Record<string, { sent: number; opened: number; numericFirst: number }>;
@@ -224,7 +224,7 @@ export function morningGateReport(logText: string): MorningReport {
 
 // doc 10 2.1.8: for each athlete with a plan, the read names it on at least
 // 60% of days with a planned session.
-export const PLAN_NAMED_RATE_MIN = 0.6;
+const PLAN_NAMED_RATE_MIN = 0.6;
 
 export function planAwareGateReport(logText: string): { byAthlete: Record<string, { days: number; named: number }>; pass: boolean | null; lines: string[] } {
   // athlete -> date -> named on any read that day (the read can be refreshed)

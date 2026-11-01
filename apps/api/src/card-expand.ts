@@ -18,7 +18,7 @@ export interface ReadSnapshot {
   at: number;
 }
 
-export const SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+const SNAPSHOT_TTL_MS = 10 * 60 * 1000;
 
 export class SnapshotCache {
   private m = new Map<string, ReadSnapshot>();
@@ -50,7 +50,7 @@ const RELATED: Record<string, string[]> = {
   long_effort: ['Longest run (30d)', 'Weekly volume', 'Load'],
 };
 
-export const EXPANDABLE_CARDS = Object.keys(RELATED);
+const EXPANDABLE_CARDS = Object.keys(RELATED);
 
 export function relatedDrivers(cardId: string, drivers: Driver[]): Driver[] {
   const names = RELATED[cardId] ?? [];

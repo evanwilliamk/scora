@@ -11,7 +11,7 @@
 import { writtenDistances, writtenMinutes, validateParsedRows } from './plan-parse';
 import type { Intensity, ParseResult, WorkoutType } from './plan-parse';
 
-export const MAX_ICS_CHARS = 1_000_000;
+const MAX_ICS_CHARS = 1_000_000;
 export const MAX_ICS_EVENTS = 1000;
 const MAX_DESCRIPTION = 500;
 

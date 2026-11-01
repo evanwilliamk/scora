@@ -3,11 +3,11 @@
 // once per local day, and the free tier's weekly review on Monday at the same
 // time (Sunday's read, 24h delayed, CLAUDE.md §5.1).
 
-export const DEFAULT_TIMEZONE = 'America/New_York';
-export const DEFAULT_DELIVERY_MINUTE = 6 * 60;
+const DEFAULT_TIMEZONE = 'America/New_York';
+const DEFAULT_DELIVERY_MINUTE = 6 * 60;
 // A read that would land more than this late (server down, deploy) is skipped
 // rather than arriving mid-morning.
-export const LATE_WINDOW_MIN = 120;
+const LATE_WINDOW_MIN = 120;
 
 export interface DeliveryPrefs {
   timezone: string;
