@@ -9,6 +9,8 @@ import { fakeRest, type FakeRest } from './helpers/fake-rest';
 import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { installSchedulerDb, countByTable, type SchedulerDb } from './helpers/fake-scheduler-db';
+import { migratedPglite, sqlDue } from './helpers/pglite-db';
+import type { PGlite } from '@electric-sql/pglite';
 
 blankEnv();
 
@@ -17,6 +19,7 @@ let guard: FetchGuard;
 let sched: typeof import('../src/scheduler');
 let push: typeof import('../src/push');
 let prefsStore: import('../src/preferences').PrefsStore;
+let pg: PGlite;
 
 before(async () => {
   rest = await fakeRest();
@@ -28,17 +31,22 @@ before(async () => {
   const { supabasePrefsStore } = await import('../src/preferences');
   const { createClient } = await import('@supabase/supabase-js');
   prefsStore = supabasePrefsStore(createClient(rest.url, 'test-service-role'));
+  pg = await migratedPglite();
 });
 after(async () => {
+  await pg.close();
   guard.restore();
   await rest.close();
 });
 
 const quiet = { info() {}, warn() {}, error() {} };
 
-function setup(n: number, tz = 'Europe/London', minute = 360) {
+// `sql`: scora_due_deliveries answered from PGlite (migration applied);
+// otherwise the rpc is missing and the tick reads every athlete.
+function setup(n: number, tz = 'Europe/London', minute = 360, sql = false) {
   rest.reset();
   const db = installSchedulerDb(rest);
+  if (sql) rest.handle('rpc/scora_due_deliveries', sqlDue(pg, db));
   for (let i = 0; i < n; i++) {
     const id = String(100000 + i);
     db.devices.push({ athlete_id: id, token: `dev-${id}` });
@@ -76,23 +84,51 @@ test('past 1000 device rows and 1000 preference rows, every athlete gets their r
   assert.deepEqual(ny.r, { daily: 0, weekly: 0 });
 });
 
-test('queries per tick as athletes grow', async (t) => {
+test('queries per tick as athletes grow, before the due-deliveries migration', async (t) => {
   const report: string[] = [];
   for (const n of [10, 100, 2500]) {
     const { db, deps } = setup(n);
-    // 05:00 London on Tuesday 2026-11-03: nobody due.
+    // 04:59 London on Tuesday 2026-11-03: the first tick asks for
+    // scora_due_deliveries, finds it missing and reads every athlete.
+    const probe = await tick(deps, '2026-11-03T04:59:00Z');
+    assert.equal(probe.byTable['POST rpc/scora_due_deliveries'], 1);
+    // 05:00: nobody due, and no second ask for 15 minutes.
     const idle = await tick(deps, '2026-11-03T05:00:00Z');
-    // 06:00 London: everyone due, one day after their last read.
+    assert.equal(idle.byTable['POST rpc/scora_due_deliveries'], undefined);
+    // 06:00 London: everyone due, one day after their last read; the
+    // function is asked for again (still missing).
     const due = await tick(deps, '2026-11-03T06:00:00Z');
     assert.equal(due.r.daily, n);
     // Idle: one device page and one preferences request per 1000 / 500.
     assert.equal(idle.queries, Math.ceil(n / 1000) + Math.ceil(n / 500));
+    assert.equal(probe.queries, idle.queries + 1);
     // Per delivery: the claim (one update) and the device tokens.
-    assert.equal(due.queries - idle.queries, 2 * n);
-    report.push(`${n} athletes: idle ${idle.queries} ${JSON.stringify(idle.byTable)}; all due ${due.queries} (${((due.queries - idle.queries) / n).toFixed(2)} per delivery)`);
+    assert.equal(due.queries - idle.queries - 1, 2 * n);
+    report.push(`${n} athletes: idle ${idle.queries} ${JSON.stringify(idle.byTable)}; all due ${due.queries} (${((due.queries - idle.queries - 1) / n).toFixed(2)} per delivery)`);
     // Then due again a minute later: nothing left to send.
     const after = await tick(deps, '2026-11-03T06:01:00Z');
     assert.equal(after.r.daily, 0);
+    assert.equal([...db.prefs.values()].every((p) => p.last_daily_sent_on === '2026-11-03'), true);
+  }
+  t.diagnostic(report.join('\n'));
+});
+
+test('queries per tick as athletes grow, with scora_due_deliveries', async (t) => {
+  const report: string[] = [];
+  for (const n of [10, 100, 2500]) {
+    const { db, deps } = setup(n, 'Europe/London', 360, true);
+    // Idle: the one rpc, whatever the athlete count.
+    const idle = await tick(deps, '2026-11-03T05:00:00Z');
+    assert.deepEqual(idle.byTable, { 'POST rpc/scora_due_deliveries': 1 });
+    const due = await tick(deps, '2026-11-03T06:00:00Z');
+    assert.equal(due.r.daily, n);
+    // Due: one rpc page per 1000 due athletes, then the claim and the tokens.
+    assert.equal(due.byTable['POST rpc/scora_due_deliveries'], Math.floor(n / 1000) + 1);
+    assert.equal(due.byTable['GET athlete_preferences'], undefined);
+    assert.equal(due.queries, Math.floor(n / 1000) + 1 + 2 * n);
+    report.push(`${n} athletes: idle ${idle.queries}; all due ${due.queries}`);
+    const after = await tick(deps, '2026-11-03T06:01:00Z');
+    assert.deepEqual([after.r.daily, after.queries], [0, 1]);
     assert.equal([...db.prefs.values()].every((p) => p.last_daily_sent_on === '2026-11-03'), true);
   }
   t.diagnostic(report.join('\n'));

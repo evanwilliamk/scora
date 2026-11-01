@@ -7,7 +7,7 @@ const DEFAULT_TIMEZONE = 'America/New_York';
 const DEFAULT_DELIVERY_MINUTE = 6 * 60;
 // A read that would land more than this late (server down, deploy) is skipped
 // rather than arriving mid-morning.
-const LATE_WINDOW_MIN = 120;
+export const LATE_WINDOW_MIN = 120;
 
 export interface DeliveryPrefs {
   timezone: string;

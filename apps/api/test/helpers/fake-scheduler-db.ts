@@ -72,6 +72,13 @@ function page<T>(rows: T[], params: URLSearchParams, maxRows: number): T[] {
   return rows.slice(offset, offset + Math.min(limit, maxRows));
 }
 
+export const MISSING_DUE_RPC = {
+  code: 'PGRST202',
+  message: 'Could not find the function public.scora_due_deliveries(p_after, p_limit, p_now, p_window_minutes) in the schema cache',
+  details: 'Searched for the function public.scora_due_deliveries with parameters p_after, p_limit, p_now, p_window_minutes',
+  hint: null,
+};
+
 export function installSchedulerDb(rest: FakeRest, opts: { maxRows?: number } = {}): SchedulerDb {
   const db: SchedulerDb = { devices: [], prefs: new Map(), disconnected: new Set(), maxRows: opts.maxRows ?? 1000 };
 
@@ -114,6 +121,10 @@ export function installSchedulerDb(rest: FakeRest, opts: { maxRows?: number } = 
     }
     throw new Error(`fake db: athlete_preferences ${req.method}`);
   });
+
+  // scora_due_deliveries as on a project without migration 20261101010000:
+  // PostgREST's "not in the schema cache". sqlDue() answers it from PGlite.
+  rest.handle('rpc/scora_due_deliveries', () => ({ status: 404, body: MISSING_DUE_RPC }));
 
   // A connected Strava token for every athlete but the disconnected ones.
   rest.handle('athletes', (req: RestRequest) => {

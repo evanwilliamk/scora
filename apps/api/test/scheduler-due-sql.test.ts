@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import type { PGlite } from '@electric-sql/pglite';
 import { dueDeliveries, localClock, LATE_WINDOW_MIN, type DeliveryPrefs } from '../src/delivery';
 import { migratedPglite, callDue } from './helpers/pglite-db';
+import { runTick, DUE_RPC_RECHECK_MS, type TickDeps, type DueState } from '../src/scheduler';
+import { MissingRpcError, isMissingFunction, type DueRow } from '../src/push';
 
 let pg: PGlite;
 before(async () => { pg = await migratedPglite(); });
@@ -124,4 +126,73 @@ test('pages by athlete id after p_after, at most p_limit rows', async () => {
     after = page[page.length - 1].athlete_id;
   }
   assert.deepEqual(seen, rows.map((r) => r.athlete_id));
+});
+
+// ---- runTick's choice between the rpc and reading every athlete ----
+
+function fallbackDeps(listDue: TickDeps['listDue'], state: DueState) {
+  const calls = { listAthletes: 0, getMany: 0, delivered: [] as string[], errors: [] as string[], info: [] as string[] };
+  const deps: TickDeps = {
+    listAthletes: async () => { calls.listAthletes++; return ['ny']; },
+    listDue,
+    dueState: state,
+    prefs: {
+      getMany: async (ids) => {
+        calls.getMany++;
+        return new Map(ids.map((id) => [id, { athlete_id: id, onboarded_at: null, timezone: 'America/New_York', delivery_minute: 360, last_daily_sent_on: null, last_weekly_sent_on: null }]));
+      },
+      claim: async () => true,
+      release: async () => {},
+    },
+    deliver: async (id, kind, date) => { calls.delivered.push(`${id}:${kind}:${date}`); return true; },
+    log: { info: (m) => calls.info.push(m), warn() {}, error: (m) => calls.errors.push(m) },
+  };
+  return { deps, calls };
+}
+
+test('runTick reads every athlete while the rpc is missing, and asks again every 15 minutes', async () => {
+  const state: DueState = { missingUntil: 0, reported: false };
+  let asked = 0;
+  let applied = false;
+  const row: DueRow = { athlete_id: 'ny', timezone: 'America/New_York', delivery_minute: 360, last_daily_sent_on: null, last_weekly_sent_on: null, local_date: '2026-11-03', daily: true, weekly: false };
+  const { deps, calls } = fallbackDeps(async () => {
+    asked++;
+    if (!applied) throw new MissingRpcError('scora_due_deliveries: Could not find the function');
+    return [row];
+  }, state);
+  const t0 = Date.parse('2026-11-03T11:00:00Z'); // 06:00 New York
+  assert.deepEqual(await runTick(new Date(t0), deps), { daily: 1, weekly: 0 });
+  assert.deepEqual([asked, calls.listAthletes, calls.getMany], [1, 1, 1]);
+  assert.equal(calls.info.filter((m) => m.includes('scora_due_deliveries not found')).length, 1);
+  await runTick(new Date(t0 + 60_000), deps);
+  assert.deepEqual([asked, calls.listAthletes], [1, 2], 'not asked again within 15 minutes');
+  applied = true; // Evan applies the migration
+  await runTick(new Date(t0 + DUE_RPC_RECHECK_MS - 60_000), deps);
+  assert.deepEqual([asked, calls.listAthletes], [1, 3]);
+  calls.delivered.length = 0;
+  await runTick(new Date(t0 + DUE_RPC_RECHECK_MS), deps);
+  assert.deepEqual([asked, calls.listAthletes, calls.getMany], [2, 3, 3], 'the rpc answers: no athlete list, no preferences');
+  assert.deepEqual(calls.delivered, ['ny:daily:2026-11-03'], 'the rpc row decides what is due');
+  assert.deepEqual(calls.errors, []);
+});
+
+test('runTick falls back for the tick when the rpc fails for another reason, and logs it', async () => {
+  const state: DueState = { missingUntil: 0, reported: false };
+  let asked = 0;
+  const { deps, calls } = fallbackDeps(async () => { asked++; throw new Error('Failed to list due deliveries: timeout'); }, state);
+  const t0 = Date.parse('2026-11-03T11:00:00Z');
+  assert.deepEqual(await runTick(new Date(t0), deps), { daily: 1, weekly: 0 });
+  await runTick(new Date(t0 + 60_000), deps);
+  assert.equal(asked, 2, 'asked again next tick');
+  assert.equal(calls.listAthletes, 2);
+  assert.equal(calls.errors.length, 2);
+  assert.match(calls.errors[0], /due deliveries failed, reading every athlete/);
+});
+
+test('isMissingFunction knows PostgREST and Postgres missing-function errors', () => {
+  assert.equal(isMissingFunction({ code: 'PGRST202', message: 'Could not find the function public.scora_due_deliveries in the schema cache' }), true);
+  assert.equal(isMissingFunction({ code: '42883', message: 'function scora_due_deliveries(timestamp with time zone) does not exist' }), true);
+  assert.equal(isMissingFunction({ message: 'function public.scora_due_deliveries(...) does not exist' }), true);
+  assert.equal(isMissingFunction({ code: '57014', message: 'canceling statement due to statement timeout' }), false);
+  assert.equal(isMissingFunction({ code: '42P01', message: 'relation "device_tokens" does not exist' }), false);
 });
