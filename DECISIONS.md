@@ -771,3 +771,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: show it as a banner, in Notification Center and with sound; a tap routes as usual. Alternative: show it silently in the list only, or reload the dashboard instead.
 - Why: the morning read push is the doorbell; it should not disappear because the app happened to be open.
 - To reverse: change PushPresentation.foreground in PushManager.swift.
+
+### 2026-11-01: Last night's HRV comes from last night's sleep, one source
+- Status: DECIDED
+- Branch: claude/watch-reconcile-hrv-night
+- Context: the HealthKit summary sent the newest HRV sample of the last 36 hours as last night's, so a midday refresh could cite a reading taken after a run, and Watch and Oura-written readings mixed freely.
+- Choice: a night's HRV uses only readings inside that night's sleep window (the wake day's longest sleep session, plus 30 minutes after waking). Without sleep data for that day, 20:00 the evening before to 10:00 that morning in the device's time zone. Inside the window, one source: the app with the most readings that night; on a tie, the one with the latest reading. The value is that source's latest reading in the window. The dated nights (charts and the week baseline) follow the same rule. No reading in the window means no HRV for last night (nil), never an older stand-in. Resting HR keeps its 36-hour rule. Alternatives: average the chosen source's readings; prefer Oura whenever it wrote one.
+- Why: the read calls it last night's HRV, so only last night's readings back it (CLAUDE.md §3.2), and one source keeps one night's number comparable with the next.
+- To reverse: HealthNights.nightWindow / nightHRV in HealthManager.swift (change afterWake, the 20:00 to 10:00 hours, or the source pick).

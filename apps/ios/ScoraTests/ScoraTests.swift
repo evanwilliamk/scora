@@ -273,8 +273,8 @@ final class ScoraTests: XCTestCase {
             // 23:00 to 06:30 local (two pieces), waking on the 18th
             sleep: [(start: at("2026-10-18T03:00:00Z"), end: at("2026-10-18T07:00:00Z")),
                     (start: at("2026-10-18T07:30:00Z"), end: at("2026-10-18T10:30:00Z"))],
-            hrv: [(date: at("2026-10-18T10:00:00Z"), value: 50), (date: at("2026-10-18T11:00:00Z"), value: 54),
-                  (date: at("2026-10-17T11:00:00Z"), value: 44)],
+            hrv: [HRVSample(date: at("2026-10-18T10:00:00Z"), value: 50), HRVSample(date: at("2026-10-18T11:00:00Z"), value: 54),
+                  HRVSample(date: at("2026-10-17T11:00:00Z"), value: 44)],
             restingHr: [(date: at("2026-10-18T12:00:00Z"), value: 48.4)],
             calendar: cal)
         XCTAssertEqual(nights, [
@@ -283,23 +283,81 @@ final class ScoraTests: XCTestCase {
         ])
     }
 
-    func testLastNightHRVAndRestingHRAreTheNewestWithin36Hours() {
+    func testLastNightRestingHRIsTheNewestWithin36Hours() {
         let f = ISO8601DateFormatter()
         let at = { (s: String) in f.date(from: s)! }
-        // A 6 AM read: no HRV or resting HR dated today yet.
         let now = at("2026-10-19T10:00:00Z")
-        let hrv: [(date: Date, value: Double)] = [(date: at("2026-10-15T09:00:00Z"), value: 70),
-                                                   (date: at("2026-10-18T09:00:00Z"), value: 54.04),
-                                                   (date: at("2026-10-18T06:00:00Z"), value: 60)]
         let rhr: [(date: Date, value: Double)] = [(date: at("2026-10-18T20:00:00Z"), value: 48.4)]
-        XCTAssertEqual(HealthNights.lastNightHRV(hrv, now: now), 54, "yesterday's newest sample counts at 6 AM")
         XCTAssertEqual(HealthNights.lastNightRestingHR(rhr, now: now), 48)
-        // Beyond 36 hours: stale values are not sent as last night's, even
-        // though they are the newest samples ever.
-        let later = at("2026-10-21T10:00:00Z")
-        XCTAssertNil(HealthNights.lastNightHRV(hrv, now: later))
-        XCTAssertNil(HealthNights.lastNightRestingHR(rhr, now: later))
-        XCTAssertNil(HealthNights.lastNightHRV([], now: now))
+        XCTAssertNil(HealthNights.lastNightRestingHR(rhr, now: at("2026-10-21T10:00:00Z")), "stale values are not last night's")
+    }
+
+    // A fake HealthKit night in New York: asleep 23:00 to 06:30 local.
+    private var newYork: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+        return cal
+    }
+    private func at(_ s: String) -> Date { ISO8601DateFormatter().date(from: s)! }
+    private var lastNightSleep: [(start: Date, end: Date)] {
+        [(start: at("2026-10-19T03:00:00Z"), end: at("2026-10-19T10:30:00Z"))]
+    }
+
+    func testLastNightHRVIgnoresDaytimeReadings() {
+        let hrv = [
+            HRVSample(date: at("2026-10-19T07:00:00Z"), value: 52.04, source: "com.apple.health"), // 03:00, asleep
+            HRVSample(date: at("2026-10-19T16:00:00Z"), value: 31, source: "com.apple.health"), // 12:00, after a run
+        ]
+        // A 2 PM refresh still cites the overnight reading, not the newest one.
+        let afternoon = at("2026-10-19T18:00:00Z")
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: lastNightSleep, now: afternoon, calendar: newYork), 52)
+        // A reading just after waking (within 30 minutes) still counts; an hour later does not.
+        let justAfter = [HRVSample(date: at("2026-10-19T10:50:00Z"), value: 60)]
+        XCTAssertEqual(HealthNights.lastNightHRV(justAfter, sleep: lastNightSleep, now: afternoon, calendar: newYork), 60)
+        let later = [HRVSample(date: at("2026-10-19T11:30:00Z"), value: 60)]
+        XCTAssertNil(HealthNights.lastNightHRV(later, sleep: lastNightSleep, now: afternoon, calendar: newYork))
+        // Only daytime readings: no HRV last night, so nil, never a stand-in.
+        XCTAssertNil(HealthNights.lastNightHRV([hrv[1]], sleep: lastNightSleep, now: afternoon, calendar: newYork))
+        // The night before's reading is not last night's.
+        let nightBefore = [HRVSample(date: at("2026-10-18T07:00:00Z"), value: 70)]
+        XCTAssertNil(HealthNights.lastNightHRV(nightBefore, sleep: lastNightSleep, now: afternoon, calendar: newYork))
+        XCTAssertNil(HealthNights.lastNightHRV([], sleep: lastNightSleep, now: afternoon, calendar: newYork))
+    }
+
+    func testLastNightHRVWithoutSleepUsesTheOvernightHours() {
+        // No sleep recorded: 20:00 to 10:00 New York time.
+        let hrv = [
+            HRVSample(date: at("2026-10-18T23:30:00Z"), value: 40), // 19:30 the evening before: out
+            HRVSample(date: at("2026-10-19T05:00:00Z"), value: 48), // 01:00: in
+            HRVSample(date: at("2026-10-19T15:00:00Z"), value: 30), // 11:00: out
+        ]
+        let noon = at("2026-10-19T16:00:00Z")
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: [], now: noon, calendar: newYork), 48)
+        // The window is in the athlete's zone: in Los Angeles 01:00 New York is 22:00, still in;
+        // 11:00 New York is 08:00 Los Angeles, also in, and it is the latest.
+        var la = Calendar(identifier: .gregorian)
+        la.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: [], now: noon, calendar: la), 30)
+    }
+
+    func testLastNightHRVReadsOneSourceNotAMix() {
+        // The Watch writes several readings overnight; Oura writes one into Health.
+        let watch = "com.apple.health.watch", oura = "com.ouraring.oura"
+        let hrv = [
+            HRVSample(date: at("2026-10-19T05:00:00Z"), value: 44, source: watch),
+            HRVSample(date: at("2026-10-19T07:00:00Z"), value: 46, source: watch),
+            HRVSample(date: at("2026-10-19T10:15:00Z"), value: 70, source: oura), // newest overall
+        ]
+        let noon = at("2026-10-19T16:00:00Z")
+        XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: lastNightSleep, now: noon, calendar: newYork), 46,
+                       "the source with the most readings that night, its latest reading")
+        // A tie goes to the source with the latest reading.
+        let tie = [hrv[1], hrv[2]]
+        XCTAssertEqual(HealthNights.lastNightHRV(tie, sleep: lastNightSleep, now: noon, calendar: newYork), 70)
+        // The dated nights for the charts and the week baseline follow the same rule.
+        let nights = HealthNights.group(sleep: lastNightSleep, hrv: hrv + [HRVSample(date: at("2026-10-19T16:00:00Z"), value: 20, source: watch)],
+                                        restingHr: [], calendar: newYork)
+        XCTAssertEqual(nights.first { $0.day == "2026-10-19" }?.hrvMs, 46)
     }
 
     func testHealthNightsCountOverlapsOnceAndIgnoreNaps() {
