@@ -559,7 +559,7 @@ fastify.post('/api/read', async (request, reply) => {
 
     // The athlete's local date for "last night" and calendar-day counts: the
     // app's, else the newest activity's offset.
-    const localToday = nearToday((request.body as any)?.today) ?? athleteLocalToday(activities);
+    const localToday = nearToday(clientToday) ?? athleteLocalToday(activities);
 
     // Pull Oura if the athlete has connected it; otherwise the Sleep + Recovery
     // cards fall back to connect prompts. Never blocks the read on Oura errors.

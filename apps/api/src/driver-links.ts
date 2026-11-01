@@ -84,8 +84,6 @@ export const NOT_CHARTABLE: Record<string, string> = {
   'Peak avg HR': 'weekly review only',
 };
 
-export const isChartable = (metric: string): boolean => metric in METRIC_KEYS;
-
 // Words the voice uses for a driver when it does not quote the number.
 const NAMES: Record<SeriesKey, RegExp> = {
   // Not the "sleep" of "sleep score", which is the score's own chart.
