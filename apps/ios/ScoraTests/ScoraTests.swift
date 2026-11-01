@@ -424,7 +424,9 @@ final class ScoraTests: XCTestCase {
         var maxScheduled = 15
         var scheduled: [(name: String, at: DateComponents)] = []
         func authorize() async -> Bool { allow }
+        func isAuthorized() async -> Bool { allow }
         func scheduledCount() async -> Int { scheduled.count }
+        func scheduledWorkouts() async -> [(name: String, at: DateComponents)] { scheduled }
         func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async {
             scheduled.removeAll { match($0.name, $0.at) }
         }
@@ -584,8 +586,6 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual([c.year, c.month, c.day, c.hour, c.minute], [2026, 10, 22, 9, 31])
         let five = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 5))!
         XCTAssertEqual(WatchSend.scheduleTime(for: "2026-10-22", now: five), DateComponents(year: 2026, month: 10, day: 22, hour: 6, minute: 0))
-        let lateNight = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 23, minute: 59, second: 30))!
-        XCTAssertNil(WatchSend.scheduleTime(for: "2026-10-22", now: lateNight), "the day is over")
     }
 
     func testSendToWatchOnlyOffersSessionsItCanCopyThisWeek() {
@@ -627,8 +627,30 @@ final class ScoraTests: XCTestCase {
         let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-24", displayName: "long · 90 min", dayLabel: "Sat Oct 24", scheduler: watch, now: early)
-        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "endurance · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "endurance · 40 min", dayLabel: "Fri Oct 23",
+                                 replacing: "tempo · 40 min", scheduler: watch, now: early)
         XCTAssertEqual(watch.scheduled.map(\.name).sorted(), ["endurance · 40 min", "long · 90 min"], "Friday's stale tempo is gone, Saturday stays")
+    }
+
+    func testResendingOneSessionKeepsTheDaysOtherSession() async {
+        // A coach plan can hold two sessions in a day; sending one again must
+        // replace only its own earlier copy.
+        let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        let watch = FakeWatch()
+        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "easy · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "ride", date: "2026-10-23", displayName: "recovery · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "easy · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
+        XCTAssertEqual(watch.scheduled.map(\.name).sorted(), ["easy · 40 min", "recovery · 40 min"])
+    }
+
+    func testASendJustBeforeMidnightStaysOnItsDay() {
+        let cal = Calendar.current
+        let lateNight = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 23, minute: 59, second: 30))!
+        let c = WatchSend.scheduleTime(for: "2026-10-22", now: lateNight)
+        XCTAssertEqual(c.map { [$0.year, $0.month, $0.day] }, [2026, 10, 22], "the day is still running")
+        let nextDay = cal.date(from: DateComponents(year: 2026, month: 10, day: 23, hour: 0, minute: 0, second: 30))!
+        XCTAssertNil(WatchSend.scheduleTime(for: "2026-10-22", now: nextDay), "the day is over")
     }
 
     func testASessionWhoseDayHasPassedSaysSo() async {

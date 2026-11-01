@@ -12,7 +12,7 @@ import HealthKit
 // Your Plan; it has only run on the simulator so far and needs a paired
 // device to try.
 
-struct PlanStep: Decodable, Equatable {
+struct PlanStep: Codable, Equatable {
   let type: String // warmup | steady | interval | cooldown
   let durationMin: Double?
   let intensity: String?
@@ -124,6 +124,10 @@ protocol WatchScheduling {
   var isSupported: Bool { get }
   var maxScheduled: Int { get }
   func authorize() async -> Bool
+  // Already authorized, without asking (the reconcile pass never prompts).
+  func isAuthorized() async -> Bool
+  // This app's scheduled workouts: (display name, date).
+  func scheduledWorkouts() async -> [(name: String, at: DateComponents)]
   func scheduledCount() async -> Int
   // Removes this app's scheduled workouts that match (display name, date).
   func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async
@@ -136,8 +140,17 @@ struct AppleWatchScheduler: WatchScheduling {
   func authorize() async -> Bool {
     await WorkoutScheduler.shared.requestAuthorization() == .authorized
   }
+  func isAuthorized() async -> Bool {
+    await WorkoutScheduler.shared.authorizationState == .authorized
+  }
   func scheduledCount() async -> Int {
     await WorkoutScheduler.shared.scheduledWorkouts.count
+  }
+  func scheduledWorkouts() async -> [(name: String, at: DateComponents)] {
+    await WorkoutScheduler.shared.scheduledWorkouts.map { s in
+      guard case .custom(let w) = s.plan.workout else { return (name: "", at: s.date) }
+      return (name: w.displayName ?? "", at: s.date)
+    }
   }
   func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async {
     for s in await WorkoutScheduler.shared.scheduledWorkouts {
@@ -177,21 +190,26 @@ enum WatchSend {
   }
 
   // 06:00 on the plan's date (the default read time). For today once 06:00
-  // has passed, a minute from now, so the session is never set in the past.
+  // has passed, a minute from now, so the session is never set in the past;
+  // in the day's last minute, 23:59:59, so it stays on its day.
   static func scheduleTime(for date: String, now: Date = Date(), calendar: Calendar = .current) -> DateComponents? {
     let parts = date.split(separator: "-").compactMap { Int($0) }
     guard parts.count == 3 else { return nil }
     let six = DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 6, minute: 0)
     guard let sixAt = calendar.date(from: six), sixAt <= now else { return six }
-    let soon = now.addingTimeInterval(60)
-    let c = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: soon)
+    let n = calendar.dateComponents([.year, .month, .day], from: now)
     // Past the plan's day entirely (a stale screen): nothing to schedule.
-    return c.year == parts[0] && c.month == parts[1] && c.day == parts[2] ? c : nil
+    guard n.year == parts[0] && n.month == parts[1] && n.day == parts[2] else { return nil }
+    let c = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: now.addingTimeInterval(60))
+    if c.year == parts[0] && c.month == parts[1] && c.day == parts[2] { return c }
+    return DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 23, minute: 59, second: 59)
   }
 
+  // `replacing`: the name this session was last sent under (WatchLedger keeps
+  // it per session), when an adaptation has renamed it since.
   static func send(
     steps: [PlanStep], type: String, date: String, displayName: String, dayLabel: String,
-    scheduler: WatchScheduling, now: Date = Date()
+    replacing: String? = nil, scheduler: WatchScheduling, now: Date = Date()
   ) async -> Outcome {
     guard scheduler.isSupported else { return .unsupported }
     guard let workout = try? WorkoutExport.customWorkout(steps: steps, plannedType: type, displayName: displayName)
@@ -201,11 +219,12 @@ enum WatchSend {
       return day(date) != nil ? .dayPassed(dayLabel) : .cannotCopy
     }
     guard await scheduler.authorize() else { return .notAuthorized }
-    // Sending again replaces whatever SCORA sent for that day, even under an
-    // older name: an adaptation renames the session (tempo to endurance), and
-    // a plan has one session a day. The scheduler only lists SCORA's sends.
-    await scheduler.removeScheduled { _, at in
-      at.year == when.year && at.month == when.month && at.day == when.day
+    // Sending again replaces this session's earlier copy that day, under its
+    // name or the older name it was sent under (an adaptation renames it,
+    // tempo to endurance). Another session the same day (a coach plan can
+    // hold two) stays. The scheduler only lists SCORA's sends.
+    await scheduler.removeScheduled { name, at in
+      at.year == when.year && at.month == when.month && at.day == when.day && (name == displayName || name == replacing)
     }
     guard await scheduler.scheduledCount() < scheduler.maxScheduled else { return .full }
     await scheduler.schedule(workout, at: when)

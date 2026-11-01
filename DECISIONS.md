@@ -779,3 +779,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: a night's HRV uses only readings inside that night's sleep window (the wake day's longest sleep session, plus 30 minutes after waking). Without sleep data for that day, 20:00 the evening before to 10:00 that morning in the device's time zone. Inside the window, one source: the app with the most readings that night; on a tie, the one with the latest reading. The value is that source's latest reading in the window. The dated nights (charts and the week baseline) follow the same rule. No reading in the window means no HRV for last night (nil), never an older stand-in. Resting HR keeps its 36-hour rule. Alternatives: average the chosen source's readings; prefer Oura whenever it wrote one.
 - Why: the read calls it last night's HRV, so only last night's readings back it (CLAUDE.md §3.2), and one source keeps one night's number comparable with the next.
 - To reverse: HealthNights.nightWindow / nightHRV in HealthManager.swift (change afterWake, the 20:00 to 10:00 hours, or the source pick).
+
+### 2026-11-01: Send to Watch replaces only the same session's copy, and a late send stays on its day
+- Status: DECIDED
+- Branch: claude/watch-reconcile-hrv-night
+- Context: a resend removed every SCORA workout on that day, so a coach plan with two sessions in a day lost the other one; and a send after 23:59 rolled the time past midnight and said the day had passed. Supersedes "Send to Watch replaces the day's earlier send, whatever its name".
+- Choice: a send removes only copies that day under the session's own name, or the name it was last sent under (kept per session row on this device, so a renamed adaptation is still replaced). WorkoutKit stores no session id, so two sessions with the same name on one day would still replace each other. In the day's last minute the time is clamped to 23:59:59 that day. Alternative: encode the row id in the Watch display name (visible on the Watch).
+- Why: the Watch should hold every session the plan has that day, and a session sent while its day is running should land on that day.
+- To reverse: the removeScheduled predicate and scheduleTime in WorkoutExport.swift.
