@@ -76,14 +76,14 @@ fastify.get('/terms', async (request, reply) => {
   return reply.type('text/html').send('<html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px}div{max-width:600px;margin:0 auto}h1{font-size:32px;margin-bottom:8px}p{color:#999}p.date{font-size:13px;margin-bottom:30px}p.content{color:#ccc;line-height:1.6}</style></head><body><div><h1>Terms of Service</h1><p class="date">Updated July 1, 2026</p><p class="content">By using SCORA, you accept these terms. Use SCORA only for personal, non-commercial purposes. SCORA is provided as-is without warranties or liability for damages.</p></div></body></html>');
 });
 
-fastify.get('/health', async (request, reply) => {
+fastify.get('/health', async () => {
   return { status: 'ok', timestamp: new Date().toISOString(), api: 'scora' };
 });
 
 // Keep-alive: serving this request keeps Railway warm, and the trivial DB query
 // keeps the Supabase free-tier project from pausing after 7 idle days. Hit once
 // a day by the GitHub Actions keepalive workflow.
-fastify.get('/api/keepalive', async (request, reply) => {
+fastify.get('/api/keepalive', async () => {
   const supabase = await pingDatabase();
   return { ok: true, railway: true, supabase, timestamp: new Date().toISOString() };
 });
