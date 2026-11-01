@@ -207,10 +207,14 @@ export interface DueRow {
 export class MissingRpcError extends Error {}
 
 // PostgREST says PGRST202 when the function is not in its schema cache;
-// Postgres says 42883 when no function matches the call.
+// Postgres says 42883 when no function matches the call. A 42883 about some
+// other function or operator comes from inside a broken scora_due_deliveries
+// and is a failure to log every tick, not a migration still to apply.
 export function isMissingFunction(error: { code?: string; message?: string }): boolean {
-  return error.code === 'PGRST202' || error.code === '42883'
-    || /could not find the function|function .* does not exist/i.test(error.message ?? '');
+  const message = error.message ?? '';
+  if (error.code === 'PGRST202') return true;
+  if (/could not find the function/i.test(message)) return true;
+  return /function (?:public\.)?scora_due_deliveries\b[^]* does not exist/i.test(message);
 }
 
 export const DUE_PAGE = 1000;

@@ -195,4 +195,10 @@ test('isMissingFunction knows PostgREST and Postgres missing-function errors', (
   assert.equal(isMissingFunction({ message: 'function public.scora_due_deliveries(...) does not exist' }), true);
   assert.equal(isMissingFunction({ code: '57014', message: 'canceling statement due to statement timeout' }), false);
   assert.equal(isMissingFunction({ code: '42P01', message: 'relation "device_tokens" does not exist' }), false);
+  // A broken function body (a helper or operator it calls is missing) is a
+  // failure to log, not the migration being absent: the scheduler must not
+  // go quiet about it.
+  assert.equal(isMissingFunction({ code: '42883', message: 'function scora_delivery_zone(integer) does not exist' }), false);
+  assert.equal(isMissingFunction({ code: '42883', message: 'operator does not exist: text = date' }), false);
+  assert.equal(isMissingFunction({ message: 'function to_char(text, unknown) does not exist' }), false);
 });
