@@ -143,6 +143,16 @@ enum WatchPlanId {
   }
 }
 
+// One of SCORA's scheduled Watch workouts. `id` is its WorkoutPlan id: a
+// WatchPlanId for sends from this build on, random for older ones.
+// `workout` is what the Watch will run (nil when it is not a custom workout).
+struct WatchCopy {
+  var name: String
+  var at: DateComponents
+  var id: UUID = UUID()
+  var workout: CustomWorkout? = nil
+}
+
 // WorkoutScheduler behind a protocol so the flow is testable without a Watch.
 protocol WatchScheduling {
   var isSupported: Bool { get }
@@ -150,12 +160,13 @@ protocol WatchScheduling {
   func authorize() async -> Bool
   // Already authorized, without asking (the reconcile pass never prompts).
   func isAuthorized() async -> Bool
-  // This app's scheduled workouts: (display name, date).
-  func scheduledWorkouts() async -> [(name: String, at: DateComponents)]
+  // This app's scheduled workouts.
+  func scheduledWorkouts() async -> [WatchCopy]
   func scheduledCount() async -> Int
-  // Removes this app's scheduled workouts that match (display name, date).
-  func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async
-  func schedule(_ workout: CustomWorkout, at date: DateComponents) async
+  // Removes this app's scheduled workouts that match.
+  func removeScheduled(where match: (WatchCopy) -> Bool) async
+  // `id`: the plan id to schedule under (a random one when nil).
+  func schedule(_ workout: CustomWorkout, id: UUID?, at date: DateComponents) async
 }
 
 struct AppleWatchScheduler: WatchScheduling {
@@ -170,20 +181,21 @@ struct AppleWatchScheduler: WatchScheduling {
   func scheduledCount() async -> Int {
     await WorkoutScheduler.shared.scheduledWorkouts.count
   }
-  func scheduledWorkouts() async -> [(name: String, at: DateComponents)] {
-    await WorkoutScheduler.shared.scheduledWorkouts.map { s in
-      guard case .custom(let w) = s.plan.workout else { return (name: "", at: s.date) }
-      return (name: w.displayName ?? "", at: s.date)
-    }
+  private static func copy(_ s: ScheduledWorkoutPlan) -> WatchCopy {
+    guard case .custom(let w) = s.plan.workout else { return WatchCopy(name: "", at: s.date, id: s.plan.id) }
+    return WatchCopy(name: w.displayName ?? "", at: s.date, id: s.plan.id, workout: w)
   }
-  func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async {
+  func scheduledWorkouts() async -> [WatchCopy] {
+    await WorkoutScheduler.shared.scheduledWorkouts.map(Self.copy)
+  }
+  func removeScheduled(where match: (WatchCopy) -> Bool) async {
     for s in await WorkoutScheduler.shared.scheduledWorkouts {
-      guard case .custom(let w) = s.plan.workout, match(w.displayName ?? "", s.date) else { continue }
+      guard case .custom = s.plan.workout, match(Self.copy(s)) else { continue }
       await WorkoutScheduler.shared.remove(s.plan, at: s.date)
     }
   }
-  func schedule(_ workout: CustomWorkout, at date: DateComponents) async {
-    await WorkoutScheduler.shared.schedule(WorkoutPlan(.custom(workout)), at: date)
+  func schedule(_ workout: CustomWorkout, id: UUID?, at date: DateComponents) async {
+    await WorkoutScheduler.shared.schedule(WorkoutPlan(.custom(workout), id: id ?? UUID()), at: date)
   }
 }
 
@@ -229,11 +241,12 @@ enum WatchSend {
     return DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 23, minute: 59, second: 59)
   }
 
-  // `replacing`: the name this session was last sent under (WatchLedger keeps
-  // it per session), when an adaptation has renamed it since.
+  // `rowId`: the session's plan row; its copy is sent under that row's
+  // WatchPlanId. `replacing`: the name this session was last sent under
+  // (WatchLedger keeps it per session), for a copy an older build sent.
   static func send(
     steps: [PlanStep], type: String, date: String, displayName: String, dayLabel: String,
-    replacing: String? = nil, scheduler: WatchScheduling, now: Date = Date()
+    rowId: String? = nil, replacing: String? = nil, scheduler: WatchScheduling, now: Date = Date()
   ) async -> Outcome {
     guard scheduler.isSupported else { return .unsupported }
     guard let workout = try? WorkoutExport.customWorkout(steps: steps, plannedType: type, displayName: displayName)
@@ -243,15 +256,22 @@ enum WatchSend {
       return day(date) != nil ? .dayPassed(dayLabel) : .cannotCopy
     }
     guard await scheduler.authorize() else { return .notAuthorized }
-    // Sending again replaces this session's earlier copy that day, under its
-    // name or the older name it was sent under (an adaptation renames it,
-    // tempo to endurance). Another session the same day (a coach plan can
-    // hold two) stays. The scheduler only lists SCORA's sends.
-    await scheduler.removeScheduled { name, at in
-      at.year == when.year && at.month == when.month && at.day == when.day && (name == displayName || name == replacing)
+    let id = rowId.map(WatchPlanId.forSession)
+    let today = WatchReconcile.day(Calendar.current.dateComponents([.year, .month, .day], from: now)) ?? date
+    // Sending again replaces this session's earlier copy: by its id on any
+    // day from today (it may have moved), or, for a copy an older build sent
+    // (no derived id), by that day and its name or the older name it was
+    // sent under (an adaptation renames it, tempo to endurance). Another
+    // session the same day (a coach plan can hold two) stays, even under the
+    // same name. The scheduler only lists SCORA's sends.
+    await scheduler.removeScheduled { c in
+      if let id, c.id == id { return (WatchReconcile.day(c.at) ?? "") >= today }
+      guard !WatchPlanId.isDerived(c.id) else { return false }
+      return c.at.year == when.year && c.at.month == when.month && c.at.day == when.day
+        && (c.name == displayName || c.name == replacing)
     }
     guard await scheduler.scheduledCount() < scheduler.maxScheduled else { return .full }
-    await scheduler.schedule(workout, at: when)
+    await scheduler.schedule(workout, id: id, at: when)
     return .sent(dayLabel)
   }
 

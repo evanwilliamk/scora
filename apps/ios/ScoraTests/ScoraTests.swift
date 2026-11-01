@@ -422,15 +422,15 @@ final class ScoraTests: XCTestCase {
         var isSupported = true
         var allow = true
         var maxScheduled = 15
-        var scheduled: [(name: String, at: DateComponents)] = []
+        var scheduled: [WatchCopy] = []
         func authorize() async -> Bool { allow }
         func isAuthorized() async -> Bool { allow }
         func scheduledCount() async -> Int { scheduled.count }
-        func scheduledWorkouts() async -> [(name: String, at: DateComponents)] { scheduled }
-        func removeScheduled(where match: (_ name: String, _ at: DateComponents) -> Bool) async {
-            scheduled.removeAll { match($0.name, $0.at) }
+        func scheduledWorkouts() async -> [WatchCopy] { scheduled }
+        func removeScheduled(where match: (WatchCopy) -> Bool) async { scheduled.removeAll(where: match) }
+        func schedule(_ workout: CustomWorkout, id: UUID?, at date: DateComponents) async {
+            scheduled.append(WatchCopy(name: workout.displayName ?? "", at: date, id: id ?? UUID(), workout: workout))
         }
-        func schedule(_ workout: CustomWorkout, at date: DateComponents) async { scheduled.append((workout.displayName ?? "", date)) }
     }
 
     func testWaitingPushOpensDropOldAndDuplicateReports() {
@@ -665,9 +665,15 @@ final class ScoraTests: XCTestCase {
     private var reconcileNow: Date { Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
 
     // Sends `w` with the fake Watch and records it, as Your Plan does.
-    private func sent(_ ws: [PlanWorkout], to watch: FakeWatch) -> WatchLedger {
+    // `olderBuild`: as a build before plan ids sent it (a random id).
+    private func sent(_ ws: [PlanWorkout], to watch: FakeWatch, olderBuild: Bool = false) -> WatchLedger {
         var ledger = WatchLedger()
-        for w in ws { watch.scheduled.append((name: w.detail, at: at6(Int(w.date.suffix(2))!))); ledger.recordSend(w) }
+        for w in ws {
+            let workout = try! WorkoutExport.customWorkout(steps: w.steps!, plannedType: w.type, displayName: w.detail)
+            let id = olderBuild ? UUID() : WatchPlanId.forSession(rowId: w.rowId!)
+            watch.scheduled.append(WatchCopy(name: w.detail, at: at6(Int(w.date.suffix(2))!), id: id, workout: workout))
+            ledger.recordSend(w)
+        }
         return ledger
     }
 
@@ -729,7 +735,7 @@ final class ScoraTests: XCTestCase {
         XCTAssertNil(out.note(for: tue))
         // A copy sent before this device kept records still counts when its name matches.
         let older = FakeWatch()
-        older.scheduled = [(name: tue.detail, at: at6(3))]
+        older.scheduled = [WatchCopy(name: tue.detail, at: at6(3))]
         _ = await WatchReconcile.run(workouts: [tue], coveredThrough: nil, ledger: WatchLedger(), scheduler: older, today: "2026-11-03", now: reconcileNow)
         XCTAssertEqual(older.scheduled.count, 1)
         XCTAssertNil(WatchReconcile.coveredThrough([tue]), "a short page is the whole plan")
