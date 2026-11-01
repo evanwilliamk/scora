@@ -13,6 +13,7 @@ export type WorkoutType = (typeof TYPES)[number];
 
 export const MAX_PLAN_CHARS = 8000;
 export const MAX_PLAN_DAYS = 182; // about 26 weeks ahead
+const MAX_DISTANCE_KM = 9999.99; // scheduled_workouts.planned_distance_km numeric(6, 2)
 const KM_PER_MI = 1.609344;
 
 export interface ParsedRow {
@@ -160,7 +161,9 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
     let duration: number | null = null;
     if (r.duration_min != null) {
       const d = Number(r.duration_min);
-      if (Number.isFinite(d) && d > 0 && d <= 1440 && writtenMinutes(description).some((w) => near(w, d))) {
+      // Stored as whole minutes, 1 to 1440 (scheduled_workouts check): a
+      // written "0:00:20" rounds to 0 and would fail the whole save.
+      if (Number.isFinite(d) && Math.round(d) >= 1 && d <= 1440 && writtenMinutes(description).some((w) => near(w, d))) {
         duration = Math.round(d);
       } else {
         adjusted.push({ row: item, reason: `duration ${r.duration_min} min is not written for this session` });
@@ -172,8 +175,10 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
       const v = Number(r.distance);
       const unit = r.distance_unit === 'mi' ? 'mi' : r.distance_unit === 'km' ? 'km' : null;
       const written = writtenDistances(description);
-      if (Number.isFinite(v) && v > 0 && unit && written[unit].some((w) => near(w, v))) {
-        distanceKm = Math.round((unit === 'mi' ? v * KM_PER_MI : v) * 100) / 100;
+      const km = Number.isFinite(v) && unit ? Math.round((unit === 'mi' ? v * KM_PER_MI : v) * 100) / 100 : NaN;
+      // numeric(6, 2) and > 0 (scheduled_workouts): 0.01 to 9999.99 km, or the save fails.
+      if (km >= 0.01 && km <= MAX_DISTANCE_KM && written[unit!].some((w) => near(w, v))) {
+        distanceKm = km;
       } else {
         adjusted.push({ row: item, reason: `distance ${r.distance} ${unit ?? '(no unit)'} is not written for this session` });
       }
