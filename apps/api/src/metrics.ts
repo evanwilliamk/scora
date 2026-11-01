@@ -223,7 +223,9 @@ export function buildDashboard(
     });
   }
 
-  // --- Long Effort Recency: longest run in the last 30 days ---
+  // --- Longest Run (30d): longest run by distance in the last 30 days. Not
+  // the posture's "long effort" (last run of 90+ moving minutes, drivers.ts):
+  // the two can disagree, so they carry different names (Q31 B). ---
   const last30 = runs.filter((a) => inWindow(a, now - 30 * day, now));
   if (last30.length > 0) {
     const longest = last30.reduce((m, a) => ((a.distance || 0) > (m.distance || 0) ? a : m));
@@ -235,7 +237,7 @@ export function buildDashboard(
     const daysSince = Math.max(0, Math.round((Date.parse(`${localToday}T00:00:00Z`) - Date.parse(`${ranOn}T00:00:00Z`)) / day));
     cards.push({
       id: 'long_effort',
-      title: 'Long Effort Recency',
+      title: 'Longest Run (30d)',
       available: true,
       // "Today", never "0 days ago": the card line handed to card expansion
       // must match the driver's own "today".
@@ -246,14 +248,14 @@ export function buildDashboard(
       translation: `Longest recent run was ${longestMiles} mi, ${daysSince === 0 ? 'today' : `${daysSince} day${daysSince === 1 ? '' : 's'} ago`}.`,
     });
     drivers.push({
-      metric: 'Long effort',
+      metric: 'Longest run (30d)',
       value: `${longestMiles} mi`,
       trend: daysSince === 0 ? 'today' : `${daysSince}d ago`,
     });
   } else {
     cards.push({
       id: 'long_effort',
-      title: 'Long Effort Recency',
+      title: 'Longest Run (30d)',
       available: false,
       source: 'Strava',
       connect: connections.strava ? null : 'strava',

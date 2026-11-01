@@ -244,3 +244,12 @@ test('connect flag: absent on available cards, strava only when unlinked', () =>
   const linked = buildDashboard([], { strava: true, oura: true, healthKit: false }, oura).cards;
   assert.equal(linked.find((c) => c.id === 'training_load')!.connect, null);
 });
+
+test('the longest-run card and driver say Longest run (30d), never long effort (Q31 B)', () => {
+  const { cards, drivers } = buildDashboard(activities, conn);
+  const long = cards.find((c) => c.id === 'long_effort')!;
+  assert.equal(long.title, 'Longest Run (30d)');
+  const d = drivers.find((x) => x.metric === 'Longest run (30d)')!;
+  assert.equal(d.value, '13.7 mi');
+  assert.ok(!drivers.some((x) => /long effort/i.test(x.metric)), 'no dashboard driver is named long effort');
+});

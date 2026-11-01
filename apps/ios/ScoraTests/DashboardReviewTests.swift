@@ -58,7 +58,7 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertFalse(legacyLinked.offersOuraConnect)
   }
 
-  // Long Effort run today comes with an empty unit: nothing is drawn for it.
+  // A Longest Run (30d) run today comes with an empty unit: nothing is drawn for it.
   func testEmptyUnitIsNotShown() {
     XCTAssertNil(card("long_effort", value: "Today", unit: "").shownUnit)
     XCTAssertNil(card("long_effort", value: "Today", unit: nil).shownUnit)
@@ -71,6 +71,9 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertEqual(sleep.spokenLabel, "Sleep, 7:12 hrs, Oura 84. From Oura.")
     let today = card("long_effort", value: "Today", unit: "", trend: "8.2 mi", source: "Strava")
     XCTAssertEqual(today.spokenLabel, "Long_Effort, Today, 8.2 mi. From Strava.")
+    // The API's own title for the longest-run card (Q31 B): never "long effort".
+    let longest = try? decode(#"{"id":"long_effort","title":"Longest Run (30d)","available":true,"value":"2","unit":"days ago","trend":"8 mi","source":"Strava"}"#)
+    XCTAssertEqual(longest?.spokenLabel, "Longest Run (30d), 2 days ago, 8 mi. From Strava.")
     let off = card("recovery_signal", available: false, source: "Oura", cta: "Connect Oura to read HRV and resting heart rate.")
     XCTAssertEqual(off.spokenLabel, "Recovery_Signal, Connect Oura to read HRV and resting heart rate. From Oura.")
     let bare = card("x", available: false)

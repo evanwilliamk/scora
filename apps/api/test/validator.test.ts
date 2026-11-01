@@ -162,3 +162,19 @@ test('a named day window may be said as an N-night average, never as a count of 
   assert.deepEqual(validateVoice('HRV has held for 7 nights in a row.', drivers).unbackedNumbers, ['7']);
   assert.deepEqual(validateVoice('HRV is 52ms, above the 28-night average.', drivers).unbackedNumbers, ['28']);
 });
+
+test('a read quoting Longest run (30d) passes: the (30d) is the driver name\'s window (Q31 B)', () => {
+  const ds: Driver[] = [
+    { metric: 'Longest run (30d)', value: '8 mi', trend: '2d ago' },
+    { metric: 'Days since long effort', value: '10' },
+  ];
+  const voice = 'Longest run (30d) is 8 mi, 2 days ago. It has been 10 days since the long effort, so the two read differently.';
+  const r = validateVoice(voice, ds);
+  assert.deepEqual(r.unbackedNumbers, []);
+  assert.equal(r.ok, true);
+  // The window comes from the name: without it, 30 backs nothing.
+  const old = validateVoice(voice, [{ ...ds[0], metric: 'Long effort' }, ds[1]]);
+  assert.ok(old.unbackedNumbers.includes('30'));
+  // A window name is not a value: "30 miles" is still unbacked.
+  assert.ok(validateVoice('Longest run (30d) is 30 miles.', ds).unbackedNumbers.includes('30'));
+});
