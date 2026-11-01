@@ -64,7 +64,7 @@ const readSnapshots = new SnapshotCache();
 fastify.register(cors);
 
 fastify.get('/', async (request, reply) => {
-  return reply.type('text/html').send('<html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}.container{max-width:600px;text-align:center}.logo{font-size:100px;margin:0;margin-bottom:20px}.title{font-size:48px;margin:0 0 20px;font-weight:700}.tagline{color:#999;font-size:18px;margin:0 0 50px}ul{list-style:none;margin:40px 0;padding:0;text-align:left;display:inline-block}li{color:#ccc;font-size:16px;padding:12px 0}li:before{content:"•";margin-right:12px;color:#666}.footer{margin-top:60px;padding-top:40px;border-top:1px solid #222;font-size:13px;color:#666}a{color:#fff;text-decoration:none}a:hover{color:#999}</style></head><body><div class="container"><div class="logo">S</div><h1 class="title">SCORA</h1><p class="tagline">A second opinion on your training, in a voice you\'ll actually trust.</p><ul><li>Daily reads that name what\'s happening</li><li>Every claim backed by your numbers</li><li>Strava + Oura</li><li>Connect a real coach when you\'re ready</li></ul><div class="footer"><p><a href="/privacy">Privacy</a> — <a href="/terms">Terms</a></p></div></div></body></html>');
+  return reply.type('text/html').send('<html><head><meta charset="utf-8"><style>body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh}.container{max-width:600px;text-align:center}.logo{font-size:100px;margin:0;margin-bottom:20px}.title{font-size:48px;margin:0 0 20px;font-weight:700}.tagline{color:#999;font-size:18px;margin:0 0 50px}ul{list-style:none;margin:40px 0;padding:0;text-align:left;display:inline-block}li{color:#ccc;font-size:16px;padding:12px 0}li:before{content:"•";margin-right:12px;color:#666}.footer{margin-top:60px;padding-top:40px;border-top:1px solid #222;font-size:13px;color:#666}a{color:#fff;text-decoration:none}a:hover{color:#999}</style></head><body><div class="container"><div class="logo">S</div><h1 class="title">SCORA</h1><p class="tagline">A second opinion on your training, in a voice you\'ll actually trust.</p><ul><li>Daily reads that name what\'s happening</li><li>Every claim backed by your numbers</li><li>Strava + Oura</li><li>Connect a real coach when you\'re ready</li></ul><div class="footer"><p><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p></div></div></body></html>');
 });
 
 fastify.get('/privacy', async (request, reply) => {
@@ -208,7 +208,7 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
 fastify.get('/api/auth/oura', async (request, reply) => {
   const { athlete_id } = request.query as { athlete_id?: string };
   if (!athlete_id) {
-    return reply.code(400).send({ error: 'Missing athlete_id — sign in with Strava first.' });
+    return reply.code(400).send({ error: 'Missing athlete_id. Sign in with Strava first.' });
   }
   if (!OURA_CLIENT_ID) {
     return reply.code(500).send({ error: 'Oura not configured (OURA_CLIENT_ID missing).' });
@@ -285,7 +285,7 @@ fastify.post('/api/cdv', async (request, reply) => {
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       return reply.code(401).send({
-        error: 'Strava not connected or refresh failed — please reconnect Strava.',
+        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
       });
     }
 
@@ -444,7 +444,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     try {
       quota = await consumeCdvQuota(athleteId, undefined, undefined, await athleteQuotaDay(String(athleteId), (request.body as any)?.today));
     } catch (e) {
-      fastify.log.error({ err: e }, 'CDV quota check failed — allowing query (fail-open)');
+      fastify.log.error({ err: e }, 'CDV quota check failed: allowing query (fail-open)');
     }
     if (quota && !quota.allowed) {
       return reply.code(429).send({
@@ -544,7 +544,7 @@ fastify.post('/api/read', async (request, reply) => {
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       return reply.code(401).send({
-        error: 'Strava not connected or refresh failed — please reconnect Strava.',
+        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
       });
     }
 
@@ -935,7 +935,7 @@ const isoDay = (v: unknown): string | null => {
 const addDays = (day: string, n: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 // The /api/read reply when no Strava token resolves.
-const STRAVA_RECONNECT = 'Strava not connected or refresh failed — please reconnect Strava.';
+const STRAVA_RECONNECT = 'Strava not connected or refresh failed. Please reconnect Strava.';
 
 // The app's local date, accepted only within a day of the server's UTC date
 // (every real time zone is). A far-off "today" would steer plan queries,
@@ -1296,7 +1296,7 @@ fastify.post('/api/weekly', async (request, reply) => {
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
       return reply.code(401).send({
-        error: 'Strava not connected or refresh failed — please reconnect Strava.',
+        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
       });
     }
 

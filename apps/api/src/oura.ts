@@ -114,7 +114,7 @@ export async function storeOuraTokens(athleteId: string, tokenData: any): Promis
     throw new Error(`Failed to store Oura tokens: ${error.message}`);
   }
   if (!data || data.length === 0) {
-    throw new Error(`No athlete row for id ${athleteId} — connect Strava first.`);
+    throw new Error(`No athlete row for id ${athleteId}. Connect Strava first.`);
   }
 }
 
@@ -156,7 +156,7 @@ async function getValidOuraTokenOnce(
     throw new Error('Oura not connected.');
   }
   if (!athlete.oura_refresh_token) {
-    throw new Error('No Oura refresh token stored — please reconnect Oura.');
+    throw new Error('No Oura refresh token stored. Please reconnect Oura.');
   }
 
   const nowSec = Math.floor(Date.now() / 1000);

@@ -98,7 +98,7 @@ export async function consumeCdvQuota(
     .single();
 
   if (error || !athlete) {
-    throw new Error('Athlete not found — please reconnect Strava.');
+    throw new Error('Athlete not found. Please reconnect Strava.');
   }
 
   // A new day resets the count; the day never moves backwards.

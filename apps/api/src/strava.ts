@@ -150,10 +150,10 @@ async function getValidStravaTokenOnce(
     .single();
 
   if (error || !athlete) {
-    throw new Error('Athlete not found or no Strava tokens stored — please reconnect Strava.');
+    throw new Error('Athlete not found or no Strava tokens stored. Please reconnect Strava.');
   }
   if (!athlete.strava_refresh_token) {
-    throw new Error('No Strava refresh token stored — please reconnect Strava.');
+    throw new Error('No Strava refresh token stored. Please reconnect Strava.');
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
