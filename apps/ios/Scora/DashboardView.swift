@@ -91,7 +91,7 @@ extension DashboardCard {
     return .none
   }
 
-  // Long Effort run today arrives with an empty unit; nothing is drawn for it.
+  // A Longest Run (30d) run today arrives with an empty unit; nothing is drawn for it.
   var shownUnit: String? {
     guard let unit, !unit.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
     return unit
