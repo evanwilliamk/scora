@@ -820,3 +820,27 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: device athletes paged 1000 at a time (ordered by id); preferences loaded 500 ids a request (also keeps the URL a few KB); claim runs the conditional update first and only ensures the row and retries when nothing matched. Queries per idle tick: 2 for up to 500 athletes, then 1 per 1000 device rows plus 1 per 500 athletes (8 at 2500). The scheduler's own queries per delivery: 3 to 2. Not done: selecting only the athletes due in the window, which needs the zone math in SQL (an RPC and a migration); every tick still reads every athlete's preferences. Also not done: reusing the tick's device scan for the push tokens (would push to a token list up to a few minutes old).
 - Why: correctness at scale with no schema change; the claim keeps its one-winner guarantee.
 - To reverse: getAthletesWithDevices (apps/api/src/push.ts), PREFS_CHUNK and claim in supabasePrefsStore (apps/api/src/preferences.ts).
+
+### 2026-11-01: The last read is kept on the phone and shown under its date
+- Status: DECIDED
+- Branch: claude/ios-offline
+- Context: a launch with no connection showed a blank dashboard, and a refresh that failed after midnight left yesterday's read under "Today's Read".
+- Choice: the last /api/read reply is kept as one file, `Application Support/Scora/last-read.json`, inside the app's own container: excluded from iCloud and device backups, file protection until first unlock, only shown to the same athlete, dropped after 7 days, deleted at sign-out. It shows at launch before the live load. Any read made for an earlier local day is headed "Read for Saturday, October 31", never "Today's Read"; the heading also turns over at midnight with the app open. The data is health-derived (sleep, HRV, load) and never leaves the device by this path.
+- Why: a dated read reads as what it is (CLAUDE.md 3.2), and is more useful offline than an empty screen. Alternative: no cache, an offline line only.
+- To reverse: drop `ReadCache` and `showCachedRead()` (apps/ios/Scora/DashboardView.swift) and the `ReadCache.clear()` in TokenManager.logout; `ReadDate` heading can stay.
+
+### 2026-11-01: API timeouts 15 s, 30 s for calls that write with OpenAI
+- Status: DECIDED
+- Branch: claude/ios-offline
+- Context: every call used URLSession.shared, which waits 60 s, so a weak signal looked like a hung spinner.
+- Choice: `API.session` (15 s per request, 30 s resource) for plan, onboarding and Watch calls; `API.slowSession` (30 s, 60 s resource) for the read, weekly review, chat, card expansions and plan build. Neither waits for connectivity, so offline fails at once. PushManager keeps URLSession.shared (its retry queue was reviewed separately).
+- Why: the server caps OpenAI at 20 s and then sends its validated fallback, so a healthy read lands inside 30 s. If reads on cold Strava and Oura tokens turn out slower, raise `API.slowTimeout`.
+- To reverse: `API.quickTimeout` / `API.slowTimeout` in apps/ios/Scora/Network.swift.
+
+### 2026-11-01: Offline lines, and screens reload when the connection returns
+- Status: DECIDED
+- Branch: claude/ios-offline
+- Context: chat, This Week and plan save or import showed the system's error text ("A server with the specified hostname could not be found."), and nothing reloaded when the connection came back.
+- Choice: each screen has three plain lines, offline, too slow, and other (`NetworkText` in Network.swift). An NWPathMonitor posts when the connection returns; the dashboard reloads if its load failed or it shows an earlier day's read, This Week reloads after a failure, Your Plan reloads a list or changes that did not load. Chat does not resend: a failed question goes back in the box (unless the athlete is already typing another) so they send it themselves.
+- Why: an automatic resend would spend one of the day's questions without asking. Alternative: resend on reconnect.
+- To reverse: `CDVFailure` (ChatView.swift); the `NetworkStatus.cameBack` receivers in DashboardView, WeeklyView and PlanView.
