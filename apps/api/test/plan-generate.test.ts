@@ -194,3 +194,73 @@ test('planBlock: week of the plan, phases with their weeks, the current one, the
   assert.equal(b.starts_on, null);
   assert.equal(planBlock(plan, '2027-02-01').week, 12, 'after the end stays on the last week');
 });
+
+// Review 2026-11-01: plan generation path.
+
+test('review 2026-11-01: a session with half-minute steps saves as whole minutes, not a failed save', async () => {
+  // In-memory variant of the fixture: strides-style steps add up to 45.5 min
+  // (the README's own example shape). planned_duration_min is a smallint.
+  const [t] = templates;
+  const half = {
+    ...t, slug: 'test-fixture-half-min', version: '0.0.1',
+    workout_definitions: {
+      ...t.workout_definitions,
+      easy_run: {
+        intensity: 'easy' as const,
+        structure: [
+          { type: 'steady' as const, duration_min: 35, intensity: 'easy' as const },
+          { type: 'interval' as const, reps: 6, work_duration_min: 0.5, work_intensity: 'sprint' as const, rest_duration_min: 1.5, rest_intensity: 'easy' as const },
+        ],
+        duration_min: 45.5,
+      },
+    },
+  };
+  const { planId } = await generatePlan('h1', req, '2026-10-21', [half], sqlGenerateStore(db));
+  const w = (await db.query<any>(
+    `select planned_duration_min from scheduled_workouts where training_plan_id = $1 and planned_intensity = 'easy' order by scheduled_date limit 1`, [planId])).rows[0];
+  assert.equal(w.planned_duration_min, 46);
+});
+
+test('review 2026-11-01: a missing or non-numeric weekly km is refused, not read as 0 km', () => {
+  const base = { sport: 'run', goal_type: '10k', experience_level: 'regular', goal_race_date: '2026-11-15' };
+  for (const km of [undefined, null, '', ' ', true, [35], {}]) {
+    assert.throws(() => parseGenerateRequest({ ...base, current_weekly_km: km }),
+      (e: unknown) => e instanceof GenerateError && e.code === 'bad_request' && /current_weekly_km/.test(e.message), String(km));
+  }
+  assert.equal(parseGenerateRequest({ ...base, current_weekly_km: '35' }).current_weekly_km, 35);
+  assert.equal(parseGenerateRequest({ ...base, current_weekly_km: 0 }).current_weekly_km, 0);
+});
+
+test('review 2026-11-01: a race already past is named as past, not "pick a shorter plan"', async () => {
+  const store = sqlGenerateStore(db);
+  await assert.rejects(generatePlan('p1', { ...req, goal_race_date: '2026-10-20' }, '2026-10-21', templates, store),
+    (e: any) => e.code === 'race_too_soon' && e.message === 'That race date has already passed.');
+  assert.equal((await db.query(`select 1 from training_plans where athlete_id = 'p1'`)).rows.length, 0);
+});
+
+test('review 2026-11-01: a race too close for the shortest template names the earliest race date that fits', async () => {
+  // 4-week fixture, today Wed 10-21: week 4 opens Mon 11-09. A race on 11-08
+  // would need a plan that started 10-12. There is no shorter plan to pick.
+  await assert.rejects(generatePlan('p2', { ...req, goal_race_date: '2026-11-08' }, '2026-10-21', templates, sqlGenerateStore(db)),
+    (e: any) => e.code === 'race_too_soon'
+      && e.message === 'The shortest plan for this race is 4 weeks. It needs a race on or after 2026-11-09.');
+});
+
+test('review 2026-11-01: the same setup sent twice keeps one plan, with its done marks and changes', async () => {
+  const store = sqlGenerateStore(db);
+  const first = await generatePlan('d1', req, '2026-10-19', templates, store);
+  const w = (await db.query<any>(
+    `select id from scheduled_workouts where training_plan_id = $1 order by scheduled_date limit 1`, [first.planId])).rows[0];
+  await db.query(`update scheduled_workouts set athlete_completed = true where id = $1`, [w.id]);
+  const again = await generatePlan('d1', req, '2026-10-21', templates, store);
+  assert.equal(again.planId, first.planId);
+  const plans = (await db.query<any>(`select current_status from training_plans where athlete_id = 'd1'`)).rows;
+  assert.deepEqual(plans.map((r) => r.current_status), ['active']);
+  const done = (await db.query<any>(`select athlete_completed from scheduled_workouts where id = $1`, [w.id])).rows[0];
+  assert.equal(done.athlete_completed, true);
+  // A different race is a new plan, and replaces this one.
+  const other = await generatePlan('d1', { ...req, goal_race_date: '2026-11-14' }, '2026-10-21', templates, store);
+  assert.notEqual(other.planId, first.planId);
+  const after = (await db.query<any>(`select id, current_status from training_plans where athlete_id = 'd1' order by current_status`)).rows;
+  assert.deepEqual(after.map((r) => [r.id === other.planId, r.current_status]), [[true, 'active'], [false, 'replaced']]);
+});

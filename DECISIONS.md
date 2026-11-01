@@ -739,3 +739,19 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: option B. Keep both; the card's driver is now "Longest run (30d)" and its title "Longest Run (30d)" (card id long_effort kept so app builds stay compatible). No numbers change. The posture driver "Days since long effort" and its chart are unchanged. The validator already reads "(30d)" in a driver name as a day window, so the voice may quote the name; tests cover it, and the card driver stays not chartable, so it links nothing. Alternatives: A (one definition for both) or C (drop one from the voice).
 - Why: cheapest change that makes the two read as different claims, with no change to posture or numbers.
 - To reverse: revert the metrics.ts, card-expand.ts and driver-links.ts rename commit on the branch (and its tests).
+
+### 2026-11-01: The same plan setup sent twice keeps the plan it made
+- Status: DECIDED
+- Branch: claude/plan-generate-review
+- Context: a double tap or a retried `POST /api/plan/generate` replaced the active plan with an identical copy, dropping done/missed marks and named plan changes.
+- Choice: `create_scora_plan` returns the active SCORA plan unchanged when template, version, race, race date, start, end and weekly km all match (checked under the per-athlete lock). Any difference still makes a new plan and replaces the old one. Alternative: a client idempotency key, or a time window; both still lose marks on a later identical resubmit.
+- Why: an identical setup has identical sessions, so the only effect of replacing was lost history. Regenerating is not a way to undo plan changes.
+- To reverse: drop migration `20261101000000_create_scora_plan_idempotent.sql` (re-run `20261030010000` after).
+
+### 2026-11-01: A race early in the week loses the template's final week
+- Status: NEEDS EVAN
+- Branch: claude/plan-generate-review (not changed)
+- Context: the assembler puts the race in the template's Monday-to-Sunday final week and drops everything on or after race day. For a Monday race (Boston) the whole final week (usually the taper) is dropped, and the six days before the race hold the previous week's sessions.
+- Options: (a) keep as is; (b) when the race falls Monday to Wednesday, end the final week the day before the race (start one week earlier) so the whole final week runs before it; (c) refuse such races until templates name a race weekday.
+- Recommendation: (b), with a coach's view on whether the final week should then run in full.
+- To reverse: n/a.

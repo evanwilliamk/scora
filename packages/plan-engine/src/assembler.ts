@@ -129,6 +129,8 @@ export function assemblePlan({ template: t, start_date, goal_race_date = null }:
       const key = workoutFor(t, week, slot);
       const def = t.workout_definitions[key];
       const structure = scaleStructure(def.structure, percent);
+      // scheduled_workouts.planned_duration_min is whole minutes; half-minute
+      // strides would otherwise fail the save. The structure stays exact.
       workouts.push({
         id: `${t.slug}@${t.version}:w${week}:${weekday}`,
         scheduled_date: date,
@@ -138,7 +140,7 @@ export function assemblePlan({ template: t, start_date, goal_race_date = null }:
         slot,
         workout_key: key,
         planned_intensity: def.intensity,
-        planned_duration_min: structureMinutes(structure),
+        planned_duration_min: Math.round(structureMinutes(structure)),
         structure,
       });
     });

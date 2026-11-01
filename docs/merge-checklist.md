@@ -33,8 +33,9 @@ All tested on PGlite (`apps/api/test/migrations.test.ts`), none applied anywhere
 8. `20261028000000_rls_all_tables.sql` (Q28; RLS on, no policies; the API uses the service role, so nothing breaks)
 9. `20261030000000_ical_refresh_pairing.sql` (calendar refresh keeps each done/missed mark and the Watch send on its own session; redefines `refresh_ical_plan` only)
 10. `20261030010000_create_scora_plan_lock.sql` (plan setup takes the same per-athlete lock as a calendar paste or refresh; redefines `create_scora_plan` only)
+11. `20261101000000_create_scora_plan_idempotent.sql` (the same plan setup sent twice keeps the plan it made, with its marks and changes; redefines `create_scora_plan` only)
 
-9 and 10 redefine functions that 7 and 6 first create. If you re-run any earlier migration, re-run 9 and 10 last.
+9, 10 and 11 redefine functions that 7 and 6 first create. If you re-run any earlier migration, re-run 9, 10 and 11 last.
 
 The scheduler, Your Plan and onboarding read `athlete_preferences`, `training_plans` and `scheduled_workouts`, so 2 and 3 matter even with every flag off.
 

@@ -62,6 +62,8 @@ const mondayOf = (d: string) => {
   return new Date(t - ((new Date(t).getUTCDay() + 6) % 7) * DAY).toISOString().slice(0, 10);
 };
 
+const addDaysIso = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+
 // scheduled_workouts.planned_type per template sport. Triathlon templates do
 // not yet say which discipline each session is, so they store 'other'.
 const PLANNED_TYPE: Record<Sport, string> = { run: 'run', ride: 'ride', swim: 'swim', tri: 'other' };
@@ -74,7 +76,11 @@ export function parseGenerateRequest(body: any): GenerateRequest {
   if (!SPORTS.includes(body.sport)) bad(`sport must be one of ${SPORTS.join(', ')}`);
   if (typeof body.goal_type !== 'string' || !body.goal_type.trim()) bad('goal_type is required');
   if (!EXPERIENCE_LEVELS.includes(body.experience_level)) bad(`experience_level must be one of ${EXPERIENCE_LEVELS.join(', ')}`);
-  const km = Number(body.current_weekly_km);
+  // Only a number or a numeric string: Number(null), Number('') and
+  // Number([]) are all 0, which would match a 0 km template or refuse with
+  // the wrong reason.
+  const rawKm = body.current_weekly_km;
+  const km = typeof rawKm === 'number' || (typeof rawKm === 'string' && rawKm.trim() !== '') ? Number(rawKm) : NaN;
   if (!Number.isFinite(km) || km < 0 || km > 500) bad('current_weekly_km must be a number from 0 to 500');
   if (!isoDay(body.goal_race_date)) bad('goal_race_date must be YYYY-MM-DD');
   return {
@@ -98,6 +104,9 @@ export async function generatePlan(
   if (await store.hasActiveCoachPlan(athleteId)) {
     throw new GenerateError('coach_plan_active', 'Your coach sets your plan.');
   }
+  if (req.goal_race_date < today) {
+    throw new GenerateError('race_too_soon', 'That race date has already passed.');
+  }
   const template = matchTemplate(templates, { ...req, today });
   if (!template) {
     // Doc 09 §2.6: when the race has templates but not at this volume, say so.
@@ -116,9 +125,13 @@ export async function generatePlan(
   }
   const start = startDateForRace(template, req.goal_race_date);
   if (start < mondayOf(today)) {
+    // matchTemplate puts a template that fits first, so this one is the
+    // shortest there is: name the earliest race it can still reach (the
+    // Monday of its final week, counted from this week).
+    const earliest = addDaysIso(mondayOf(today), 7 * (template.duration_weeks - 1));
     throw new GenerateError(
       'race_too_soon',
-      `This ${template.duration_weeks}-week plan would have started ${start}. Pick a later race or a shorter plan.`,
+      `The shortest plan for this race is ${template.duration_weeks} weeks. It needs a race on or after ${earliest}.`,
     );
   }
   const plan = assemblePlan({ template, start_date: start, goal_race_date: req.goal_race_date });
