@@ -125,6 +125,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [!] MVP template content: 7 templates (half 12wk x3, marathon 16wk x3, 10K 10wk), authored by Evan, reviewed by a paid coach (90-day plan §3.2). Agents never write training content
 - [ ] Plan tier gating for the flags above, once the Stripe item exists (Evan). Done when a Free athlete gets 404 or the Free behavior from every Plan-tier route, and a coach-assigned athlete never sees plan generation
   - [!] Code half, ASK (Q30): an `athletes.tier` column (default `free`, Evan can set `plan` by hand), one `requireTier` check on every Plan-tier route, coach-assigned athletes kept out of generation. Done when route tests show a Free athlete gets the Free behavior from each Plan-tier route. Stripe then only writes the column. Route-by-route design: `docs/tier-gating-design.md` (recommends doc 07's `subscription_tiers` table, keyed by Strava id for now)
+  - [~] Free-tier boundaries today vs §5.1, pinned in route tests, 3 gaps listed: `docs/free-tier-boundaries.md` (`claude/free-tier-boundaries`)
 
 ## Later phases (not started, see the 90-day plan)
 
