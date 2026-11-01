@@ -187,6 +187,23 @@ test('saving a plan stores its rows and reads them back by date range', async ()
   assert.deepEqual(await store.workoutsBetween('222', '2026-10-17', '2026-10-23'), [], 'other athletes see nothing');
 });
 
+test('numbers the table cannot hold are dropped, so the save does not fail (schema check 2026-11-01)', async () => {
+  // planned_duration_min is 1 to 1440 and planned_distance_km numeric(6, 2) > 0:
+  // "0:00:20" rounded to 0 min, "0.004 km" to 0.00 and "12000 km" overflowed,
+  // and any one of them failed the whole paste with a 500.
+  const text = 'strides 0:00:20\njog 0.004 km\nride 12000 km\neasy 30 min';
+  const { rows, adjusted } = validateParsedRows([
+    { date: '2026-10-19', type: 'run', intensity: 'easy', duration_min: 0.33, description: 'strides 0:00:20' },
+    { date: '2026-10-20', type: 'run', intensity: 'easy', distance: 0.004, distance_unit: 'km', description: 'jog 0.004 km' },
+    { date: '2026-10-21', type: 'ride', intensity: 'easy', distance: 12000, distance_unit: 'km', description: 'ride 12000 km' },
+    { date: '2026-10-22', type: 'run', intensity: 'easy', duration_min: 30, description: 'easy 30 min' },
+  ], text, TODAY);
+  assert.deepEqual(rows.map((r) => [r.duration_min, r.distance_km]), [[null, null], [null, null], [null, null], [30, null]]);
+  assert.equal(adjusted.length, 3);
+  const { planId } = await sqlPlanStore(db).saveManualPlan('333', text, rows);
+  assert.ok(planId);
+});
+
 test('a new paste replaces the active plan without deleting the old rows', async () => {
   const store = sqlPlanStore(db);
   const { rows } = validateParsedRows([{ date: '2026-10-20', type: 'run', intensity: 'easy', description: 'easy 30' }], 'Tue easy 30', TODAY);
