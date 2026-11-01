@@ -198,12 +198,13 @@ final class StubURLProtocol: URLProtocol {
 final class OfflineReviewTests: XCTestCase {
   private let url = URL(string: "https://example.invalid/api/read")!
 
-  // URLSession.shared waits 60 s; every API call now gives up much sooner,
-  // and an offline phone fails at once instead of waiting for a route.
-  func testAPISessionsDoNotWaitSixtySeconds() {
+  // Quick calls give up at 15 s. Calls that wait on the server's Strava (15 s),
+  // Oura (20 s) and OpenAI (20 s) chain must outlast it, and an offline phone
+  // fails at once instead of waiting for a route.
+  func testAPISessionTimeoutsMatchServerCaps() {
     XCTAssertEqual(API.session.configuration.timeoutIntervalForRequest, 15)
-    XCTAssertEqual(API.slowSession.configuration.timeoutIntervalForRequest, 30)
-    XCTAssertLessThanOrEqual(API.slowSession.configuration.timeoutIntervalForResource, 60)
+    XCTAssertGreaterThanOrEqual(API.slowSession.configuration.timeoutIntervalForRequest, 15 + 20 + 20)
+    XCTAssertLessThanOrEqual(API.slowSession.configuration.timeoutIntervalForResource, 120)
     XCTAssertFalse(API.session.configuration.waitsForConnectivity)
     XCTAssertFalse(API.slowSession.configuration.waitsForConnectivity)
   }
