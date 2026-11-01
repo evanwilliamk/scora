@@ -194,6 +194,24 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
   return sent;
 }
 
+// The production wiring of a tick: the athletes with devices, their
+// preferences, and each read generated and pushed through `io`. Tests pass an
+// io with a simulated clock and a fetch into the app, and drive runTick.
+export function schedulerDeps(baseUrl: string, log: Logger, prefs: TickDeps['prefs'], io: PushIo = realIo): TickDeps {
+  return {
+    listAthletes: getAthletesWithDevices,
+    prefs,
+    deliver: (athleteId, kind, localDate) =>
+      kind === 'daily'
+        ? pushToAthlete(baseUrl, athleteId, '/api/read', 'Today’s read', localDate, log, io)
+        : pushToAthlete(baseUrl, athleteId, '/api/weekly', 'This week', localDate, log, io),
+    log,
+    clock: io.now,
+    failedAt: new Map(),
+    pendingReleases: new Map(),
+  };
+}
+
 // Start the scheduler. Idle (no-op) until APNs is configured, so it's safe to
 // run in every environment; it activates once APNS_* env is present.
 export function startScheduler(port: number, log: Logger, prefs: PrefsStore): void {
@@ -201,18 +219,7 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
     log.info('scheduler: APNs not configured, push scheduler idle');
     return;
   }
-  const baseUrl = `http://localhost:${port}`;
-  const deps: TickDeps = {
-    listAthletes: getAthletesWithDevices,
-    prefs,
-    deliver: (athleteId, kind, localDate) =>
-      kind === 'daily'
-        ? pushToAthlete(baseUrl, athleteId, '/api/read', 'Today’s read', localDate, log)
-        : pushToAthlete(baseUrl, athleteId, '/api/weekly', 'This week', localDate, log),
-    log,
-    failedAt: new Map(),
-    pendingReleases: new Map(),
-  };
+  const deps = schedulerDeps(`http://localhost:${port}`, log, prefs);
   // Skip a tick while the last one is still running; never let a rejection
   // escape the cron callback (an unhandled rejection kills the process).
   let running = false;
