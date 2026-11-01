@@ -19,7 +19,8 @@ export interface ValidationResult {
 // allows third-person "most coaches would…"), which shouldn't appear in a read.
 const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\b(your|an?)\s+ai[\s-]+coach\b/i, label: 'ai coach' },
-  { re: /\b(i'?m|as|i am)\s+your\s+(?:\w+\s+)?coach\b|\byour coach here\b|\bcoaching you\b/i, label: 'coach self-reference' },
+  // "I'm your coach", "I'm a coach", "I am an endurance coach", "SCORA is your coach".
+  { re: /\b(i'?m|as|i am)\s+your\s+(?:\w+\s+)?coach\b|\b(?:i'?m|i am|scora is)\s+(?:your|an?)\s+(?:\w+\s+)?coach\b|\byour coach here\b|\bcoaching you\b/i, label: 'coach self-reference' },
   { re: /\bas an ai\b|\b(?:i'?m|i am) an ai\b/i, label: 'as an ai' },
   { re: /\bi'?m just an ai\b/i, label: 'just an ai' },
   { re: /\byou should\b/i, label: 'you should' },
