@@ -731,3 +731,19 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Context: the chart counted runs per weekday while the voice line counted weeks, so two runs on one Thursday made them disagree.
 - Choice: one shared helper; the chart shows weeks with a run (0 to 6), axis "Weeks with a run". Alternative: the voice counts runs.
 - To reverse: revert the cdv-chart.ts commits on the branch.
+
+### 2026-11-01: Send to Watch replaces the day's earlier send, whatever its name
+- Status: DECIDED
+- Branch: claude/ios-health-watch-review
+- Context: a resend after an adaptation renamed the session (tempo to endurance) left both on the Watch, since the old send was matched by name.
+- Choice: sending removes every workout SCORA scheduled for that day first (WorkoutScheduler lists only this app's sends; templates have one slot per day). A session whose day has passed now says so instead of "cannot be copied". Alternative: keep matching by name.
+- Why: the Watch should carry the plan as it stands, never a session the plan engine already changed.
+- To reverse: put `name == displayName &&` back in the removeScheduled predicate in WorkoutExport.swift.
+
+### 2026-11-01: Pushes are shown while the app is open
+- Status: DECIDED
+- Branch: claude/ios-health-watch-review
+- Context: with no willPresent handler, iOS dropped a daily or weekly push that arrived while SCORA was in the foreground.
+- Choice: show it as a banner, in Notification Center and with sound; a tap routes as usual. Alternative: show it silently in the list only, or reload the dashboard instead.
+- Why: the morning read push is the doorbell; it should not disappear because the app happened to be open.
+- To reverse: change PushPresentation.foreground in PushManager.swift.
