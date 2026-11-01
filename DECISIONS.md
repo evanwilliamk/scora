@@ -739,3 +739,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `create_scora_plan` returns the active SCORA plan unchanged when template, version, race, race date, start, end and weekly km all match (checked under the per-athlete lock). Any difference still makes a new plan and replaces the old one. Alternative: a client idempotency key, or a time window; both still lose marks on a later identical resubmit.
 - Why: an identical setup has identical sessions, so the only effect of replacing was lost history. Regenerating is not a way to undo plan changes.
 - To reverse: drop migration `20261101000000_create_scora_plan_idempotent.sql` (re-run `20261030010000` after).
+
+### 2026-11-01: A race early in the week loses the template's final week
+- Status: NEEDS EVAN
+- Branch: claude/plan-generate-review (not changed)
+- Context: the assembler puts the race in the template's Monday-to-Sunday final week and drops everything on or after race day. For a Monday race (Boston) the whole final week (usually the taper) is dropped, and the six days before the race hold the previous week's sessions.
+- Options: (a) keep as is; (b) when the race falls Monday to Wednesday, end the final week the day before the race (start one week earlier) so the whole final week runs before it; (c) refuse such races until templates name a race weekday.
+- Recommendation: (b), with a coach's view on whether the final week should then run in full.
+- To reverse: n/a.
