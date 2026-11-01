@@ -76,8 +76,9 @@ class TokenManager: ObservableObject {
       }
     }
     if done { OnboardingState.needsOnboarding = false }
+    let finished = done
     await MainActor.run {
-      if done { self.needsOnboarding = false }
+      if finished { self.needsOnboarding = false }
       self.checkingOnboarding = false
     }
   }
