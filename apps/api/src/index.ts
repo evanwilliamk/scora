@@ -837,7 +837,9 @@ Write today's read using only these drivers.`;
         fastify.log.info(readPlanLine({ athleteId, localDate: today, named: readNamesPlan(voice, plan.driver) }));
       }
     } catch (e) {
-      fastify.log.error({ err: e }, 'OpenAI error (read)');
+      // Not an OpenAI failure (generateValidatedVoice falls back on those):
+      // a check or the plan line threw.
+      fastify.log.error({ err: e }, 'Read voice failed');
       return reply.code(500).send({
         error: 'Read generation failed',
       });
@@ -1425,7 +1427,8 @@ Write this week's review using only these drivers.`;
       });
       voice = result.voice;
     } catch (e) {
-      fastify.log.error({ err: e }, 'OpenAI error (weekly)');
+      // Not an OpenAI failure (generateValidatedVoice falls back on those).
+      fastify.log.error({ err: e }, 'Weekly voice failed');
       return reply.code(500).send({
         error: 'Weekly read generation failed',
       });

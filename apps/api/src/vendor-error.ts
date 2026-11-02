@@ -1,6 +1,7 @@
-// A failed vendor HTTP call (OpenAI, Oura), as thrown and logged: a fixed
-// label plus the HTTP status, never the response body. A vendor's error body
-// can echo the prompt or request (athlete values, tokens), so it is discarded
+// A failed vendor HTTP call (OpenAI, Oura, the Strava token exchange), as
+// thrown and logged: a fixed label plus the HTTP status, never the response
+// body. A vendor's error body can echo the prompt or request (athlete
+// values, tokens), so it is discarded
 // unread (gate 1.1.6, no PHI in logs).
 
 export class VendorHttpError extends Error {

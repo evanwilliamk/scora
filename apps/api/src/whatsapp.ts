@@ -1,9 +1,9 @@
 // WhatsApp doorbell core (Plan tier, PRD §5.B.2, CLAUDE.md §3.3, §7).
 //
 // The morning message, the bounded reply commands, the why/more expansions
-// (the only OpenAI call) and Twilio's webhook signature check. Nothing here sends a message, stores a
-// phone number or reads the database; the route, opt-in and Twilio account
-// wait on Evan (money, privacy text).
+// (the only OpenAI call) and Twilio's webhook signature check. Nothing here
+// sends a message, stores a phone number or reads the database; the route,
+// opt-in and Twilio account wait on Evan (money, privacy text).
 
 import crypto from 'node:crypto';
 import { validateVoice, type Driver } from './validator';

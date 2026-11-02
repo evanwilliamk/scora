@@ -31,9 +31,10 @@ export function formatPlanDistance(km: number, unit: DistanceUnit = distanceUnit
 }
 
 // A distance bound (stored km) in the athlete's unit: a weekly volume bound
-// in plan setup messages, a run length in race prediction "needed" lines. Miles keep one decimal, rounded so the sentence
-// stays true: a lower bound ("starts from") rounds up, an upper bound
-// ("under") rounds down. km stay as stored.
+// in plan setup messages, a run length in race prediction "needed" lines.
+// Miles keep one decimal, rounded so the sentence stays true: a lower bound
+// ("starts from", "at least") rounds up, an upper bound ("under") rounds
+// down. km stay as stored.
 export function formatVolumeBound(km: number, side: 'atLeast' | 'under', unit: DistanceUnit = distanceUnit()): string {
   if (unit === 'km') return `${Number(km)} km`;
   const tenths = (Number(km) / KM_PER_MI) * 10;
