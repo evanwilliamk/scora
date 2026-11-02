@@ -87,6 +87,25 @@ struct WatchLedger: Codable, Equatable {
   }
 }
 
+extension PlanWorkout {
+  // The names a copy of this session can carry on the Watch: its detail now,
+  // and the same stored values written in km, as builds before miles named
+  // them (a whole km bare, else one decimal) and as PlanDistance writes km.
+  // Built from the stored km, so a really changed distance, duration or kind
+  // still reads as a different name. Older builds' copies match on these.
+  var watchNames: Set<String> {
+    var names: Set<String> = [detail]
+    guard let km = distanceKm else { return names }
+    var parts = [intensity ?? type]
+    if let durationMin { parts.append("\(durationMin) min") }
+    let kmBefore = km.rounded() == km ? "\(Int(km)) km" : String(format: "%.1f km", km)
+    for d in [kmBefore, PlanDistance.format(km: km, unit: .km)] {
+      names.insert((parts + [d]).joined(separator: " · "))
+    }
+    return names
+  }
+}
+
 enum WatchReconcile {
   enum Action: Equatable {
     // `id`: the copy's WatchPlanId; nil for an older build's copy, matched by day and name.
@@ -186,7 +205,7 @@ enum WatchReconcile {
       let sessions = workouts.filter { $0.date == d && $0.intensity != "rest" }
       let record = ledger.sends.first { $0.date == d && $0.name == name }
       let stillOnPlan = sessions.contains { s in
-        s.steps != nil && s.detail == name
+        s.steps != nil && s.watchNames.contains(name)
           && (record.map { ($0.rowId == nil || $0.rowId == s.rowId) && ($0.steps == nil || $0.steps == s.steps) } ?? true)
       }
       if stillOnPlan { continue } // the Watch copy is still the plan's session
@@ -218,7 +237,7 @@ enum WatchReconcile {
   // Without a record naming the row, a lone session that day is taken to be
   // the changed one, unless its own copy is still on the Watch.
   private static func fallbackTarget(_ sessions: [PlanWorkout], record: WatchSendRecord?, namesThatDay: [String]) -> PlanWorkout? {
-    guard record?.rowId == nil, sessions.count == 1, !namesThatDay.contains(sessions[0].detail) else { return nil }
+    guard record?.rowId == nil, sessions.count == 1, sessions[0].watchNames.isDisjoint(with: namesThatDay) else { return nil }
     return sessions[0]
   }
 
