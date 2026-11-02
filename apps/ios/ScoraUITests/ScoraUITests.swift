@@ -186,6 +186,119 @@ final class ScoraUITests: XCTestCase {
         XCTAssertTrue(scrollTo(app.buttons["Build my plan"], in: app), "Build my plan can be reached and tapped")
     }
 
+    // Sign-in and onboarding on the DEBUG demo modes (DemoMode.swift): no
+    // network, no system prompts, nothing stored.
+
+    private func step(_ n: Int, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["Step \(n) of 5"]
+    }
+
+    private func assertTarget(_ e: XCUIElement, _ what: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(e.waitForExistence(timeout: 10), "\(what) exists", file: file, line: line)
+        XCTAssertTrue(scrollTo(e, in: app), "\(what) can be reached and tapped", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(e.frame.height, 44, "\(what) is at least 44 pt tall", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(e.frame.width, 44, "\(what) is at least 44 pt wide", file: file, line: line)
+    }
+
+    func testSignInScreen() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-signin"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["SCORA"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Endurance athlete insights"].exists)
+        assertTarget(app.buttons["Sign in with Strava"], "Sign in with Strava", in: app)
+    }
+
+    func testSignInAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-signin"])
+        XCTAssertTrue(app.staticTexts["SCORA"].waitForExistence(timeout: 10))
+        assertTarget(app.buttons["Sign in with Strava"], "Sign in with Strava", in: app)
+    }
+
+    // Walks every step forward the way an athlete would and ends on the dashboard.
+    private func walkOnboarding(_ app: XCUIApplication) {
+        XCTAssertTrue(step(1, in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Got an Oura ring? Add it."].exists)
+        assertTarget(app.buttons["Connect Oura"], "Connect Oura", in: app)
+        assertTarget(app.buttons["Skip for now"], "Skip for now", in: app)
+        app.buttons["Connect Oura"].tap()
+
+        XCTAssertTrue(step(2, in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Apple Health"].exists)
+        assertTarget(app.buttons["Allow Apple Health"], "Allow Apple Health", in: app)
+        app.buttons["Allow Apple Health"].tap()
+
+        XCTAssertTrue(step(3, in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Have a training plan?"].exists)
+        assertTarget(app.buttons["Paste a plan"], "Paste a plan", in: app)
+        assertTarget(app.buttons["Skip"], "Skip", in: app)
+        app.buttons["Skip"].tap()
+
+        XCTAssertTrue(step(4, in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Morning read"].exists)
+        XCTAssertTrue(app.datePickers.firstMatch.exists, "delivery time picker")
+        assertTarget(app.buttons["Continue"], "Continue", in: app)
+        app.buttons["Continue"].tap()
+
+        XCTAssertTrue(step(5, in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your first read lands tomorrow morning."].exists)
+        assertTarget(app.buttons["Go to today"], "Go to today", in: app)
+        app.buttons["Go to today"].tap()
+
+        XCTAssertTrue(app.buttons["This week"].waitForExistence(timeout: 10), "onboarding ends on the dashboard")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Sleep 7:12'")).firstMatch.exists)
+    }
+
+    func testOnboardingWalksToDashboard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-onboarding"]
+        app.launch()
+        walkOnboarding(app)
+    }
+
+    func testOnboardingAtAccessibilityTextSize() throws {
+        walkOnboarding(launchAtAX5(["-demo-onboarding"]))
+    }
+
+    func testOnboardingSkipsLeadToDashboard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-onboarding"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: 10))
+        app.buttons["Skip for now"].tap()
+        XCTAssertTrue(step(2, in: app).waitForExistence(timeout: 5), "skipping Oura lands on Apple Health")
+    }
+
+    // A failed time save offers Skip for now, which moves on to the last step.
+    func testDeliverySaveFailureAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-onboarding-step", "delivery", "-demo-delivery-fails"])
+        XCTAssertTrue(step(4, in: app).waitForExistence(timeout: 10))
+        assertTarget(app.buttons["Continue"], "Continue", in: app)
+        app.buttons["Continue"].tap()
+        let skip = app.buttons["Skip for now"]
+        assertTarget(skip, "Skip for now", in: app)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Could not save the time.'")).firstMatch.exists)
+        skip.tap()
+        XCTAssertTrue(step(5, in: app).waitForExistence(timeout: 5))
+    }
+
+    func testEachOnboardingStepOpensOnItsOwn() throws {
+        let expected: [(String, String, String)] = [
+            ("oura", "Got an Oura ring? Add it.", "Connect Oura"),
+            ("health", "Apple Health", "Allow Apple Health"),
+            ("plan", "Have a training plan?", "Paste a plan"),
+            ("delivery", "Morning read", "Continue"),
+            ("done", "Your first read lands tomorrow morning.", "Go to today"),
+        ]
+        for (i, (name, title, button)) in expected.enumerated() {
+            let app = launchAtAX5(["-demo-onboarding-step", name])
+            XCTAssertTrue(step(i + 1, in: app).waitForExistence(timeout: 10), "\(name) is step \(i + 1)")
+            XCTAssertTrue(app.staticTexts[title].exists, "\(name) title")
+            assertTarget(app.buttons[button], "\(name): \(button)", in: app)
+            app.terminate()
+        }
+    }
+
     func testLaunchPerformance() throws {
         if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
             // This measures how long it takes to launch your application.
