@@ -922,8 +922,9 @@ fastify.post('/api/card-expand', async (request, reply) => {
       check: (v) => postureClaimHits(v, snapshot.posture),
       log: fastify.log,
     });
-    // An outage comes back as the logged driver read: not generated.
-    return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: !result.llmError });
+    const text = checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title);
+    // generated: the reply is the model's own validated draft; any fallback (outage, rejected drafts, posture guard) is false.
+    return reply.send({ cardId, reply: text, drivers: plan.drivers, generated: !result.usedFallback && text === result.voice });
   } catch (e) {
     // Not an OpenAI failure (those return above): something else threw before
     // any emission was logged, so this is the only line for the tap.

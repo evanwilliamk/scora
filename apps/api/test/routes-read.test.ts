@@ -187,12 +187,15 @@ test('card expand: a generated expansion is validated like the read', async () =
   let checked = 0;
   for (const card of cards) {
     guard.openAi('You should go for a long run.', 'You need to do an easy run today.');
+    const asked = llmCalls().length;
     const e = await expand(card.id);
     assert.equal(e.statusCode, 200, `${card.id}: ${e.body}`);
     const out = e.json();
     assert.equal(out.cardId, card.id);
     assert.doesNotMatch(out.reply, /you should|you need to|go for|do an easy/i, card.id);
-    if (out.generated) {
+    // Both drafts rejected: the validated driver read, so not generated.
+    assert.equal(out.generated, false, card.id);
+    if (llmCalls().length > asked) {
       assert.ok(validateVoice(out.reply, out.drivers).ok, `${card.id}: ${out.reply}`);
       checked++;
     }
@@ -217,6 +220,29 @@ test('card expand: a posture the read did not decide is retried, like the read (
   assert.equal(e.statusCode, 200);
   assert.equal(llmCalls().length - before, 2, 'the rejected draft is fed back once');
   assert.equal(e.json().reply, second);
+  assert.equal(e.json().generated, true, 'the accepted retry is the model\'s own text');
+});
+
+test('card expand: generated is false on every fallback path, true only for the model\'s own draft', async () => {
+  connected();
+  guard.stravaActivities(steady());
+  guard.openAi(CLEAN);
+  const cards: any[] = (await read()).json().cards;
+  const card = cards.find((c) => c.id === 'training_load');
+  assert.ok(card && card.available, 'training_load card is available');
+  const cases: { name: string; replies: any[]; generated: boolean }[] = [
+    { name: 'clean first draft', replies: ['Training has held even across the weeks on this card.'], generated: true },
+    { name: 'first call fails', replies: [{ status: 503, body: {} }], generated: false },
+    { name: 'rejected draft, then the retry fails', replies: ['You should go for a long run.', { status: 503, body: {} }], generated: false },
+    { name: 'both drafts rejected', replies: ['You should go for a long run.', 'You need to do an easy run today.'], generated: false },
+  ];
+  for (const c of cases) {
+    guard.openAi(...c.replies);
+    const e = await expand(card.id);
+    assert.equal(e.statusCode, 200, `${c.name}: ${e.body}`);
+    assert.equal(e.json().generated, c.generated, c.name);
+    if (!c.generated) assert.match(e.json().reply, /^Training Load: /, c.name);
+  }
 });
 
 test('card expand: the model down falls back to the card\'s own line', async () => {
