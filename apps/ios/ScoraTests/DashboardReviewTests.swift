@@ -378,6 +378,17 @@ final class OfflineReviewTests: XCTestCase {
     XCTAssertFalse(PlanSheet.reloadsOnReconnect(loadFailed: false, changesFailed: false))
   }
 
+  // A read asked for at 23:59 that lands after midnight: the midnight
+  // handler skipped its reload (a load was in flight), so the landing one
+  // asks for today's. Otherwise it stays up headed with yesterday's date,
+  // its Today line, plan card and Week So Far hidden, until a pull.
+  func testReadLandingAfterMidnightAsksForToday() {
+    XCTAssertTrue(ReadRetry.afterLoad(askedFor: "2026-11-01", today: "2026-11-02", isLatest: true))
+    XCTAssertFalse(ReadRetry.afterLoad(askedFor: "2026-11-02", today: "2026-11-02", isLatest: true))
+    // A newer load is already on its way for today.
+    XCTAssertFalse(ReadRetry.afterLoad(askedFor: "2026-11-01", today: "2026-11-02", isLatest: false))
+  }
+
   func testOfflineCopyIsCalm() {
     let lines = NetworkText.every.flatMap(\.all) + [ReadDate.heading(loadedDay: "2026-10-31", today: "2026-11-01")]
     for line in lines {

@@ -206,6 +206,12 @@ enum ReadRetry {
     guard !isLoading else { return false }
     return hasError || ReadDate.isOld(loadedDay: loadedDay, today: today)
   }
+
+  // A read asked for before midnight that lands after it: the day-change
+  // handler skipped its reload while this one was in flight, so ask for today's.
+  static func afterLoad(askedFor day: String, today: String, isLatest: Bool) -> Bool {
+    isLatest && day != today
+  }
 }
 
 // The last read that loaded, kept on this phone so a launch without a
@@ -824,6 +830,11 @@ struct DashboardView: View {
         ReadCache.save(data, day: day, athleteId: athleteId, signedIn: tokenManager.athleteId)
         // A newer load still in flight keeps the spinner.
         if loadGate.isLatest(token) { isLoading = false }
+        let now = PlanDay.today()
+        if ReadRetry.afterLoad(askedFor: day, today: now, isLatest: loadGate.isLatest(token)) {
+          today = now
+          Task { await loadRead() }
+        }
       }
     } catch {
       await MainActor.run {
