@@ -8,6 +8,7 @@
 // trend (also in §5.B.6) are not in yet. Off unless RACE_PREDICTIONS=on.
 
 import { isOutdoorRun } from './activity-types';
+import { formatVolumeBound } from './units';
 
 export const predictionsEnabled = () => process.env.RACE_PREDICTIONS === 'on';
 
@@ -59,7 +60,9 @@ export function predictRace(activities: any[], race: string, today: string): Pre
   const longest = Math.max(0, ...runs.map((a) => a.distance));
   const needLong = Math.min(distance * PREDICTION.longRunShare, PREDICTION.longRunCapM);
   if (runs.length > 0 && longest < needLong) {
-    return { ok: false, race, reason: 'no_long_run', needed: `a run of at least ${Math.ceil(needLong / 1000)} km in the last 8 weeks` };
+    // In the athlete's unit, rounded up so the sentence stays true: a run of
+    // the stated length always clears the bar.
+    return { ok: false, race, reason: 'no_long_run', needed: `a run of at least ${formatVolumeBound(needLong / 1000, 'atLeast')} in the last 8 weeks` };
   }
 
   const efforts: Effort[] = runs
@@ -82,7 +85,7 @@ export function predictRace(activities: any[], race: string, today: string): Pre
   const pool = efforts.sort((a, b) => a.projected_s - b.projected_s || Number(b.race) - Number(a.race));
   const best = pool.slice(0, PREDICTION.efforts);
   if (best.length < PREDICTION.efforts) {
-    return { ok: false, race, reason: 'not_enough_runs', needed: `${PREDICTION.efforts} runs of 3 km or more in the last 8 weeks` };
+    return { ok: false, race, reason: 'not_enough_runs', needed: `${PREDICTION.efforts} runs of ${formatVolumeBound(PREDICTION.minEffortM / 1000, 'atLeast')} or more in the last 8 weeks` };
   }
 
   // used_races: every effort behind the range is a race (the app then says
