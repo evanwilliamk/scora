@@ -1,5 +1,6 @@
 import { validateVoice, buildFallbackVoice, Driver, ValidationResult } from './validator';
 import { catchLabel, trackVoice, type VoiceSurface } from './telemetry';
+import { vendorErrorKind, vendorHttpError } from './vendor-error';
 
 // Generate a voice read and guarantee it passes the validators before it's
 // emitted (§3.2). Flow: LLM draft -> validate -> if it fails, one retry with
@@ -34,19 +35,6 @@ export interface GenerateResult {
 // (index.ts) uses the same cap.
 export const OPENAI_TIMEOUT_MS = 20_000;
 
-class OpenAIHttpError extends Error {
-  constructor(readonly status: number) {
-    super(`OpenAI ${status}`);
-  }
-}
-
-// What kind of failure, for logs: never the error body or message.
-function llmErrorKind(e: unknown): string {
-  if (e instanceof OpenAIHttpError) return `http_${e.status}`;
-  if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) return 'timeout';
-  return 'network';
-}
-
 async function callOpenAI(
   model: string,
   systemPrompt: string,
@@ -72,8 +60,7 @@ async function callOpenAI(
   });
   if (!res.ok) {
     // The body can echo the prompt (athlete values); it stays out of the error.
-    await res.body?.cancel().catch(() => {});
-    throw new OpenAIHttpError(res.status);
+    throw await vendorHttpError(res, 'OpenAI');
   }
   const json: any = await res.json();
   return (json.choices?.[0]?.message?.content || '').trim();
@@ -106,7 +93,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     check,
   } = params;
   const llmFailed = (attempt: number, e: unknown) =>
-    log?.error(`voice_llm_error ${JSON.stringify({ event: 'voice_llm_error', surface: surface ?? null, attempt, kind: llmErrorKind(e) })}`);
+    log?.error(`voice_llm_error ${JSON.stringify({ event: 'voice_llm_error', surface: surface ?? null, attempt, kind: vendorErrorKind(e) })}`);
   const validate = (text: string): ValidationResult => {
     const v = validateVoice(text, drivers);
     const extra = check ? check(text) : [];

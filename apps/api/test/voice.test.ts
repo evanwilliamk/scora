@@ -61,12 +61,16 @@ test('two bad drafts fall back to a read built only from drivers', async () => {
 });
 
 test('a failed retry call still ends in the fallback, not an error', async () => {
-  stubOpenAI(['HRV is 99ms.', new Error('socket hang up')]);
-  const errors: string[] = [];
-  const r = await generateValidatedVoice({ ...params, log: { warn() {}, error: (m) => errors.push(m) } });
-  assert.deepEqual([r.usedFallback, r.llmError], [true, true]);
-  assert.match(errors[0], /^voice_llm_error .*"attempt":2.*"kind":"network"/);
-  assert.doesNotMatch(errors[0], /socket hang up/, 'the error text stays out of the log');
+  // The shared vendorErrorKind labels: fetch's own TypeError is "network",
+  // anything else unrecognised is "error" (no longer folded into "network").
+  for (const [failure, kind] of [[new TypeError('socket hang up'), 'network'], [new Error('socket hang up'), 'error']] as const) {
+    stubOpenAI(['HRV is 99ms.', failure]);
+    const errors: string[] = [];
+    const r = await generateValidatedVoice({ ...params, log: { warn() {}, error: (m) => errors.push(m) } });
+    assert.deepEqual([r.usedFallback, r.llmError], [true, true]);
+    assert.match(errors[0], new RegExp(`^voice_llm_error .*"attempt":2.*"kind":"${kind}"`));
+    assert.doesNotMatch(errors[0], /socket hang up/, 'the error text stays out of the log');
+  }
 });
 
 test('a failed first call never throws, with no flag from the caller', async () => {
@@ -102,7 +106,7 @@ test('an outage on the first call ends in the validated fallback', async () => {
     assert.equal(line.event, 'voice_llm_error');
     assert.equal(line.attempt, 1);
     assert.equal(line.surface, 'daily');
-    assert.match(line.kind, /^(http_\d{3}|timeout|network)$/);
+    assert.match(line.kind, /^(http_\d{3}|timeout|network|error)$/);
     assert.doesNotMatch(errors[0], /upstream error|412|52/, 'no error body, no athlete values');
   }
 });
