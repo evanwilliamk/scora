@@ -31,6 +31,15 @@ On without a flag once merged and deployed (with a new app build where it is iOS
 - Dashboard cards carry `connect` (oura, strava or null); the new app build offers Connect Oura only when Oura is not linked.
 - The app skips onboarding for a returning athlete (reads `onboarded` from `GET /api/preferences`) and resends an unsaved delivery time.
 
+From 2026-11-02 (no new migration, flag or env var):
+
+- An OpenAI failure on any voice surface sends the checked driver fallback and logs one `voice_emission` line (`fallback`, `final_ok`). The `fallbackOnLlmError` option is gone; it was code only, nothing to change on Railway.
+- Chat during an OpenAI outage answers 200, not 500: "No answer could be reached just now, so nothing is shown for this question.", `unavailable: true`, no drivers, and the query refunded (`remaining` counts the refund only when it was saved). Chat's OpenAI call now times out like the other surfaces.
+- A failed Strava pull on read, weekly, chat, race prediction and calories still answers 401, but `error` is "Strava needs to be connected again." (Strava said 401 or 403 after the token refresh) or "Strava is not answering right now." (timeout, network, 5xx, bad body).
+- Every voice surface (daily, weekly, card, cdv, adaptation_reason, why, more) logs `final_ok`. Gate 1.1.4 reads INCOMPLETE while any line lacks it, so a log that spans the deploy makes the gate script exit 3 (section 5).
+- Plan setup (new app build) asks weekly volume in miles and posts `current_weekly_km` converted to km at two decimals; the API contract (km, 0 to 500) is unchanged, so older builds keep working.
+- DEBUG builds only, never in release: new launch arguments `-demo-signin`, `-demo-onboarding`, `-demo-onboarding-step <oura|health|plan|delivery|done>` and `-demo-delivery-fails` (UI tests use them).
+
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
 
 All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrations.test.ts`), none applied anywhere. Filename order is the apply order. The five files already on `main` (2026-07) are not listed.
@@ -48,7 +57,7 @@ All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrati
 11. `20261101000000_create_scora_plan_idempotent.sql`: the same plan setup sent twice keeps the plan it made, with its marks and changes; redefines `create_scora_plan()` only.
 12. `20261101010000_due_deliveries.sql`: `scora_due_deliveries()` and `scora_delivery_zone()`, so an idle push scheduler tick is one request instead of reading every athlete's preferences. Optional for correctness (without it the scheduler reads every athlete, as before, and checks again every 15 minutes), needed for scale; can be applied before or after the merge.
 
-Later 2026-11-01 migrations, if any, follow in filename order.
+No migrations were added on 2026-11-02; the list above is complete. Later ones, if any, follow in filename order.
 
 9 redefines a function 7 creates; 10 and 11 redefine the one 6 creates. If you re-run any earlier migration, re-run every later one after it, in order.
 
@@ -84,8 +93,10 @@ From `apps/api`, after migration 1: `npx tsx scripts/ingest-knowledge.ts <export
 ## 5. Smoke test after deploy (read-only)
 
 1. `GET /health` returns `status: ok`; `GET /api/keepalive` returns `supabase: true`.
-2. Export the Railway log from the first morning after deploy and, from `apps/api`, run `npx tsx scripts/voice-gate-report.ts <log-file>` (expect `push_delivery`, `push_sent` and `voice_emission` lines; exit 3 means no telemetry lines) and `npx tsx scripts/log-audit.ts <log-file>` (exit 0, no health values or secrets in the log).
-3. In the Supabase SQL editor (each is a plain `select`): `apps/api/scripts/phase1-gates.sql` (edit `phase_start` first), `apps/api/scripts/plan-gates.sql`, and `apps/api/scripts/plan-invariants.sql` once `PLAN_ADAPTATIONS` is on (no rows means every plan bar held).
+2. Export the Railway log from the first morning after deploy and, from `apps/api`, run `npx tsx scripts/voice-gate-report.ts <log-file>` (expect `push_delivery`, `push_sent` and `voice_emission` lines; exit 1 means a bar failed, exit 3 means not enough telemetry: no lines, or voice lines without `final_ok`, which a log starting before the deploy will have; export from after the deploy) and `npx tsx scripts/log-audit.ts <log-file>` (exit 0, no health values or secrets in the log).
+3. Chat during an OpenAI outage (staging or local, with a bad `OPENAI_API_KEY`): `POST /api/cdv` answers 200 with the outage sentence and `unavailable: true`, the day's chat count is unchanged, and the log has one `voice_emission` line with `surface: cdv`, `fallback: true`.
+4. Strava revoked (a test athlete, after revoking SCORA under Strava settings > My Apps): `POST /api/read` answers 401 with "Strava needs to be connected again." while the stored access token is unexpired (once it expires the refresh fails and the older "Strava not connected or refresh failed. Please reconnect Strava." comes back instead); the app shows either sentence.
+5. In the Supabase SQL editor (each is a plain `select`): `apps/api/scripts/phase1-gates.sql` (edit `phase_start` first), `apps/api/scripts/plan-gates.sql`, and `apps/api/scripts/plan-invariants.sql` once `PLAN_ADAPTATIONS` is on (no rows means every plan bar held).
 
 ## 6. Open questions that touch this branch
 
