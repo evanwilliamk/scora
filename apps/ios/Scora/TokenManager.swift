@@ -29,6 +29,8 @@ class TokenManager: ObservableObject {
     athleteName = UserDefaults.standard.string(forKey: athleteNameKey) ?? ""
     needsOnboarding = OnboardingState.needsOnboarding
     #if DEBUG
+    if DemoMode.showsSignIn { isAuthenticated = false }
+    if DemoMode.onboardingStep != nil { needsOnboarding = true }
     if DemoMode.isOn { return } // the demo never calls the API
     #endif
     // A choice skipped during onboarding is sent again on launch.
@@ -111,6 +113,9 @@ class TokenManager: ObservableObject {
   }
 
   func finishOnboarding() {
+    #if DEBUG
+    if DemoMode.isOn { needsOnboarding = false; return } // nothing stored
+    #endif
     OnboardingState.needsOnboarding = false
     DispatchQueue.main.async { self.needsOnboarding = false }
   }

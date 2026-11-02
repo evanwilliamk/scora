@@ -72,7 +72,14 @@ struct OnboardingView: View {
   var onFinish: () -> Void
   @Environment(\.openURL) private var openURL
 
-  @State private var step: OnboardingStep = .oura
+  @State private var step: OnboardingStep = Self.firstStep
+
+  private static var firstStep: OnboardingStep {
+    #if DEBUG
+    if let demo = DemoMode.onboardingStep { return demo }
+    #endif
+    return .oura
+  }
   @State private var ouraConnected = false
   @State private var showPlan = false
   @State private var deliveryTime = OnboardingState.defaultDeliveryTime()
@@ -231,6 +238,9 @@ struct OnboardingView: View {
   // skip the plan screen.
   private func requestHealth() {
     guard !requestingHealth else { return }
+    #if DEBUG
+    if DemoMode.isOn { advance(from: .health); return } // no system prompt
+    #endif
     requestingHealth = true
     Task {
       _ = await HealthManager.shared.requestAuthorization()
@@ -242,6 +252,9 @@ struct OnboardingView: View {
   }
 
   private func connectOura() {
+    #if DEBUG
+    if DemoMode.isOn { ouraConnected = true; advance(from: .oura); return } // as if linked
+    #endif
     guard let url = URL(string: "\(apiBase)/api/auth/oura?athlete_id=\(tokenManager.athleteId)") else { return }
     openURL(url)
   }
@@ -254,6 +267,9 @@ struct OnboardingView: View {
   // The save failed and the athlete moved on: keep the choice on the phone
   // so it is sent on the next launch or sign-in.
   private func skipDelivery() {
+    #if DEBUG
+    if DemoMode.isOn { advance(from: .delivery); return } // nothing kept
+    #endif
     OnboardingSync.keep(PendingOnboarding(
       athleteId: tokenManager.athleteId,
       timezone: TimeZone.current.identifier,
@@ -263,6 +279,16 @@ struct OnboardingView: View {
   }
 
   private func saveDelivery() async {
+    #if DEBUG
+    if DemoMode.isOn {
+      let ok = !DemoMode.deliveryFails
+      await MainActor.run {
+        isSaving = false
+        if ok { advance(from: .delivery) } else { errorText = "Could not save the time. The read still arrives at 6:00 until it is set." }
+      }
+      return
+    }
+    #endif
     guard let url = URL(string: "\(apiBase)/api/preferences") else { return }
     await MainActor.run { isSaving = true; errorText = nil }
     var req = URLRequest(url: url)

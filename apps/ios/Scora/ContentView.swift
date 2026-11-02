@@ -20,6 +20,9 @@ struct ContentView: View {
       Spacer()
       
       Button(action: {
+        #if DEBUG
+        if DemoMode.showsSignIn { return } // the demo opens nothing
+        #endif
         if let url = URL(string: "https://zonal-prosperity-production-3965.up.railway.app/api/auth/strava") {
           UIApplication.shared.open(url)
         }
