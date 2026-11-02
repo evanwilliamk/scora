@@ -40,7 +40,7 @@ Fixed 2026-11-02 (branch claude/gate-fail-through): every voice surface (daily, 
 | 1.1.1 | APNS delivery on time 13 of 14 mornings | TESTED | api/gate-report, delivery, scheduler-*, send-push |
 | 1.1.2 | Founder opens 12 of 14 within 4h | TESTED | api/gate-report (morning gate) |
 | 1.1.3 | Zero banned-phrase hits over 14 reads | TESTED | api/validator, banned-phrases-4-1, routes-read; GAP filled: acceptance-gaps (0 of 14 passes) |
-| 1.1.4 | Zero validator fail-throughs | TESTED | api/voice, cdv-check, adaptation-reason, card-expand (final_ok on every surface's line, pass, fallback and fail-through), gate-report (per-surface count; a line without final_ok reads INCOMPLETE, not PASS) |
+| 1.1.4 | Zero validator fail-throughs | TESTED | api/voice, cdv-check, adaptation-reason, card-expand (final_ok on every surface's line, pass, fallback and fail-through), gate-report (per-surface count; a line without final_ok reads INCOMPLETE, not PASS, and the script exits 3) |
 | 1.1.5 | At least one "wow" moment | NOT CODE | Evan, dogfood-log.md |
 | 1.1.6 | Zero PHI in logs | TESTED | api/log-audit, telemetry |
 | 1.1.7 | Numeric-first format, null workout line on Free | TESTED | api/numeric-line, scheduler-push, routes-read (no Today line for pasted plans), gate-report |

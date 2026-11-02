@@ -268,3 +268,18 @@ export function planAwareGateReport(logText: string): { byAthlete: Record<string
     ],
   };
 }
+
+// Exit code for scripts/voice-gate-report.ts: 0 pass, 1 a bar failed, 3 not
+// enough telemetry to judge (no lines at all, or voice lines without
+// final_ok, which leave gate 1.1.4 INCOMPLETE: not a pass).
+export function gateExitCode(
+  voice: GateReport,
+  delivery: { pass: boolean | null },
+  morning: { openPass: boolean | null; numericPass: boolean | null },
+  planAware: { pass: boolean | null },
+): 0 | 1 | 3 {
+  const voiceFail = (voice.total.emissions > 0 && (voice.bannedRate >= BANNED_RATE_MAX || voice.fallbackRate >= FALLBACK_RATE_MAX)) || voice.failThroughs > 0;
+  if (voiceFail || delivery.pass === false || morning.openPass === false || morning.numericPass === false || planAware.pass === false) return 1;
+  const noData = voice.total.emissions === 0 && delivery.pass === null;
+  return noData || voice.unchecked > 0 ? 3 : 0;
+}

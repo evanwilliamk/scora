@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deliveryGateReport, morningGateReport, planAwareGateReport, voiceGateReport } from '../src/gate-report';
+import { deliveryGateReport, gateExitCode, morningGateReport, planAwareGateReport, voiceGateReport } from '../src/gate-report';
 import { pushDeliveryLine, pushOpenLine, pushSentLine, readPlanLine, voiceEmissionLine } from '../src/telemetry';
 
 test('counts emissions per surface from plain and JSON-wrapped log lines', () => {
@@ -161,4 +161,19 @@ test('plan-aware gate: a day counts as named if any read that day named the plan
   assert.equal(r.pass, false, 'b names the plan on 50% of days');
   assert.equal(planAwareGateReport(lines.slice(0, 4).join('\n')).pass, true);
   assert.equal(planAwareGateReport('').pass, null);
+});
+
+test('script exit code: fail-throughs INCOMPLETE is not a pass', () => {
+  const ok = (finalOk?: boolean) => {
+    const line = voiceEmissionLine({ surface: 'daily', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0, finalOk: finalOk ?? true });
+    // An older line logged before every surface set final_ok.
+    return finalOk === undefined ? line.replace(/,"final_ok":true/, '') : line;
+  };
+  const code = (log: string) => gateExitCode(voiceGateReport(log), deliveryGateReport(log), morningGateReport(log), planAwareGateReport(log));
+  const passing = Array.from({ length: 20 }, () => ok(true));
+  assert.equal(code(passing.join('\n')), 0);
+  assert.match(voiceGateReport([...passing, ok()].join('\n')).lines.at(-1)!, /INCOMPLETE/);
+  assert.equal(code([...passing, ok()].join('\n')), 3, 'an unchecked emission leaves 1.1.4 unjudged');
+  assert.equal(code([...passing, ok(), ok(false)].join('\n')), 1, 'a fail-through fails even with unchecked lines');
+  assert.equal(code('nothing here'), 3);
 });

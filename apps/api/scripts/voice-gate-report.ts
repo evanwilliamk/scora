@@ -2,7 +2,7 @@
 // Prints voice catch, fallback and banned-phrase rates per surface, and the
 // morning delivery, open and numeric-first gates per athlete (doc 10).
 import { readFileSync } from 'node:fs';
-import { deliveryGateReport, morningGateReport, planAwareGateReport, voiceGateReport } from '../src/gate-report';
+import { deliveryGateReport, gateExitCode, morningGateReport, planAwareGateReport, voiceGateReport } from '../src/gate-report';
 
 const file = process.argv[2];
 if (!file) {
@@ -15,7 +15,5 @@ const delivery = deliveryGateReport(text);
 const morning = morningGateReport(text);
 const planAware = planAwareGateReport(text);
 console.log([...report.lines, '', ...delivery.lines, '', ...morning.lines, '', ...planAware.lines].join('\n'));
-// 0 pass, 1 a bar failed, 3 no telemetry lines found (not a pass).
-const voiceFail = (report.total.emissions > 0 && (report.bannedRate >= 0.005 || report.fallbackRate >= 0.1)) || report.failThroughs > 0;
-const noData = report.total.emissions === 0 && delivery.pass === null;
-process.exit(noData ? 3 : voiceFail || delivery.pass === false || morning.openPass === false || morning.numericPass === false || planAware.pass === false ? 1 : 0);
+// 0 pass, 1 a bar failed, 3 not enough telemetry to judge (not a pass).
+process.exit(gateExitCode(report, delivery, morning, planAware));
