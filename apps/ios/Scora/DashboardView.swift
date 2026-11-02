@@ -178,6 +178,12 @@ enum ReadDate {
     isOld(loadedDay: loadedDay, today: today) ? cards.filter { $0.id != "plan_today" } : cards
   }
 
+  // Week So Far is "since Monday" as of the day the read was made; on an
+  // earlier day's read its bars (maybe last week's) are not this week's, so it is not shown.
+  static func weekSoFar(_ week: WeekSoFar?, loadedDay: String?, today: String) -> WeekSoFar? {
+    isOld(loadedDay: loadedDay, today: today) ? nil : week
+  }
+
   // "2026-10-31" as "Saturday, October 31".
   static func spoken(_ day: String) -> String? {
     let parse = DateFormatter()
@@ -375,7 +381,7 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 20) {
           todaysRead
             .id("top")
-          if let week { WeekSoFarView(week: week) }
+          if let week = ReadDate.weekSoFar(week, loadedDay: loadedDay, today: today) { WeekSoFarView(week: week) }
           let shownCards = ReadDate.cards(cards, loadedDay: loadedDay, today: today)
           if !shownCards.isEmpty {
             LazyVGrid(columns: columns, spacing: 12) {

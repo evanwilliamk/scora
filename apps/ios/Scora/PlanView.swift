@@ -377,9 +377,18 @@ struct PlanLevel: Decodable, Equatable {
   enum CodingKeys: String, CodingKey { case level, weeklyKm = "weekly_km", minWeeks = "min_weeks" }
 
   // Whole km the form may offer.
-  var kmRange: ClosedRange<Int> {
-    let lo = Int((weeklyKm.first ?? 0).rounded(.up))
-    let hi = Int((weeklyKm.last ?? 0).rounded(.up)) - 1
+  var kmRange: ClosedRange<Int> { range(in: .km) }
+
+  // Whole numbers in the athlete's unit whose posted km (PlanSetup.km) the
+  // level's templates take, and never past the API's 500 km.
+  func range(in unit: PlanDistance.Unit = PlanDistance.unit) -> ClosedRange<Int> {
+    let minKm = weeklyKm.first ?? 0, maxKm = weeklyKm.last ?? 0
+    let perUnit = unit == .mi ? PlanDistance.kmPerMile : 1
+    var lo = max(0, Int((minKm / perUnit).rounded(.up)))
+    while PlanSetup.km(lo, unit: unit) < minKm { lo += 1 }
+    var hi = Int((maxKm / perUnit).rounded(.up))
+    while hi > lo && PlanSetup.km(hi, unit: unit) >= maxKm { hi -= 1 }
+    hi = min(hi, Int((PlanSetup.maxWeeklyKm / perUnit).rounded(.down)))
     return lo...max(lo, hi)
   }
 }
@@ -412,6 +421,23 @@ enum PlanSetup {
 
   static func clamp(_ km: Int, to range: ClosedRange<Int>) -> Int { min(max(km, range.lowerBound), range.upperBound) }
 
+  // current_weekly_km stays km on the wire (0 to 500); the form asks in the
+  // athlete's unit (PlanDistance.unit) and converts here, to the API's two decimals.
+  static let maxWeeklyKm = 500.0
+  static func km(_ volume: Int, unit: PlanDistance.Unit = PlanDistance.unit) -> Double {
+    let km = unit == .mi ? Double(volume) * PlanDistance.kmPerMile : Double(volume)
+    return (km * 100).rounded() / 100
+  }
+
+  // The form's starting volume: 30 km, in the athlete's unit (19 mi).
+  static func startingVolume(unit: PlanDistance.Unit = PlanDistance.unit) -> Int {
+    unit == .mi ? Int((30 / PlanDistance.kmPerMile).rounded()) : 30
+  }
+
+  static func volumeLabel(_ volume: Int, unit: PlanDistance.Unit = PlanDistance.unit) -> String {
+    "\(volume) \(unit.rawValue) a week"
+  }
+
   // Short name for the picker; levelText is the full line under it.
   static func levelName(_ level: String) -> String {
     switch level {
@@ -431,7 +457,7 @@ enum PlanSetup {
     }
   }
 
-  static func body(athleteId: String, goal: PlanGoal, raceDate: Date, weeklyKm: Int, level: String, now: Date = Date()) -> [String: Any] {
+  static func body(athleteId: String, goal: PlanGoal, raceDate: Date, weeklyKm: Double, level: String, now: Date = Date()) -> [String: Any] {
     [
       "athleteId": athleteId, "today": PlanDay.today(now),
       "sport": goal.sport, "goal_type": goal.goalType, "experience_level": level,
@@ -451,7 +477,7 @@ struct PlanSetupView: View {
   @State private var goalId: String
   @State private var level: String
   @State private var raceDate: Date
-  @State private var weeklyKm: Int
+  @State private var weekly: Int // in PlanDistance.unit; posted as km
   @State private var isBuilding = false
   @State private var confirming = false
   @State private var message: String?
@@ -466,7 +492,8 @@ struct PlanSetupView: View {
     _goalId = State(initialValue: goals.first?.id ?? "")
     _level = State(initialValue: first?.level ?? "")
     _raceDate = State(initialValue: PlanSetup.earliestRace(minWeeks: first?.minWeeks ?? 0))
-    _weeklyKm = State(initialValue: first.map { PlanSetup.clamp(30, to: $0.kmRange) } ?? 30)
+    let start = PlanSetup.startingVolume()
+    _weekly = State(initialValue: first.map { PlanSetup.clamp(start, to: $0.range()) } ?? start)
   }
 
   private var goal: PlanGoal? { goals.first { $0.id == goalId } ?? goals.first }
@@ -488,8 +515,8 @@ struct PlanSetupView: View {
           if !level.isEmpty {
             Text(PlanSetup.levelText(level)).font(.footnote).foregroundColor(.gray)
           }
-          if let range = levelInfo?.kmRange {
-            Stepper("\(weeklyKm) km a week", value: $weeklyKm, in: range)
+          if let range = levelInfo?.range() {
+            Stepper(PlanSetup.volumeLabel(weekly), value: $weekly, in: range)
           }
         }
         Section {
@@ -520,10 +547,10 @@ struct PlanSetupView: View {
     .preferredColorScheme(.dark)
   }
 
-  // Keep the km and the race date inside what the chosen level's templates take.
+  // Keep the volume and the race date inside what the chosen level's templates take.
   private func fitToLevel() {
     guard let info = levelInfo else { return }
-    weeklyKm = PlanSetup.clamp(weeklyKm, to: info.kmRange)
+    weekly = PlanSetup.clamp(weekly, to: info.range())
     raceDate = max(raceDate, PlanSetup.earliestRace(minWeeks: info.minWeeks))
   }
 
@@ -534,7 +561,7 @@ struct PlanSetupView: View {
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: PlanSetup.body(
-      athleteId: athleteId, goal: goal, raceDate: raceDate, weeklyKm: weeklyKm, level: level))
+      athleteId: athleteId, goal: goal, raceDate: raceDate, weeklyKm: PlanSetup.km(weekly), level: level))
     var result: (Data, URLResponse)?
     var failure: Error?
     do { result = try await API.slowSession.data(for: req) } catch { failure = error }

@@ -558,10 +558,43 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(body["sport"] as? String, "run")
         XCTAssertEqual(body["goal_type"] as? String, "half_marathon")
         XCTAssertEqual(body["experience_level"] as? String, "regular")
-        XCTAssertEqual(body["current_weekly_km"] as? Int, 35)
+        XCTAssertEqual(body["current_weekly_km"] as? Double, 35)
         XCTAssertEqual(body["goal_race_date"] as? String, "2027-01-20")
         XCTAssertEqual(body["today"] as? String, "2026-10-28")
         XCTAssertEqual(PlanSetup.levelText("first_timer"), "First timer or first serious block")
+    }
+
+    // Q32 B: the form asks in the athlete's unit (miles today) and posts km.
+    func testPlanSetupAsksInMilesAndPostsKm() throws {
+        XCTAssertEqual(PlanDistance.unit, .mi)
+        let json = #"{"goals":[{"sport":"run","goal_type":"half_marathon","label":"Half marathon","levels":[{"level":"regular","weekly_km":[30,50],"min_weeks":12},{"level":"first_timer","weekly_km":[20.5,35],"min_weeks":3},{"level":"competitive","weekly_km":[0,900],"min_weeks":3}]}]}"#
+        let goal = try XCTUnwrap(JSONDecoder().decode(PlanOptionsResponse.self, from: Data(json.utf8)).goals.first)
+        // Every whole mile offered posts km inside the level's [min, max).
+        XCTAssertEqual(goal.levels[0].range(), 19...31)
+        XCTAssertEqual(goal.levels[1].range(), 13...21)
+        for level in goal.levels.prefix(2) {
+            let r = level.range()
+            XCTAssertGreaterThanOrEqual(PlanSetup.km(r.lowerBound), level.weeklyKm[0])
+            XCTAssertLessThan(PlanSetup.km(r.upperBound), level.weeklyKm[1])
+            XCTAssertLessThan(PlanSetup.km(r.lowerBound - 1), level.weeklyKm[0])
+            XCTAssertGreaterThanOrEqual(PlanSetup.km(r.upperBound + 1), level.weeklyKm[1])
+        }
+        // The API's 0 to 500 km, in miles.
+        XCTAssertEqual(goal.levels[2].range(), 0...310)
+        XCTAssertLessThanOrEqual(PlanSetup.km(310), 500)
+        XCTAssertEqual(goal.levels[2].range(in: .km), 0...500)
+
+        XCTAssertEqual(PlanSetup.km(25), 40.23, "25 mi, at the API's two decimals")
+        XCTAssertEqual(PlanSetup.km(25, unit: .km), 25)
+        XCTAssertEqual(PlanSetup.startingVolume(), 19)
+        XCTAssertEqual(PlanSetup.startingVolume(unit: .km), 30)
+        XCTAssertEqual(PlanSetup.volumeLabel(25), "25 mi a week")
+        XCTAssertEqual(PlanSetup.volumeLabel(40, unit: .km), "40 km a week")
+
+        let body = PlanSetup.body(athleteId: "a1", goal: goal, raceDate: Date(), weeklyKm: PlanSetup.km(25), level: "regular")
+        XCTAssertEqual(body["current_weekly_km"] as? Double, 40.23, "what is posted is km")
+        let wire = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONSerialization.data(withJSONObject: body)) as? [String: Any])
+        XCTAssertEqual((wire["current_weekly_km"] as? NSNumber)?.doubleValue, 40.23)
     }
 
     func testPlanBlockReadsWeekPhaseAndRace() throws {
