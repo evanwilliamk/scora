@@ -860,3 +860,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: no schema change. Stored km is converted at display time by one helper, `apps/api/src/units.ts` (`distanceUnit()`, `formatPlanDistance()`, `planDistanceValue()`), mirrored on iOS by `PlanDistance` in PlanView.swift. Miles round to one decimal (13.1 mi stored as 21.08 km reads 13.1 mi, 16 mi reads 16 mi). The athlete's Strava measurement_preference is not stored or fetched anywhere today, so the unit is miles for everyone, matching metrics.ts. Covers the Plan today driver, the PLAN TODAY prompt line, the Plan Today card and the Your Plan sheet; the Today: line, weekly plan driver and adaptation reasons state no stored distances. Template km, plan engine km, pasted descriptions and the plan setup form's current_weekly_km input are unchanged. Alternatives: A (store the written unit, needs a column) or keep km.
 - Why: one unit across the read, and the voice can quote the plan in the same unit as Weekly volume and Long run. A km-written plan ("10 km") now reads 6.2 mi, the cost of having no stored preference.
 - To reverse: make `distanceUnit()` (units.ts) and `PlanDistance.unit` return km, or pass a real preference into them once one is stored.
+
+### 2026-11-02: Tiny plan distances and which API errors the app shows
+- Status: DECIDED
+- Branch: claude/ios-review-1102
+- Context: a plan distance under about 0.08 km read "0 mi", and chat, Today's Read and This Week showed the API's developer labels ("LLM failed", "Missing: athleteId").
+- Choice: below 0.1 a distance keeps two decimals with a 0.01 floor (units.ts and PlanDistance alike; it stays a number the validator can match). The app shows the server's `error` only when it reads as a sentence (ends in "." or "?", no "Missing:" prefix, no env name); otherwise the screen's own line.
+- Why: "under 0.1 mi" has no number for the driver-existence check; the full-stop rule matches every athlete-facing message the API sends today without a list to maintain.
+- To reverse: `planDistanceValue` / `PlanDistance.format`; `APIErrorText.isForAthlete`.
