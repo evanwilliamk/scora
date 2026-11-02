@@ -261,6 +261,38 @@ final class OfflineReviewTests: XCTestCase {
     XCTAssertFalse(ReadDate.isOld(loadedDay: "2026-11-01", today: "2026-11-01"))
   }
 
+  // An earlier day's read (kept on the phone, or a refresh that failed past
+  // midnight) is that day's: its "Today:" plan line and Plan today card were
+  // that day's session, so they are not shown as today's.
+  func testOlderReadDropsItsTodayLines() {
+    let line = "Today: 45-minute tempo."
+    XCTAssertEqual(ReadDate.todayLine(line, loadedDay: "2026-11-01", today: "2026-11-01"), line)
+    XCTAssertNil(ReadDate.todayLine(line, loadedDay: "2026-10-31", today: "2026-11-01"))
+
+    let plan = DashboardCard(id: "plan_today", title: "Plan today", available: true, value: "45", unit: "min",
+                             translation: "On your plan today: tempo, 45 min.", trend: "tempo", source: "Your plan", cta: nil)
+    let sleep = DashboardCard(id: "sleep", title: "Sleep", available: true, value: "7:12", unit: nil,
+                              translation: "Sleep held.", trend: nil, source: "Oura", cta: nil)
+    XCTAssertEqual(ReadDate.cards([sleep, plan], loadedDay: "2026-11-01", today: "2026-11-01").map(\.id), ["sleep", "plan_today"])
+    XCTAssertEqual(ReadDate.cards([sleep, plan], loadedDay: "2026-10-31", today: "2026-11-01").map(\.id), ["sleep"])
+  }
+
+  // A reply that lands after the phone changed hands (sign-out, another
+  // athlete signed in) is never kept under the athlete now signed in.
+  func testReadIsKeptOnlyForTheAthleteWhoAskedForIt() {
+    let file = tempCache()
+    let body = Data(#"{"read":{"voice":"Body is settled."},"cards":[]}"#.utf8)
+    let saved = Date(timeIntervalSince1970: 1_793_000_000)
+    ReadCache.save(body, day: "2026-10-31", athleteId: "a1", signedIn: "a2", at: saved, to: file)
+    XCTAssertNil(ReadCache.load(athleteId: "a1", now: saved, from: file))
+    XCTAssertNil(ReadCache.load(athleteId: "a2", now: saved, from: file))
+    ReadCache.save(body, day: "2026-10-31", athleteId: "a1", signedIn: "", at: saved, to: file)
+    XCTAssertNil(ReadCache.load(athleteId: "a1", now: saved, from: file), "signed out meanwhile")
+    ReadCache.save(body, day: "2026-10-31", athleteId: "a1", signedIn: "a1", at: saved, to: file)
+    XCTAssertNotNil(ReadCache.load(athleteId: "a1", now: saved, from: file))
+    ReadCache.clear(at: file)
+  }
+
   private func tempCache() -> URL {
     FileManager.default.temporaryDirectory.appendingPathComponent("read-cache-\(UUID().uuidString)/last-read.json")
   }
