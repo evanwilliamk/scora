@@ -104,6 +104,8 @@ final class ScoraUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Build a plan"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Build my plan"].exists)
         XCTAssertTrue(app.staticTexts["First timer or first serious block"].exists)
+        // Weekly volume asks in miles (Q32 B): first timer takes 15 to 30 km, so 18 mi tops it.
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "18 mi a week")).firstMatch.exists)
     }
 
     func testLaunchPerformance() throws {
