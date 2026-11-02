@@ -1391,3 +1391,75 @@ final class ScoraTests: XCTestCase {
     }
 
 }
+
+// Chart summaries for VoiceOver: built only from the values the chart draws.
+final class ChartAccessibilitySummaryTests: XCTestCase {
+    private let utc = TimeZone(identifier: "UTC")!
+
+    func testDriverSeriesSummaryReadsTheDrawnPoints() {
+        let s = DriverSeries(key: "hrv", label: "HRV, nightly average", unit: "ms",
+                             points: [SeriesPoint(date: "2026-10-16", value: 44),
+                                      SeriesPoint(date: "2026-10-17", value: 41),
+                                      SeriesPoint(date: "2026-10-18", value: 52)],
+                             baseline: 46.5)
+        XCTAssertEqual(s.accessibilitySummary(zone: utc),
+                       "3 recorded values, October 16 to October 18. Latest 52 ms. Low 41 ms, high 52 ms. Average before: 46.5 ms.")
+    }
+
+    func testDriverSeriesSummaryLeavesOutDaysTheChartCannotPlace() {
+        let s = DriverSeries(key: "sleep", label: "Hours slept", unit: "h",
+                             points: [SeriesPoint(date: "not a day", value: 9), SeriesPoint(date: "2026-10-18", value: 7.2)],
+                             baseline: nil, baselineLabel: "last week")
+        XCTAssertEqual(s.accessibilitySummary(zone: utc), "1 recorded value. Latest 7:12.")
+    }
+
+    func testDriverSeriesSummaryUsesTheServersBaselineName() {
+        let s = DriverSeries(key: "load", label: "Run minutes", unit: "min",
+                             points: [SeriesPoint(date: "2026-10-17", value: 400), SeriesPoint(date: "2026-10-18", value: 412)],
+                             baseline: 380, baselineLabel: "last week")
+        XCTAssertTrue(s.accessibilitySummary(zone: utc).hasSuffix("Last week: 380 min."))
+    }
+
+    func testDriverSeriesSummaryWithNoPoints() {
+        let s = DriverSeries(key: "hrv", label: "HRV", unit: "ms", points: [], baseline: nil)
+        XCTAssertEqual(s.accessibilitySummary(zone: utc), "No recorded values.")
+    }
+
+    func testCDVSummaryReadsTheSpecsOwnValues() {
+        let values: [JSONValue] = [41, 44, 43, 52].enumerated().map { i, v in
+            .object(["week": .number(Double(i + 1)), "hrv": .number(Double(v))])
+        }
+        let spec = JSONValue.object([
+            "mark": .string("line"),
+            "data": .object(["values": .array(values)]),
+            "encoding": .object([
+                "x": .object(["field": .string("week"), "type": .string("ordinal"), "title": .string("Week")]),
+                "y": .object(["field": .string("hrv"), "type": .string("quantitative"), "title": .string("HRV (ms)")]),
+            ]),
+        ])
+        XCTAssertEqual(CDVChart.summary(for: spec),
+                       "HRV (ms) by Week. 4 values, from 1 to 4. First 41, last 52. Low 41, high 52.")
+    }
+
+    func testCDVSummaryDeclinesShapesItCannotReadExactly() {
+        let rows: JSONValue = .array([.object(["d": .string("Mon"), "v": .number(3)])])
+        let aggregated = JSONValue.object([
+            "data": .object(["values": rows]),
+            "encoding": .object(["y": .object(["field": .string("v"), "aggregate": .string("sum")])]),
+        ])
+        XCTAssertNil(CDVChart.summary(for: aggregated))
+        let colored = JSONValue.object([
+            "data": .object(["values": rows]),
+            "encoding": .object(["y": .object(["field": .string("v")]), "color": .object(["field": .string("d")])]),
+        ])
+        XCTAssertNil(CDVChart.summary(for: colored))
+        XCTAssertNil(CDVChart.summary(for: .object(["data": .object(["url": .string("x")])])))
+    }
+
+    func testCDVReplyCarriesTheSummaryWithTheChart() throws {
+        let json = #"{"voice":"HRV rose.","drivers":[],"chart":{"mark":"bar","data":{"values":[{"d":"Mon","v":3},{"d":"Tue","v":5.5}]},"encoding":{"x":{"field":"d"},"y":{"field":"v","title":"Runs"}}}}"#
+        let msg = CDVReply.message(from: Data(json.utf8))
+        XCTAssertNotNil(msg.chartHTML)
+        XCTAssertEqual(msg.chartSummary, "Runs by d. 2 values, from Mon to Tue. First 3, last 5.5. Low 3, high 5.5.")
+    }
+}
