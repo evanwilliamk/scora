@@ -121,17 +121,16 @@ test('6.2: every reason code has a fixed reason sentence that passes the reason 
     const text = reasonText(d);
     assert.ok(text.length > 20, `empty reason for ${d.reason_code}`);
     assert.doesNotMatch(text, /undefined|null|NaN/, `reason has a hole: ${text}`);
-    // The no-window sentence is pinned by the finding below.
-    if (d.reason_code !== 'posture_rest_hard_no_window') assert.deepEqual(reasonIssues(text, d, []), [], `${d.reason_code}: ${text}`);
+    assert.deepEqual(reasonIssues(text, d, []), [], `${d.reason_code}: ${text}`);
   }
 });
 
-test('FAILING finding 6.2: the fixed no-window reason passes the reason checks it stands in for', {
-  todo: 'reasonText for posture_rest_hard_no_window ends "no other day this week could take it", and ADVICE in adaptation-reason.ts reads "take it" as advice',
-}, () => {
+test('6.2: the fixed no-window reason is a plain observation and passes the reason checks it stands in for', () => {
   const d = decided('rest', 'intervals', false)!;
   assert.equal(d.reason_code, 'posture_rest_hard_no_window');
-  assert.deepEqual(reasonIssues(reasonText(d), d, []), []);
+  const text = reasonText(d);
+  assert.equal(text, "Tuesday's intervals is now an easy run at the same 50 minutes. Today's posture reads rest, and no other day this week had room for it.");
+  assert.deepEqual(reasonIssues(text, d, []), []);
 });
 
 test('6.2: a move that displaces an easy session names that change too', () => {
