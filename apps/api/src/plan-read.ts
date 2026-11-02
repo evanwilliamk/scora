@@ -8,6 +8,7 @@
 import type { StoredWorkout } from './plan-store';
 import type { Card, Driver } from './metrics';
 import { toScheduledWorkout } from './plan-parse';
+import { distanceUnit, formatPlanDistance, planDistanceValue } from './units';
 
 // When a day has more than one session, the read keys off the hardest.
 const WEIGHT: Record<string, number> = {
@@ -22,12 +23,13 @@ export function todaysWorkout(rows: StoredWorkout[], today: string): StoredWorko
   );
 }
 
-// "tempo, 45 min" / "long, 25.8 km" / "rest". Only stored values.
+// "tempo, 45 min" / "long, 13.1 mi" / "rest". Only stored values; a distance
+// is the stored km in the athlete's unit (units.ts).
 export function planDriver(w: StoredWorkout): Driver {
   // In words: the voice and the fallback quote this value as is.
   const parts: string[] = [(w.planned_intensity ?? w.planned_type).replace(/_/g, ' ')];
   if (w.planned_duration_min != null) parts.push(`${w.planned_duration_min} min`);
-  if (w.planned_distance_km != null) parts.push(`${Number(w.planned_distance_km)} km`);
+  if (w.planned_distance_km != null) parts.push(formatPlanDistance(w.planned_distance_km));
   return { metric: 'Plan today', value: parts.join(', ') };
 }
 
@@ -61,17 +63,17 @@ export function planForRead(rows: StoredWorkout[], today: string): PlanForRead {
 
 // Whether a read names today's planned session (doc 10 2.1.8: plan reference
 // in at least 60% of reads on a day with a session). Named = the word plan;
-// the session's own minutes or kilometres, in any spelling ("45 min",
-// "45-minute", "25.8 kilometres"); or its kind tied to today ("today's
+// the session's own minutes, miles or kilometres, in any spelling ("45 min",
+// "45-minute", "13.1 miles", "25.8 kilometres"); or its kind tied to today ("today's
 // tempo"). The kind alone is not enough: "tempo work earlier this week".
 export function readNamesPlan(voice: string, driver: Driver | null): boolean {
   if (!driver) return false;
   if (/\bplan(?:s|ned|'s)?\b/i.test(voice)) return true;
   const [kind, ...amounts] = driver.value.split(', ');
   for (const a of amounts) {
-    const m = /^(\d+(?:\.\d+)?) (min|km)$/.exec(a);
+    const m = /^(\d+(?:\.\d+)?) (min|mi|km)$/.exec(a);
     if (!m) continue;
-    const unit = m[2] === 'min' ? 'min(?:ute)?s?' : 'k(?:m|ilomet(?:er|re)s?)';
+    const unit = m[2] === 'min' ? 'min(?:ute)?s?' : m[2] === 'mi' ? 'mi(?:les?)?' : 'k(?:m|ilomet(?:er|re)s?)';
     if (new RegExp(`(?<![\\d.])${m[1].replace('.', '\\.')}(?:\\s|-)?${unit}\\b`, 'i').test(voice)) return true;
   }
   const k = kind.replace(/[_ ]/g, '[ -]?');
@@ -91,7 +93,7 @@ export function planTodayCard(rows: StoredWorkout[], today: string): Card | null
   const translation = `On your plan today: ${planDriver(w).value.replace(/_/g, ' ')}.`;
   // The amount is the big number, the kind sits under it; no amount, the kind is the value.
   if (w.planned_duration_min != null) return { ...base, value: String(w.planned_duration_min), unit: 'min', trend: kind, translation };
-  if (w.planned_distance_km != null) return { ...base, value: String(Number(w.planned_distance_km)), unit: 'km', trend: kind, translation };
+  if (w.planned_distance_km != null) return { ...base, value: String(planDistanceValue(w.planned_distance_km)), unit: distanceUnit(), trend: kind, translation };
   return { ...base, value: kind[0].toUpperCase() + kind.slice(1), translation };
 }
 
