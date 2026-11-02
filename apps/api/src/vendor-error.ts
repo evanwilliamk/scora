@@ -24,3 +24,18 @@ export function vendorErrorKind(e: unknown): string {
   if (e instanceof TypeError) return 'network';
   return 'error';
 }
+
+// What a failed Strava or Oura pull says to the athlete, from the same
+// categories: a 401 or 403 (after the token refresh already ran) means the
+// connection has to be made again; anything else (timeout, network, 5xx, a
+// body that is not a list) is the vendor not answering, which a retry can fix.
+// Full sentences ending in a full stop, so the app shows them as they are.
+export type VendorName = 'Strava' | 'Oura';
+
+export function vendorNeedsReconnect(e: unknown): boolean {
+  return e instanceof VendorHttpError && (e.status === 401 || e.status === 403);
+}
+
+export function vendorFailureLine(vendor: VendorName, e: unknown): string {
+  return vendorNeedsReconnect(e) ? `${vendor} needs to be connected again.` : `${vendor} is not answering right now.`;
+}

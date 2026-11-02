@@ -18,6 +18,9 @@ export interface FetchGuard {
   calls: GuardCall[];
   // Strava activity list for the next activities request(s); sticky.
   stravaActivities(list: unknown[]): void;
+  // Every Strava API call answers this status, or throws a network error
+  // ('network'); sticky. Token-refresh calls are not affected.
+  stravaFails(how: number | 'network'): void;
   // Oura answers by route name (sleep, daily_sleep, daily_readiness); sticky.
   // Without any, Oura answers 401 (not connected).
   oura(routes: Record<string, unknown>): void;
@@ -42,6 +45,7 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
   };
   const calls: GuardCall[] = [];
   let activities: unknown[] = [];
+  let stravaFail: number | 'network' | null = null;
   let llm: (string | Answer)[] = [];
   let ouraRoutes: Record<string, unknown> | null = null;
   let delays: Record<string, number> = {};
@@ -56,6 +60,10 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
     try { body = typeof init?.body === 'string' ? JSON.parse(init.body) : null; } catch { body = init?.body; }
     calls.push({ host: u.hostname, url, init, body });
     if (delays[u.hostname]) await new Promise((r) => setTimeout(r, delays[u.hostname]));
+    if (u.hostname === 'www.strava.com' && u.pathname.startsWith('/api/v3/') && stravaFail != null) {
+      if (stravaFail === 'network') throw new TypeError('fetch failed');
+      return json(stravaFail, { message: 'canned failure' });
+    }
     if (u.hostname === 'www.strava.com' && u.pathname === '/api/v3/athlete/activities') {
       return json(200, Number(u.searchParams.get('page') ?? '1') > 1 ? [] : activities);
     }
@@ -76,10 +84,11 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
   return {
     calls,
     stravaActivities(list) { activities = list; },
+    stravaFails(how) { stravaFail = how; },
     oura(routes) { ouraRoutes = routes; },
     openAi(...replies) { llm.push(...replies); },
     delay(host, ms) { delays[host] = ms; },
-    reset() { calls.length = 0; llm = []; activities = []; ouraRoutes = null; delays = {}; },
+    reset() { calls.length = 0; llm = []; activities = []; stravaFail = null; ouraRoutes = null; delays = {}; },
     restore() { globalThis.fetch = real; (http2 as any).connect = realConnect; },
   };
 }

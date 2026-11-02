@@ -20,7 +20,7 @@ import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from '
 import { generateValidatedVoice, OPENAI_TIMEOUT_MS } from './voice';
 import { checkCdvWithRetry, cdvEmission, cdvTextOk } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
-import { vendorErrorKind, vendorHttpError } from './vendor-error';
+import { vendorErrorKind, vendorFailureLine, vendorHttpError } from './vendor-error';
 
 import {
   registerDeviceToken, unregisterDeviceToken,
@@ -300,8 +300,8 @@ fastify.post('/api/cdv', async (request, reply) => {
     let activities: any[];
     try {
       activities = await fetchRecentActivities(stravaToken, 56);
-    } catch {
-      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    } catch (e) {
+      return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
     }
 
     const M = 1609.34;
@@ -602,8 +602,8 @@ fastify.post('/api/read', async (request, reply) => {
     let activities: any[];
     try {
       activities = await fetchRecentActivities(stravaToken, 35);
-    } catch {
-      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    } catch (e) {
+      return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
     }
 
     // The athlete's local date for "last night" and calendar-day counts: the
@@ -1225,8 +1225,8 @@ fastify.get('/api/plan/prediction', async (request, reply) => {
     let activities: any[];
     try {
       activities = await fetchActivitiesSince(token, Math.floor(Date.now() / 1000) - 60 * 86400);
-    } catch {
-      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    } catch (e) {
+      return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
     }
     const today = nearToday(clientToday) ?? athleteLocalToday(activities);
     return reply.send({ prediction: predictRace(activities, race, today) });
@@ -1254,13 +1254,13 @@ fastify.get('/api/calories', async (request, reply) => {
     const headers = { Authorization: `Bearer ${token}` };
     const after = Math.floor(Date.now() / 1000) - 14 * 86400;
     const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', { headers });
-    if (!athleteRes.ok) return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    if (!athleteRes.ok) return reply.code(401).send({ error: vendorFailureLine('Strava', await vendorHttpError(athleteRes, 'Strava')) });
     const athlete = (await athleteRes.json()) as { weight?: number | null };
     let activities: any[];
     try {
       activities = await fetchActivitiesSince(token, after);
-    } catch {
-      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    } catch (e) {
+      return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
     }
     const weight = typeof athlete.weight === 'number' && athlete.weight > 0 ? athlete.weight : null;
     const estimates = activities.map((a) => estimateCalories(a, weight)).filter((e) => e !== null);
@@ -1351,8 +1351,8 @@ fastify.post('/api/weekly', async (request, reply) => {
     let activities: any[];
     try {
       activities = await fetchRecentActivities(stravaToken, 15);
-    } catch {
-      return reply.code(401).send({ error: 'Strava token invalid or expired' });
+    } catch (e) {
+      return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
     }
 
     // The 7 complete days before the athlete's today: a Monday-morning push

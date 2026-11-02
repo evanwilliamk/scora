@@ -56,3 +56,13 @@ test('vendorErrorKind names a timeout', () => {
   assert.equal(vendorErrorKind(t), 'timeout');
   assert.equal(vendorErrorKind(new VendorHttpError('OpenAI', 502)), 'http_502');
 });
+
+test('vendorFailureLine: 401 and 403 ask for a new connection, anything else is not answering', async () => {
+  const { vendorFailureLine } = await import('../src/vendor-error');
+  assert.equal(vendorFailureLine('Strava', new VendorHttpError('Strava', 401)), 'Strava needs to be connected again.');
+  assert.equal(vendorFailureLine('Oura', new VendorHttpError('Oura', 403)), 'Oura needs to be connected again.');
+  for (const e of [new VendorHttpError('Strava', 500), new VendorHttpError('Strava', 429), new TypeError('fetch failed'),
+    Object.assign(new Error('t'), { name: 'TimeoutError' }), new Error('Strava returned no activity list'), 'x']) {
+    assert.equal(vendorFailureLine('Strava', e), 'Strava is not answering right now.');
+  }
+});

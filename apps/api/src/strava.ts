@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { vendorHttpError } from './vendor-error';
 
 // Lazy Supabase client so a missing env var can't crash the whole API at boot.
 // Only the token endpoints depend on it; /health and OAuth pages stay up.
@@ -201,7 +202,7 @@ export async function fetchActivitiesSince(
       // A hung page must not hold the read (and the scheduler tick behind it).
       signal: AbortSignal.timeout(15_000),
     });
-    if (!res.ok) throw new Error(`Strava ${res.status}`);
+    if (!res.ok) throw await vendorHttpError(res, 'Strava');
     const body: unknown = await res.json();
     // Outside data: anything but a list is a failed pull, and entries that
     // are not objects would crash the card math downstream.
