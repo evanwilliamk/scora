@@ -305,9 +305,17 @@ enum TimeZoneSync {
     req.httpMethod = "PUT"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": athleteId, "timezone": current])
-    if let (_, resp) = try? await API.session.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 {
+    if let (_, resp) = try? await API.session.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
+       keepsRecord(sentFor: athleteId, signedIn: UserDefaults.standard.string(forKey: "scora.athleteId")) {
       remember(current)
     }
+  }
+
+  // A send that lands after sign-out is not recorded: sign-out forgot the zone
+  // so the next athlete on this phone sends theirs, and a late reply for the
+  // last one must not mark it as sent.
+  static func keepsRecord(sentFor: String, signedIn: String?) -> Bool {
+    !sentFor.isEmpty && sentFor == signedIn
   }
 }
 

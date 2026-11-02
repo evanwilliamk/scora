@@ -128,6 +128,18 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(PlanDistance.format(km: 8, unit: .km), "8 km")
     }
 
+    func testPlanDistancePositiveNeverReadsZero() {
+        XCTAssertEqual(PlanDistance.format(km: 0.05), "0.03 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.01), "0.01 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.0001), "0.01 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.15), "0.09 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.161), "0.1 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.1608), "0.1 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.004, unit: .km), "0.01 km")
+        XCTAssertEqual(PlanDistance.format(km: 0.05, unit: .km), "0.05 km")
+        XCTAssertEqual(PlanDistance.format(km: 0), "0 mi")
+    }
+
     func testPlanTodayUsesTheGivenZone() {
         let instant = Date(timeIntervalSince1970: 1_792_195_200) // 2026-10-17 00:00 UTC
         XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "UTC")!), "2026-10-17")
@@ -204,6 +216,23 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(APIErrorText.message(from: Data(#"{"error":"You've used your 3 chats for today."}"#.utf8), fallback: "x"), "You've used your 3 chats for today.")
         XCTAssertEqual(APIErrorText.message(from: Data("<html>502 Bad Gateway</html>".utf8), fallback: "fallback"), "fallback")
         XCTAssertEqual(APIErrorText.message(from: Data(#"{"statusCode":500,"message":"boom"}"#.utf8), fallback: "fallback"), "fallback")
+    }
+
+    func testAPIErrorTextKeepsDeveloperLabelsOffScreen() {
+        // What the API sends today: labels for developers fall back, sentences for the athlete show.
+        for raw in ["LLM failed", "CDV failed", "Strava token invalid or expired", "Missing: athleteId",
+                    "Missing: message, athleteId", "Not found", "Unknown card: sleep", "Bad Request",
+                    "Oura not configured (OURA_CLIENT_ID missing).", "   "] {
+            let body = try! JSONSerialization.data(withJSONObject: ["error": raw])
+            XCTAssertEqual(APIErrorText.message(from: body, fallback: "fallback"), "fallback", raw)
+        }
+        for raw in ["You've used your 3 chats for today. Resets tomorrow.",
+                    "Message is too long (1000 characters at most).",
+                    "Strava not connected or refresh failed. Please reconnect Strava.",
+                    "No recent read. Refresh the dashboard first."] {
+            let body = try! JSONSerialization.data(withJSONObject: ["error": raw])
+            XCTAssertEqual(APIErrorText.message(from: body, fallback: "fallback"), raw)
+        }
     }
 
     func testPlanChangeDayIsTheLocalDay() {
@@ -1105,6 +1134,10 @@ final class ScoraTests: XCTestCase {
     // athlete goes straight to the dashboard. No real network: the transport
     // is a stub.
     func testSignInSkipsOnboardingWhenTheAPISaysItIsDone() async {
+        // a1 is the athlete signed in, so the API's answer applies to them.
+        let signedIn = UserDefaults.standard.string(forKey: "scora.athleteId")
+        UserDefaults.standard.set("a1", forKey: "scora.athleteId")
+        defer { UserDefaults.standard.set(signedIn, forKey: "scora.athleteId") }
         let saved = OnboardingSync.transport
         defer { OnboardingSync.transport = saved; OnboardingSync.pending = nil; OnboardingState.needsOnboarding = false }
         OnboardingSync.pending = nil
@@ -1141,6 +1174,10 @@ final class ScoraTests: XCTestCase {
     // "Skip for now" after a failed save: the choice stays on the phone and is
     // sent again until the API takes it.
     func testSkippedOnboardingChoiceIsKeptUntilTheAPIAcceptsIt() async throws {
+        // a1 is the athlete signed in, so the API's answer applies to them.
+        let signedIn = UserDefaults.standard.string(forKey: "scora.athleteId")
+        UserDefaults.standard.set("a1", forKey: "scora.athleteId")
+        defer { UserDefaults.standard.set(signedIn, forKey: "scora.athleteId") }
         let saved = OnboardingSync.transport
         defer { OnboardingSync.transport = saved; OnboardingSync.pending = nil; OnboardingState.needsOnboarding = false; TimeZoneSync.forget() }
         var sent: [URLRequest] = []

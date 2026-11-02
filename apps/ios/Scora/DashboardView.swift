@@ -366,6 +366,9 @@ struct DashboardView: View {
           .background(ouraBanner.connected ? Color.orange.opacity(0.25) : Color(white: 0.16))
           .transition(.move(edge: .top).combined(with: .opacity))
           .onTapGesture { withAnimation { self.ouraBanner = nil } }
+          // Tapping dismisses it, so VoiceOver says it is a control and what it does.
+          .accessibilityAddTraits(.isButton)
+          .accessibilityHint("Dismisses this notice")
       }
       ScrollViewReader { scroller in
       ScrollView {
@@ -843,15 +846,17 @@ enum ReadFetchOutcome: Equatable {
 enum ReadFetch {
   static let failureLine = NetworkText.read.other
 
-  static func run(_ loader: () async throws -> (Data, URLResponse)) async -> ReadFetchOutcome {
+  // `lines`: the screen's own words for a failure (This Week passes its own).
+  static func run(lines: NetworkText.Lines = NetworkText.read,
+                  _ loader: () async throws -> (Data, URLResponse)) async -> ReadFetchOutcome {
     do {
       let (data, resp) = try await loader()
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        return .failed(APIErrorText.message(from: data, fallback: failureLine))
+        return .failed(APIErrorText.message(from: data, fallback: lines.other))
       }
       return .data(data)
     } catch {
-      return isCancellation(error) ? .cancelled : .failed(NetworkText.read.line(for: error))
+      return isCancellation(error) ? .cancelled : .failed(lines.line(for: error))
     }
   }
 
@@ -864,13 +869,25 @@ enum ReadFetch {
 
 // What an API failure says to the athlete: the server's own `error` sentence
 // when the body has one, else a fixed line. Never a raw body (a proxy's HTML
-// page or a framework's JSON).
+// page or a framework's JSON). The server's sentences for the athlete end in
+// a full stop; its bare labels for developers ("LLM failed", "Strava token
+// invalid or expired", "Missing: athleteId", Fastify's "Bad Request") do not,
+// and neither those nor anything naming an env variable reach the screen.
 enum APIErrorText {
   private struct Body: Decodable { let error: String }
   static func message(from data: Data, fallback: String) -> String {
-    guard let text = (try? JSONDecoder().decode(Body.self, from: data))?.error,
-          !text.isEmpty, text.count <= 200, !text.contains("<") else { return fallback }
+    guard let raw = (try? JSONDecoder().decode(Body.self, from: data))?.error else { return fallback }
+    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard isForAthlete(text) else { return fallback }
     return text
+  }
+
+  static func isForAthlete(_ text: String) -> Bool {
+    guard !text.isEmpty, text.count <= 200, !text.contains("<"),
+          text.hasSuffix(".") || text.hasSuffix("?"),
+          !text.hasPrefix("Missing:"),
+          text.range(of: #"[A-Z]{2,}_[A-Z]"#, options: .regularExpression) == nil else { return false }
+    return true
   }
 }
 

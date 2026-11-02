@@ -55,6 +55,8 @@ struct WeeklyView: View {
   @State private var isLoading = false
   @State private var errorText: String?
   @State private var shareImage: UIImage?
+  // The first load, a pull and a reconnect can overlap; the newest reply wins.
+  @State private var loadGate = ReadLoadGate()
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
@@ -173,7 +175,10 @@ struct WeeklyView: View {
 
   private func loadWeekly() async {
     guard let url = URL(string: "\(apiBase)/api/weekly") else { return }
-    await MainActor.run { isLoading = true; errorText = nil }
+    let token = await MainActor.run { () -> Int in
+      isLoading = true; errorText = nil
+      return loadGate.begin()
+    }
 
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
@@ -181,22 +186,30 @@ struct WeeklyView: View {
     // The local date, so "last night" and the week are the athlete's, not UTC's.
     req.httpBody = try? JSONSerialization.data(withJSONObject: ["athleteId": tokenManager.athleteId, "today": PlanDay.today()])
 
-    do {
-      let (data, resp) = try await API.slowSession.data(for: req)
-      if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        let msg = APIErrorText.message(from: data, fallback: NetworkText.weekly.other)
-        await MainActor.run { errorText = msg; isLoading = false }
-        return
+    // A pull that ends early is cancelled, not failed: no error line (as on Today's Read).
+    let outcome = await ReadFetch.run(lines: NetworkText.weekly) { try await API.slowSession.data(for: req) }
+    guard case .data(let data) = outcome else {
+      await MainActor.run {
+        guard loadGate.isLatest(token) else { return }
+        errorText = outcome.errorLine; isLoading = false
       }
+      return
+    }
+    do {
       let decoded = try JSONDecoder().decode(WeeklyResponse.self, from: data)
       await MainActor.run {
+        // An older reply landing late never puts last week's numbers back.
+        guard loadGate.accept(token) else { return }
         read = decoded.read
         stats = decoded.stats
         shareImage = WeeklyShare.render(voice: decoded.read.voice, stats: decoded.stats)
-        isLoading = false
+        if loadGate.isLatest(token) { isLoading = false }
       }
     } catch {
-      await MainActor.run { errorText = WeeklyText.failure(error); isLoading = false }
+      await MainActor.run {
+        guard loadGate.isLatest(token) else { return }
+        errorText = WeeklyText.failure(error); isLoading = false
+      }
     }
   }
 }

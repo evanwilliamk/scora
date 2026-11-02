@@ -868,3 +868,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: send `buildFallbackVoice(drivers, card.title)` (the text `checkCardPosture` already falls back to) with the card's drivers, `generated: false`. Alternative: keep the translation and log it as a fail-through on every card error.
 - Why: every voice-like text sent is now either a passing draft or a checked fallback.
 - To reverse: `cardErrorFallback` in apps/api/src/card-expand.ts, return `card.translation` instead.
+
+### 2026-11-02: Tiny plan distances and which API errors the app shows
+- Status: DECIDED
+- Branch: claude/ios-review-1102
+- Context: a plan distance under about 0.08 km read "0 mi", and chat, Today's Read and This Week showed the API's developer labels ("LLM failed", "Missing: athleteId").
+- Choice: below 0.1 a distance keeps two decimals with a 0.01 floor (units.ts and PlanDistance alike; it stays a number the validator can match). The app shows the server's `error` only when it reads as a sentence (ends in "." or "?", no "Missing:" prefix, no env name); otherwise the screen's own line.
+- Why: "under 0.1 mi" has no number for the driver-existence check; the full-stop rule matches every athlete-facing message the API sends today without a list to maintain.
+- To reverse: `planDistanceValue` / `PlanDistance.format`; `APIErrorText.isForAthlete`.

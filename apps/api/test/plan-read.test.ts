@@ -85,6 +85,15 @@ test('a mile plan: the read cites the session in miles and passes the validator 
   assert.equal(validateVoice('The plan holds 21.08 km today.', [...base, p.driver!]).ok, false);
 });
 
+test('a tiny plan distance reads as its two-decimal value, never 0, and backs the read', () => {
+  const p = planForRead([w(TODAY, 'easy', { planned_distance_km: 0.05 })], TODAY);
+  assert.equal(p.driver!.value, 'easy, 0.03 mi');
+  assert.equal(validateVoice('The plan holds 0.03 mi today.', [p.driver!]).ok, true);
+  assert.equal(validateVoice('The plan holds 0 mi today.', [p.driver!]).ok, false);
+  const c = planTodayCard([w(TODAY, 'easy', { planned_distance_km: 0.05 })], TODAY)!;
+  assert.deepEqual([c.value, c.unit, c.translation], ['0.03', 'mi', 'On your plan today: easy, 0.03 mi.']);
+});
+
 test('voice that talks the athlete out of the plan fails validation (review findings)', () => {
   const drivers = [{ metric: 'Load', value: '412 min' }, { metric: 'Plan today', value: 'tempo, 45 min' }];
   for (const v of [

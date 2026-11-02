@@ -75,12 +75,20 @@ class TokenManager: ObservableObject {
         done = true
       }
     }
+    // The answer is about `athleteId`. If they signed out (or someone else
+    // signed in) while it was on its way, it changes nothing for who is here now.
+    guard Self.answerApplies(askedFor: athleteId, signedIn: self.athleteId) else { return }
     if done { OnboardingState.needsOnboarding = false }
     let finished = done
     await MainActor.run {
+      guard Self.answerApplies(askedFor: athleteId, signedIn: self.athleteId) else { return }
       if finished { self.needsOnboarding = false }
       self.checkingOnboarding = false
     }
+  }
+
+  static func answerApplies(askedFor: String, signedIn: String) -> Bool {
+    !askedFor.isEmpty && askedFor == signedIn
   }
   
   func logout() {
