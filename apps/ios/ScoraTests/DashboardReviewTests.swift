@@ -309,6 +309,16 @@ final class OfflineReviewTests: XCTestCase {
     XCTAssertEqual(ReadDate.cards([sleep, plan], loadedDay: "2026-10-31", today: "2026-11-01").map(\.id), ["sleep"])
   }
 
+  // Week So Far on an earlier day's read could be last week's bars under no
+  // label, so it is shown only on the day's own read.
+  func testOlderReadHidesWeekSoFar() throws {
+    let week = try JSONDecoder().decode(WeekSoFar.self, from: Data(#"{"days":[{"date":"2026-10-26","weekday":"Mon","run_min":40}],"line":"1 run, 40 min since Monday."}"#.utf8))
+    XCTAssertEqual(ReadDate.weekSoFar(week, loadedDay: "2026-11-01", today: "2026-11-01")?.line, week.line)
+    XCTAssertEqual(ReadDate.weekSoFar(week, loadedDay: nil, today: "2026-11-02")?.line, week.line)
+    XCTAssertNil(ReadDate.weekSoFar(week, loadedDay: "2026-11-01", today: "2026-11-02"), "Sunday's read seen on Monday")
+    XCTAssertNil(ReadDate.weekSoFar(nil, loadedDay: "2026-11-02", today: "2026-11-02"))
+  }
+
   // A reply that lands after the phone changed hands (sign-out, another
   // athlete signed in) is never kept under the athlete now signed in.
   func testReadIsKeptOnlyForTheAthleteWhoAskedForIt() {
