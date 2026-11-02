@@ -5,7 +5,7 @@ import { settle, unwrap } from './settle';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
-import { SnapshotCache, planCardExpansion, checkCardPosture } from './card-expand';
+import { SnapshotCache, planCardExpansion, checkCardPosture, cardErrorFallback } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec, localRunDay, sixWeekRuns, weekdayRunDates } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations, citedChunks, libraryClaimHits } from './knowledge-retrieval';
 import {
@@ -18,7 +18,7 @@ import {
 } from './oura';
 import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from './usage';
 import { generateValidatedVoice } from './voice';
-import { checkCdvWithRetry } from './cdv-check';
+import { checkCdvWithRetry, cdvEmission } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 
 class LlmHttpError extends Error {}
@@ -49,7 +49,7 @@ import {
 } from './plan-generate';
 import { TEMPLATE_DIR, describeWorkout, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
-import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
+import { openAiReasonLlm, reasonEmission, reasonLlmEnabled, writeReason } from './adaptation-reason';
 import { buildDriverSeries, inlineChartsEnabled, linkDrivers, parseHealthNights } from './driver-links';
 import type { SeriesKey } from './driver-links';
 import { predictRace, predictionsEnabled } from './race-prediction';
@@ -502,10 +502,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     // they never vouch for the voice. One retry, then the plain fallback.
     const final = await checkCdvWithRetry(rawText, dataBlock, String(message ?? ''), (note) => askModel(`${userPrompt}\n\n${note}`));
     const checked = final.checked;
-    trackVoice(fastify.log, {
-      surface: 'cdv', attempts: final.attempts, fallback: checked.fallback,
-      bannedHits: final.seenBanned, unbackedCount: final.seenUnbacked,
-    });
+    trackVoice(fastify.log, cdvEmission(final));
     if (checked.fallback) {
       fastify.log.warn(`CDV validator catch after ${final.attempts} attempts (banned: ${checked.bannedHits.join(', ') || 'none'}; unbacked numbers: ${checked.unbackedNumbers.length}), using fallback`);
     }
@@ -682,12 +679,7 @@ fastify.post('/api/read', async (request, reply) => {
                 const r = await writeReason(d, posture.evidence, llm, fallback);
                 // Numbers masked: an unbacked number can be a health value.
                 if (r.source === 'fallback') fastify.log.info(`adaptation reason fell back: ${r.issues.map((x) => x.replace(/\d+(?:\.\d+)?/g, '#')).join('; ')}`);
-                trackVoice(fastify.log, {
-                  surface: 'adaptation_reason', attempts: 1, fallback: r.source === 'fallback',
-                  // The reason check's own advice and coach catches count as banned too.
-                  bannedHits: r.issues.flatMap((x) => x.startsWith('banned: ') ? [x.slice('banned: '.length)] : x === 'advice' || x === 'coach' ? [x] : []),
-                  unbackedCount: r.issues.filter((x) => x.startsWith('unbacked number')).length,
-                });
+                trackVoice(fastify.log, reasonEmission(r));
                 return r.text;
               },
             }
@@ -910,8 +902,9 @@ fastify.post('/api/card-expand', async (request, reply) => {
     return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: true });
   } catch (e) {
     fastify.log.error(`Card expansion failed: ${e instanceof Error ? e.message : e}`);
-    trackVoice(fastify.log, { surface: 'card', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0 });
-    return reply.send({ cardId, reply: card.translation ?? '', drivers: [], generated: false });
+    const fallback = cardErrorFallback(plan.drivers, card.title, snapshot.posture);
+    trackVoice(fastify.log, fallback.emission);
+    return reply.send({ cardId, reply: fallback.reply, drivers: plan.drivers, generated: false });
   }
 });
 

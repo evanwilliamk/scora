@@ -7,6 +7,7 @@
 import { buildFallbackVoice, validateVoice } from './validator';
 import { stripChartLine } from './cdv-chart';
 import type { Driver } from './validator';
+import type { VoiceEmission } from './telemetry';
 
 export interface CdvChecked {
   voice: string;
@@ -14,6 +15,9 @@ export interface CdvChecked {
   fallback: boolean; // true when the voice line was replaced
   bannedHits: string[];
   unbackedNumbers: string[];
+  // Whether the text in `voice` (what the athlete is sent) passes the same
+  // checks as a model answer (doc 10 1.1.4). A fallback is checked too.
+  finalOk: boolean;
 }
 
 // Fields whose numbers are not measurements: dates and run names would let
@@ -53,36 +57,66 @@ function trendIssue(trend: string | undefined): 'posture' | 'long' | null {
   return SHORT_TREND.test(trend.trim()) ? null : 'long';
 }
 
-export function checkCdvReply(voice: string, metricLines: Driver[], data: unknown, question: string): CdvChecked {
-  const source: Driver[] = [
+// What vouches for a number in a chat reply: the measured values in the data
+// block and small counts in the athlete's question.
+function cdvSource(data: unknown, question: string): Driver[] {
+  return [
     { metric: '', value: timesWhole(dataValues(data).join(' ')) },
     { metric: '', value: questionCounts(question) },
   ];
+}
+
+// Decimals in `text` that only a clock time could back. Folding makes "8:47"
+// read as 8.47, so a decimal written as a decimal is backed only by a decimal
+// in the data ("HRV 7.12" is not backed by a 7:12 pace).
+function clockOnlyDecimals(text: string, data: unknown, already: string[] = []): string[] {
+  const dataDecimals = new Set((dataValues(data).join(' ').match(/(?<![\d:])\d+\.\d+/g) ?? []).map((n) => String(parseFloat(n))));
+  const out: string[] = [];
+  for (const dec of text.match(/(?<![\d:.])\d+\.\d+(?![\d])/g) ?? []) {
+    const n = String(parseFloat(dec));
+    if (!dataDecimals.has(n) && !already.includes(n) && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+// The full check on one voice line, as checkCdvReply runs it.
+function checkCdvText(voice: string, data: unknown, question: string) {
+  const v = validateVoice(timesWhole(voice), cdvSource(data, question));
+  v.unbackedNumbers.push(...clockOnlyDecimals(voice, data, v.unbackedNumbers));
+  // An empty voice is no answer, so it falls back like a failed one.
+  v.ok = v.ok && v.unbackedNumbers.length === 0 && voice.trim() !== '';
+  return v;
+}
+
+// Whether a chat voice line passes the checks: what the telemetry line
+// reports as final_ok for the text actually sent.
+export function cdvTextOk(voice: string, data: unknown, question: string): boolean {
+  return checkCdvText(voice, data, question).ok;
+}
+
+export function checkCdvReply(voice: string, metricLines: Driver[], data: unknown, question: string): CdvChecked {
+  const source = cdvSource(data, question);
   // A METRIC line is shown to the athlete as a driver, so its name, value and
   // trend must all be in the data, and none of it may be banned phrasing.
   const drivers = metricLines
     .map((d) => (trendIssue(d.trend) ? { metric: d.metric, value: d.value } : d))
-    .filter((d) => validateVoice(timesWhole(`${d.metric} ${d.value} ${d.trend ?? ''}`), source).ok);
-  const v = validateVoice(timesWhole(voice), source);
-  // Folding makes "8:47" read as 8.47, so a decimal the voice writes as a
-  // decimal is backed only by a decimal in the data, never by a clock time
-  // ("HRV 7.12" is not backed by a 7:12 pace).
-  const dataDecimals = new Set((dataValues(data).join(' ').match(/(?<![\d:])\d+\.\d+/g) ?? []).map((n) => String(parseFloat(n))));
-  for (const dec of voice.match(/(?<![\d:.])\d+\.\d+(?![\d])/g) ?? []) {
-    const n = String(parseFloat(dec));
-    if (!dataDecimals.has(n) && !v.unbackedNumbers.includes(n)) v.unbackedNumbers.push(n);
-  }
-  // An empty voice is no answer, so it falls back like a failed one.
-  v.ok = v.ok && v.unbackedNumbers.length === 0 && voice.trim() !== '';
-  if (v.ok) return { voice, drivers, fallback: false, bannedHits: [], unbackedNumbers: [] };
+    .filter((d) => {
+      const line = `${d.metric} ${d.value} ${d.trend ?? ''}`;
+      // The same decimal rule as the voice: the fallback quotes these lines.
+      return validateVoice(timesWhole(line), source).ok && clockOnlyDecimals(line, data).length === 0;
+    });
+  const v = checkCdvText(voice, data, question);
+  if (v.ok) return { voice, drivers, fallback: false, bannedHits: [], unbackedNumbers: [], finalOk: true };
+  const fallback = drivers.length
+    ? buildFallbackVoice(drivers, 'Here')
+    : 'That answer could not be checked against your data, so it is not shown.';
   return {
-    voice: drivers.length
-      ? buildFallbackVoice(drivers, 'Here')
-      : 'That answer could not be checked against your data, so it is not shown.',
+    voice: fallback,
     drivers,
     fallback: true,
     bannedHits: v.bannedHits,
     unbackedNumbers: v.unbackedNumbers,
+    finalOk: cdvTextOk(fallback, data, question),
   };
 }
 
@@ -133,4 +167,17 @@ export async function checkCdvWithRetry(
   } catch {
     return { raw, checked: first, attempts: 2, ...seen(first) };
   }
+}
+
+// The CDV telemetry line for what the route sends (doc 10 1.1.4 and 2.1.5).
+// Labels and counts only: never the text or a value.
+export function cdvEmission(final: { checked: CdvChecked; attempts: 1 | 2; seenBanned: string[]; seenUnbacked: number }): VoiceEmission {
+  return {
+    surface: 'cdv',
+    attempts: final.attempts,
+    fallback: final.checked.fallback,
+    bannedHits: final.seenBanned,
+    unbackedCount: final.seenUnbacked,
+    finalOk: final.checked.finalOk,
+  };
 }

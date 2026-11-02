@@ -228,7 +228,13 @@ test('card expand: the model down falls back to the card\'s own line', async () 
   const e = await expand(card.id);
   assert.equal(e.statusCode, 200);
   assert.equal(llmCalls().length, 2, 'the read, then the failed expansion');
-  assert.deepEqual(e.json(), { cardId: card.id, reply: card.translation ?? '', drivers: [], generated: false });
+  // The plain driver read, not the card translation ("across 3 runs" cites
+  // no driver): a validated fallback, as the gate counts it (doc 10 1.1.4).
+  const body = e.json();
+  assert.deepEqual([body.cardId, body.generated], [card.id, false]);
+  assert.ok(body.drivers.length > 0);
+  assert.match(body.reply, /^Training Load: /);
+  assert.equal(validateVoice(body.reply, body.drivers).ok, true);
 });
 
 test('HealthKit: only the summary reaches the model, never the nightly series or extra fields (doc 10 §6.5)', async () => {

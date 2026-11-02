@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SnapshotCache, planCardExpansion, relatedDrivers, checkCardPosture } from '../src/card-expand';
+import { SnapshotCache, planCardExpansion, relatedDrivers, checkCardPosture, cardFallbackEmission, cardErrorFallback } from '../src/card-expand';
+import { voiceEmissionLine } from '../src/telemetry';
 import { buildDashboard } from '../src/metrics';
 import { validateVoice } from '../src/validator';
 import type { OuraSummary } from '../src/oura';
@@ -103,4 +104,25 @@ test('checkCardPosture: the plan\'s taper is not a posture claim, as in the read
   assert.equal(checkCardPosture(text, 'steady', drivers, 'Recovery Signal'), text);
   // And a posture word the read did not decide still falls back.
   assert.match(checkCardPosture('HRV 52ms. Posture is rest.', 'steady', drivers, 'Recovery Signal'), /^Recovery Signal: HRV 52ms/);
+});
+
+test('telemetry: the card error path sends a validated driver read and records final_ok (gate 1.1.4)', () => {
+  const s = snap();
+  const parse = (e: ReturnType<typeof cardFallbackEmission>) => JSON.parse(voiceEmissionLine(e).slice('telemetry '.length));
+  // Every expandable card: the fallback passes against the drivers it cites.
+  for (const c of withOura.cards) {
+    const plan = planCardExpansion(c, s);
+    if (plan.kind !== 'llm') continue;
+    const f = cardErrorFallback(plan.drivers, c.title, s.posture);
+    assert.equal(validateVoice(f.reply, plan.drivers).ok, true, c.id);
+    assert.deepEqual([parse(f.emission).surface, parse(f.emission).fallback, parse(f.emission).final_ok], ['card', true, true], c.id);
+  }
+  // The card translation is not a validated fallback: "3 runs" is no driver.
+  const load = withOura.cards.find((c) => c.id === 'training_load')!;
+  assert.equal(parse(cardFallbackEmission(load.translation!, relatedDrivers('training_load', s.drivers), 'steady')).final_ok, false);
+  // An unbacked number, banned phrasing or an undecided posture fails through.
+  assert.equal(parse(cardFallbackEmission('HRV 999ms last night.', s.drivers, 'steady')).final_ok, false);
+  assert.equal(parse(cardFallbackEmission('You should rest.', s.drivers, 'steady')).final_ok, false);
+  assert.equal(parse(cardFallbackEmission('The body reads primed.', s.drivers, 'steady')).final_ok, false);
+  assert.doesNotMatch(JSON.stringify(parse(cardFallbackEmission('HRV 999ms last night.', s.drivers, null))), /999|HRV/);
 });

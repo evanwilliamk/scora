@@ -8,6 +8,7 @@
 import type { AdaptationDecision } from '../../../packages/plan-engine/src/index';
 import type { Driver } from './metrics';
 import { normalizeForCheck, validateVoice } from './validator';
+import type { VoiceEmission } from './telemetry';
 
 export const reasonLlmEnabled = () => process.env.ADAPTATION_REASON_LLM === 'on';
 
@@ -191,20 +192,38 @@ export interface WrittenReason {
   text: string;
   source: 'llm' | 'fallback';
   issues: string[];
+  // Whether `text` (what is stored and shown) passes reasonIssues (doc 10
+  // 1.1.4). The fixed sentence is checked too, so a fail-through would show.
+  finalOk: boolean;
 }
 
 // One attempt, then the fixed sentence. The adaptation is never held up by
 // the wording.
 export async function writeReason(d: Decided, evidence: Driver[], llm: ReasonLlm, fallback: string): Promise<WrittenReason> {
   const { system, user } = reasonPrompt(d, evidence);
+  const fallbackOk = () => reasonIssues(fallback, d, evidence).length === 0;
   let text = '';
   try {
     text = (await llm(system, user)).trim().replace(/^"(.*)"$/s, '$1');
   } catch (e) {
-    return { text: fallback, source: 'fallback', issues: [`llm failed: ${e instanceof Error ? e.message : e}`] };
+    return { text: fallback, source: 'fallback', issues: [`llm failed: ${e instanceof Error ? e.message : e}`], finalOk: fallbackOk() };
   }
   const issues = reasonIssues(text, d, evidence);
-  return issues.length === 0 ? { text, source: 'llm', issues } : { text: fallback, source: 'fallback', issues };
+  return issues.length === 0 ? { text, source: 'llm', issues, finalOk: true } : { text: fallback, source: 'fallback', issues, finalOk: fallbackOk() };
+}
+
+// The adaptation-reason telemetry line (doc 10 1.1.4, 2.1.4, 2.1.5). Labels
+// and counts only: issue numbers never reach it.
+export function reasonEmission(r: WrittenReason): VoiceEmission {
+  return {
+    surface: 'adaptation_reason',
+    attempts: 1,
+    fallback: r.source === 'fallback',
+    // The reason check's own advice and coach catches count as banned too.
+    bannedHits: r.issues.flatMap((x) => x.startsWith('banned: ') ? [x.slice('banned: '.length)] : x === 'advice' || x === 'coach' ? [x] : []),
+    unbackedCount: r.issues.filter((x) => x.startsWith('unbacked number')).length,
+    finalOk: r.finalOk,
+  };
 }
 
 export function openAiReasonLlm(apiKey: string, fetchImpl: typeof fetch = fetch): ReasonLlm {

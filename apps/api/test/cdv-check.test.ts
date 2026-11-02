@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkCdvReply, checkCdvWithRetry, parseCdvLines } from '../src/cdv-check';
+import { checkCdvReply, checkCdvWithRetry, parseCdvLines, cdvEmission, cdvTextOk } from '../src/cdv-check';
+import { voiceEmissionLine } from '../src/telemetry';
 
 // Shaped like the CDV data block in index.ts. Test input only.
 const DATA = {
@@ -166,4 +167,26 @@ test('the voice is the first prose line: a leading blank or CHART line never lea
     assert.notEqual(x.checked.voice.trim(), '');
     assert.doesNotMatch(x.checked.voice, /METRIC:/);
   });
+});
+
+test('telemetry: final_ok is set from the text sent, for a pass, a fallback and a fail-through (gate 1.1.4)', async () => {
+  const data = { recentRuns: [{ pace: '7:12', miles: 6.2 }] };
+  const line = (e: ReturnType<typeof cdvEmission>) => JSON.parse(voiceEmissionLine(e).slice('telemetry '.length));
+  const pass = await checkCdvWithRetry('The last run was 6.2 miles.', data, 'Last run?', async () => 'unused');
+  assert.deepEqual([line(cdvEmission(pass)).fallback, line(cdvEmission(pass)).final_ok], [false, true]);
+  const fell = await checkCdvWithRetry('HRV is 99 ms.', data, 'HRV?', async () => 'You should run 20 miles.');
+  assert.deepEqual([line(cdvEmission(fell)).fallback, line(cdvEmission(fell)).final_ok, line(cdvEmission(fell)).attempts], [true, true, 2]);
+  // A sent text that fails the checks (a fallback that quotes an unbacked
+  // number) reports final_ok false; the line never carries the text.
+  const bad = { ...fell, checked: { ...fell.checked, voice: 'Here: HRV 99.', finalOk: cdvTextOk('Here: HRV 99.', data, 'HRV?') } };
+  const l = line(cdvEmission(bad));
+  assert.deepEqual([l.surface, l.final_ok], ['cdv', false]);
+  assert.doesNotMatch(JSON.stringify(l), /99|HRV/);
+});
+
+test('a METRIC decimal backed only by a clock time is not a driver, so the fallback cannot quote it (fail-through found 11-02)', () => {
+  const data = { recentRuns: [{ pace: '7:12' }] };
+  const r = checkCdvReply('HRV is 99 ms.', [{ metric: 'HRV', value: '7.12' }], data, 'HRV?');
+  assert.deepEqual([r.drivers, r.fallback, r.finalOk], [[], true, true]);
+  assert.equal(checkCdvReply('Pace 7:12.', [{ metric: 'Pace', value: '7:12' }], data, 'Pace?').drivers.length, 1);
 });

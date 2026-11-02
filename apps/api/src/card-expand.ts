@@ -8,8 +8,9 @@
 // it, so a tap costs one LLM call and no Strava or Oura call.
 
 import type { Card, Driver } from './metrics';
-import { buildFallbackVoice } from './validator';
+import { buildFallbackVoice, validateVoice } from './validator';
 import { postureClaimHits } from './drivers';
+import type { VoiceEmission } from './telemetry';
 
 export interface ReadSnapshot {
   cards: Card[];
@@ -102,4 +103,18 @@ Interpret the ${card.title} card.`;
 // read did not decide.
 export function checkCardPosture(reply: string, posture: string | null, drivers: Driver[], leadIn: string): string {
   return postureClaimHits(reply, posture).length > 0 ? buildFallbackVoice(drivers, leadIn) : reply;
+}
+
+// When the expansion call fails: the plain driver read (the same text
+// checkCardPosture falls back to), never the card's translation, which can
+// cite counts that are not drivers ("across 3 runs"). The telemetry line
+// says whether that text passes the read's checks (doc 10 1.1.4, 2.1.5).
+export function cardErrorFallback(drivers: Driver[], leadIn: string, posture: string | null): { reply: string; emission: VoiceEmission } {
+  const reply = buildFallbackVoice(drivers, leadIn);
+  return { reply, emission: cardFallbackEmission(reply, drivers, posture) };
+}
+
+export function cardFallbackEmission(text: string, drivers: Driver[], posture: string | null): VoiceEmission {
+  const ok = validateVoice(text, drivers).ok && postureClaimHits(text, posture).length === 0;
+  return { surface: 'card', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0, finalOk: ok };
 }

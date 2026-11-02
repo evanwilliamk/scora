@@ -4,14 +4,14 @@ import { deliveryGateReport, morningGateReport, planAwareGateReport, voiceGateRe
 import { pushDeliveryLine, pushOpenLine, pushSentLine, readPlanLine, voiceEmissionLine } from '../src/telemetry';
 
 test('counts emissions per surface from plain and JSON-wrapped log lines', () => {
-  const plain = voiceEmissionLine({ surface: 'daily', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0 });
-  const caught = voiceEmissionLine({ surface: 'daily', attempts: 2, fallback: true, bannedHits: ['you should'], unbackedCount: 1 });
-  const cdv = voiceEmissionLine({ surface: 'cdv', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0 });
+  const plain = voiceEmissionLine({ surface: 'daily', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0, finalOk: true });
+  const caught = voiceEmissionLine({ surface: 'daily', attempts: 2, fallback: true, bannedHits: ['you should'], unbackedCount: 1, finalOk: true });
+  const cdv = voiceEmissionLine({ surface: 'cdv', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0, finalOk: true });
   const wrapped = JSON.stringify({ level: 30, time: 1, msg: cdv });
   const log = [plain, 'unrelated line {"x":1}', caught, wrapped, 'telemetry {broken'].join('\n');
   const r = voiceGateReport(log);
-  assert.deepEqual(r.bySurface.daily, { emissions: 2, caught: 1, fallbacks: 1, bannedEmissions: 1 });
-  assert.deepEqual(r.bySurface.cdv, { emissions: 1, caught: 0, fallbacks: 0, bannedEmissions: 0 });
+  assert.deepEqual(r.bySurface.daily, { emissions: 2, caught: 1, fallbacks: 1, bannedEmissions: 1, failThroughs: 0, unchecked: 0 });
+  assert.deepEqual(r.bySurface.cdv, { emissions: 1, caught: 0, fallbacks: 0, bannedEmissions: 0, failThroughs: 0, unchecked: 0 });
   assert.equal(r.total.emissions, 3);
   assert.match(r.lines.join('\n'), /Banned-phrase hit rate 33\.3% .*FAIL/);
 });
@@ -21,7 +21,7 @@ test('no telemetry lines: no data, not a pass', () => {
 });
 
 test('a pino line wrapped again by a log export still parses (review 4)', () => {
-  const inner = JSON.stringify({ level: 30, msg: voiceEmissionLine({ surface: 'weekly', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0 }) });
+  const inner = JSON.stringify({ level: 30, msg: voiceEmissionLine({ surface: 'weekly', attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0, finalOk: true }) });
   const outer = JSON.stringify({ timestamp: 't', message: inner });
   assert.equal(voiceGateReport(outer).bySurface.weekly?.emissions, 1);
 });
@@ -82,14 +82,42 @@ test('morning gates: opens within 4h and numbers first, per athlete', () => {
   assert.equal(morningGateReport('').openPass, null);
 });
 
-test('fail-throughs count only emissions that carry final_ok', () => {
-  const line = (finalOk?: boolean) => voiceEmissionLine({ surface: 'daily', attempts: 2, fallback: true, bannedHits: [], unbackedCount: 1, finalOk });
-  let r = voiceGateReport([line(true), line(undefined)].join('\n'));
-  assert.deepEqual([r.failThroughs, r.checked], [0, 1]);
-  assert.match(r.lines.at(-1)!, /fail-throughs 0 of 1 .*PASS/);
-  r = voiceGateReport([line(true), line(false)].join('\n'));
+test('fail-throughs: a line without final_ok (an older log) leaves 1.1.4 incomplete, never a pass', () => {
+  const line = (finalOk: boolean) => voiceEmissionLine({ surface: 'daily', attempts: 2, fallback: true, bannedHits: [], unbackedCount: 1, finalOk });
+  const old = 'telemetry {"event":"voice_emission","surface":"cdv","attempts":1,"fallback":false,"caught":false,"banned":[],"unbacked":0}';
+  let r = voiceGateReport([line(true), old].join('\n'));
+  assert.deepEqual([r.failThroughs, r.checked, r.unchecked], [0, 1, 1]);
+  assert.match(r.lines.at(-1)!, /fail-throughs 0 of 1 .*INCOMPLETE \(1 emissions without final_ok\)/);
+  r = voiceGateReport([line(true), line(true)].join('\n'));
+  assert.match(r.lines.at(-1)!, /fail-throughs 0 of 2 .*PASS/);
+  r = voiceGateReport([line(true), line(false), old].join('\n'));
   assert.match(r.lines.at(-1)!, /fail-throughs 1 of 2 .*FAIL/);
   assert.match(voiceGateReport('').lines.at(-1)!, /NO DATA/);
+});
+
+test('1.1.4 and 2.1.5 count every voice surface: cdv, adaptation_reason and card fallbacks included', async () => {
+  const { cdvEmission, checkCdvWithRetry } = await import('../src/cdv-check');
+  const { reasonEmission } = await import('../src/adaptation-reason');
+  const { cardFallbackEmission } = await import('../src/card-expand');
+  const data = { recentRuns: [{ miles: 6.2 }] };
+  const cdvPass = cdvEmission(await checkCdvWithRetry('The last run was 6.2 miles.', data, 'Last run?', async () => ''));
+  const cdvFell = cdvEmission(await checkCdvWithRetry('HRV is 99 ms.', data, 'HRV?', async () => 'HRV is 98 ms.'));
+  const reasonPass = reasonEmission({ text: 'x', source: 'llm', issues: [], finalOk: true });
+  const reasonThrough = reasonEmission({ text: 'x', source: 'fallback', issues: ['advice'], finalOk: false });
+  const cardThrough = cardFallbackEmission('HRV 999ms.', [{ metric: 'HRV', value: '52ms' }], null);
+  const why = { surface: 'why' as const, attempts: 1, fallback: false, bannedHits: [], unbackedCount: 0, finalOk: true };
+  const log = [cdvPass, cdvFell, reasonPass, reasonThrough, cardThrough, why].map(voiceEmissionLine).join('\n');
+  const r = voiceGateReport(log);
+  assert.deepEqual([r.checked, r.unchecked, r.failThroughs], [6, 0, 2]);
+  assert.deepEqual([r.bySurface.cdv.failThroughs, r.bySurface.cdv.fallbacks], [0, 1]);
+  assert.deepEqual([r.bySurface.adaptation_reason.failThroughs, r.bySurface.adaptation_reason.fallbacks], [1, 1]);
+  assert.equal(r.bySurface.card.failThroughs, 1);
+  // 2.1.5: fallbacks from every surface count against the 10% bar (3 of 6).
+  assert.equal(r.total.fallbacks, 3);
+  assert.equal(r.fallbackRate, 0.5);
+  assert.match(r.lines.join('\n'), /Validator fallback rate 50\.0% .*FAIL/);
+  assert.match(r.lines.at(-1)!, /fail-throughs 2 of 6 .*FAIL/);
+  assert.match(r.lines.find((l) => l.startsWith('adaptation_reason'))!, /\s1\s+0$/);
 });
 
 test('delivery gate: the last 14 mornings count; fewer is not enough to pass', () => {
