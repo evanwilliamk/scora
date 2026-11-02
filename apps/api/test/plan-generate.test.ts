@@ -96,9 +96,9 @@ test('no matching template: a named error, nothing stored, no invented plan', as
   // Same race, volume above the fixture's [30, 45): named as a volume mismatch (doc 09 §2.6).
   assert.equal(await code(generatePlan('g2', { ...req, current_weekly_km: 80 }, '2026-10-21', templates, store)), 'volume_out_of_range');
   await assert.rejects(generatePlan('g2', { ...req, current_weekly_km: 10 }, '2026-10-21', templates, store),
-    (e: any) => e.code === 'volume_out_of_range' && e.message === 'This plan would ramp too fast from your current volume. It starts from 30 km a week.');
+    (e: any) => e.code === 'volume_out_of_range' && e.message === 'This plan would ramp too fast from your current volume. It starts from 18.7 mi a week.');
   await assert.rejects(generatePlan('g2', { ...req, current_weekly_km: 45 }, '2026-10-21', templates, store),
-    (e: any) => e.message === 'This plan is built for under 45 km a week, below your current volume.');
+    (e: any) => e.message === 'This plan is built for under 27.9 mi a week, below your current volume.');
   assert.equal((await db.query(`select 1 from training_plans where athlete_id = 'g2'`)).rows.length, 0);
 });
 

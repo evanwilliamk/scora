@@ -11,6 +11,7 @@ import {
 import type { AssembledPlan, ExperienceLevel, PlanTemplate, Sport } from '../../../packages/plan-engine/src/index';
 import { EXPERIENCE_LEVELS, SPORTS } from '../../../packages/plan-engine/src/index';
 import { addDays, isCalendarDay, mondayOf } from './dates';
+import { formatVolumeBound } from './units';
 
 export const generationEnabled = () => process.env.PLAN_GENERATION === 'on';
 
@@ -98,16 +99,17 @@ export async function generatePlan(
   }
   const template = matchTemplate(templates, { ...req, today });
   if (!template) {
-    // Doc 09 §2.6: when the race has templates but not at this volume, say so.
+    // Doc 09 §2.6: when the race has templates but not at this volume, say so,
+    // in the athlete's unit (units.ts). current_weekly_km itself stays km.
     const sameRace = templates.filter((t) => t.sport === req.sport && t.goal_type === req.goal_type && t.experience_level === req.experience_level);
     if (sameRace.length > 0) {
       const low = Math.min(...sameRace.map((t) => t.weekly_volume_range_km[0]));
       const high = Math.max(...sameRace.map((t) => t.weekly_volume_range_km[1]));
       if (req.current_weekly_km < low) {
-        throw new GenerateError('volume_out_of_range', `This plan would ramp too fast from your current volume. It starts from ${low} km a week.`);
+        throw new GenerateError('volume_out_of_range', `This plan would ramp too fast from your current volume. It starts from ${formatVolumeBound(low, 'atLeast')} a week.`);
       }
       if (req.current_weekly_km >= high) {
-        throw new GenerateError('volume_out_of_range', `This plan is built for under ${high} km a week, below your current volume.`);
+        throw new GenerateError('volume_out_of_range', `This plan is built for under ${formatVolumeBound(high, 'under')} a week, below your current volume.`);
       }
     }
     throw new GenerateError('template_not_available', 'No plan template fits that race and volume yet.');

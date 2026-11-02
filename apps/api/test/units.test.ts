@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KM_PER_MI, distanceUnit, formatPlanDistance, planDistanceValue } from '../src/units';
+import { KM_PER_MI, distanceUnit, formatPlanDistance, formatVolumeBound, planDistanceValue } from '../src/units';
 
 test('distanceUnit: miles unless a meters preference is passed', () => {
   assert.equal(distanceUnit(), 'mi');
@@ -34,4 +34,16 @@ test('a positive distance never reads as 0', () => {
   assert.equal(formatPlanDistance(0.004, 'km'), '0.01 km');
   assert.equal(formatPlanDistance(0.05, 'km'), '0.05 km');
   assert.equal(formatPlanDistance(0), '0 mi');
+});
+
+test('formatVolumeBound: a km bound in the athlete unit, rounded so the stated bound stays true', () => {
+  // "starts from" rounds up: 30 km is 18.64 mi, and 18.6 mi would still be too little.
+  assert.equal(formatVolumeBound(30, 'atLeast'), '18.7 mi');
+  // "under" rounds down: 45 km is 27.96 mi.
+  assert.equal(formatVolumeBound(45, 'under'), '27.9 mi');
+  // An exact mile count is not pushed past itself by float error.
+  assert.equal(formatVolumeBound(10 * KM_PER_MI, 'atLeast'), '10 mi');
+  assert.equal(formatVolumeBound(10 * KM_PER_MI, 'under'), '10 mi');
+  assert.equal(formatVolumeBound(30, 'atLeast', 'km'), '30 km');
+  assert.equal(formatVolumeBound(45, 'under', 'km'), '45 km');
 });
