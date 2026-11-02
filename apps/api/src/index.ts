@@ -801,7 +801,6 @@ Write today's read using only these drivers.`;
         drivers: readDrivers,
         maxTokens: 200,
         leadIn: "Today's numbers", surface: 'daily',
-        fallbackOnLlmError: true, // an outage still sends a validated read
         // Library mode: no advice relayed from a passage, no number lifted from one.
         check: (v) => [
           ...postureClaimHits(v, posture.backed ? posture.result.posture : null),
@@ -898,8 +897,11 @@ fastify.post('/api/card-expand', async (request, reply) => {
       check: (v) => postureClaimHits(v, snapshot.posture),
       log: fastify.log,
     });
-    return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: true });
+    // An outage comes back as the logged driver read: not generated.
+    return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: !result.llmError });
   } catch (e) {
+    // Not an OpenAI failure (those return above): something else threw before
+    // any emission was logged, so this is the only line for the tap.
     fastify.log.error(`Card expansion failed: ${e instanceof Error ? e.message : e}`);
     const fallback = cardErrorFallback(plan.drivers, card.title, snapshot.posture);
     trackVoice(fastify.log, fallback.emission);
@@ -1396,7 +1398,6 @@ Write this week's review using only these drivers.`;
         drivers,
         maxTokens: 320,
         leadIn: 'This week', surface: 'weekly',
-        fallbackOnLlmError: true,
         log: fastify.log,
       });
       voice = result.voice;

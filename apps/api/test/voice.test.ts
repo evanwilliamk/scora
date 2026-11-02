@@ -69,16 +69,30 @@ test('a failed retry call still ends in the fallback, not an error', async () =>
   assert.doesNotMatch(errors[0], /socket hang up/, 'the error text stays out of the log');
 });
 
-test('a failed first call propagates when the caller has no fallback', async () => {
+test('a failed first call never throws, with no flag from the caller', async () => {
   stubOpenAI([503]);
-  await assert.rejects(generateValidatedVoice(params), /OpenAI 503/);
+  const r = await generateValidatedVoice(params);
+  assert.deepEqual([r.usedFallback, r.llmError, r.attempts], [true, true, 1]);
+  assert.equal(validateVoice(r.voice, drivers).ok, true);
 });
 
-test('an outage on the first call ends in the validated fallback when the caller opts in', async () => {
+test('an outage on the first call logs exactly one voice_emission line, a checked fallback', async () => {
+  for (const surface of ['daily', 'weekly', 'card', 'why', 'more'] as const) {
+    stubOpenAI([503]);
+    const info: string[] = [];
+    await generateValidatedVoice({ ...params, surface, log: { warn() {}, error() {}, info: (m) => info.push(m) } });
+    const lines = info.filter((m) => m.includes('"voice_emission"'));
+    assert.equal(lines.length, 1, surface);
+    const e = JSON.parse(lines[0].slice('telemetry '.length));
+    assert.deepEqual([e.surface, e.attempts, e.fallback, e.caught, e.final_ok], [surface, 1, true, true, true]);
+  }
+});
+
+test('an outage on the first call ends in the validated fallback', async () => {
   for (const failure of [503, 429, new Error('fetch failed'), Object.assign(new Error('aborted'), { name: 'TimeoutError' })]) {
     const calls = stubOpenAI([failure]);
     const errors: string[] = [];
-    const r = await generateValidatedVoice({ ...params, fallbackOnLlmError: true, surface: 'daily', leadIn: "Today's numbers", log: { warn() {}, error: (m) => errors.push(m) } });
+    const r = await generateValidatedVoice({ ...params, surface: 'daily', leadIn: "Today's numbers", log: { warn() {}, error: (m) => errors.push(m) } });
     assert.equal(calls.length, 1, 'no second call into an outage');
     assert.deepEqual([r.usedFallback, r.llmError], [true, true]);
     assert.equal(r.voice, "Today's numbers: Load 412 min (+8% wk). HRV 52ms.");
@@ -95,7 +109,7 @@ test('an outage on the first call ends in the validated fallback when the caller
 
 test('a clean read is not flagged as an LLM error', async () => {
   stubOpenAI(['HRV 52ms.']);
-  const r = await generateValidatedVoice({ ...params, fallbackOnLlmError: true });
+  const r = await generateValidatedVoice(params);
   assert.equal(r.llmError, false);
 });
 
