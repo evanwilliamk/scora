@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateAdaptation } from '../../../packages/plan-engine/src/index';
 import type { AdaptationDecision, PlannedWorkout } from '../../../packages/plan-engine/src/index';
-import { reasonIssues, reasonPrompt, writeReason, openAiReasonLlm } from '../src/adaptation-reason';
+import { reasonEmission, reasonIssues, reasonPrompt, writeReason, openAiReasonLlm } from '../src/adaptation-reason';
+import { voiceEmissionLine } from '../src/telemetry';
 import { reasonText } from '../src/plan-adapt';
 import type { Driver } from '../src/metrics';
 
@@ -152,4 +153,18 @@ test('a downgrade line must name what the session became, or it does not state t
   assert.match(reasonIssues("Tuesday's intervals, with HRV 12% under your week.", downgraded, evidence).join(';'), /missing steady_state/);
   // The fixed sentences always pass.
   assert.deepEqual(reasonIssues(reasonText(downgraded), downgraded, []), []);
+});
+
+test('telemetry: final_ok is set from the stored text, for a pass, a fallback and a fail-through (gate 1.1.4)', async () => {
+  const fixed = reasonText(moved);
+  const line = async (draft: () => Promise<string>, fallback = fixed) =>
+    JSON.parse(voiceEmissionLine(reasonEmission(await writeReason(moved, evidence, draft, fallback))).slice('telemetry '.length));
+  const pass = await line(async () => "Tuesday's intervals moved to Thursday. Sleep was 5:40 last night.");
+  assert.deepEqual([pass.surface, pass.fallback, pass.final_ok], ['adaptation_reason', false, true]);
+  const fell = await line(async () => 'You should take it easy!');
+  assert.deepEqual([fell.fallback, fell.final_ok, fell.banned.includes('you should')], [true, true, true]);
+  // A fixed sentence that fails the checks would be stored anyway: the line says so.
+  const through = await line(async () => { throw new Error('429'); }, 'Tuesday was moved. You should rest 9 hours.');
+  assert.deepEqual([through.fallback, through.final_ok], [true, false]);
+  assert.doesNotMatch(JSON.stringify(through), /rest|9 hours|429/);
 });

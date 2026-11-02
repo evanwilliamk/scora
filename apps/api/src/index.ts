@@ -49,7 +49,7 @@ import {
 } from './plan-generate';
 import { TEMPLATE_DIR, describeWorkout, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
-import { openAiReasonLlm, reasonLlmEnabled, writeReason } from './adaptation-reason';
+import { openAiReasonLlm, reasonEmission, reasonLlmEnabled, writeReason } from './adaptation-reason';
 import { buildDriverSeries, inlineChartsEnabled, linkDrivers, parseHealthNights } from './driver-links';
 import type { SeriesKey } from './driver-links';
 import { predictRace, predictionsEnabled } from './race-prediction';
@@ -679,12 +679,7 @@ fastify.post('/api/read', async (request, reply) => {
                 const r = await writeReason(d, posture.evidence, llm, fallback);
                 // Numbers masked: an unbacked number can be a health value.
                 if (r.source === 'fallback') fastify.log.info(`adaptation reason fell back: ${r.issues.map((x) => x.replace(/\d+(?:\.\d+)?/g, '#')).join('; ')}`);
-                trackVoice(fastify.log, {
-                  surface: 'adaptation_reason', attempts: 1, fallback: r.source === 'fallback',
-                  // The reason check's own advice and coach catches count as banned too.
-                  bannedHits: r.issues.flatMap((x) => x.startsWith('banned: ') ? [x.slice('banned: '.length)] : x === 'advice' || x === 'coach' ? [x] : []),
-                  unbackedCount: r.issues.filter((x) => x.startsWith('unbacked number')).length,
-                });
+                trackVoice(fastify.log, reasonEmission(r));
                 return r.text;
               },
             }
