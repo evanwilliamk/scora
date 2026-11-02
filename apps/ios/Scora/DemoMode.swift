@@ -1,11 +1,30 @@
 import Foundation
 
 // DEBUG only: launch with -demo-read to see the dashboard with a fixed sample
-// read (no sign-in, no network), -demo-chart to open its HRV chart, and -demo-plan to open Your Plan. For
+// read (no sign-in, no network); -demo-signin and -demo-onboarding are below. -demo-chart to open its HRV chart, and -demo-plan to open Your Plan. For
 // checking UI on the simulator; release builds never contain it.
 #if DEBUG
 enum DemoMode {
-  static var isOn: Bool { ProcessInfo.processInfo.arguments.contains("-demo-read") }
+  static var isOn: Bool { args.contains("-demo-read") || showsSignIn || onboardingStep != nil }
+  private static var args: [String] { ProcessInfo.processInfo.arguments }
+
+  // -demo-signin: the sign-in screen, even with a token stored. Its button
+  // opens nothing.
+  static var showsSignIn: Bool { args.contains("-demo-signin") }
+
+  // -demo-onboarding: onboarding from its first step, then the demo dashboard.
+  // -demo-onboarding-step <oura|health|plan|delivery|done> starts on that step.
+  // No network, no system prompts, and nothing written to UserDefaults that
+  // a normal launch reads. -demo-delivery-fails makes the time save fail, so
+  // "Skip for now" shows.
+  static var onboardingStep: OnboardingStep? {
+    if let i = args.firstIndex(of: "-demo-onboarding-step"), i + 1 < args.count {
+      let names: [String: OnboardingStep] = ["oura": .oura, "health": .health, "plan": .plan, "delivery": .delivery, "done": .done]
+      return names[args[i + 1]] ?? .oura
+    }
+    return args.contains("-demo-onboarding") ? .oura : nil
+  }
+  static var deliveryFails: Bool { args.contains("-demo-delivery-fails") }
   static var opensChart: Bool { ProcessInfo.processInfo.arguments.contains("-demo-chart") }
   static var opensPlan: Bool { ProcessInfo.processInfo.arguments.contains("-demo-plan") }
   // -demo-plan-sessions: Your Plan shows two sample SCORA sessions (today
