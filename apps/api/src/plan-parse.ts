@@ -6,6 +6,8 @@
 // athlete's own text, dates must resolve inside a sane window, and enums are
 // closed. Anything else is rejected with a reason the app can show.
 
+import { KM_PER_MI } from './units';
+
 const INTENSITIES = ['easy', 'moderate', 'hard', 'tempo', 'threshold', 'intervals', 'long', 'recovery', 'rest'] as const;
 const TYPES = ['run', 'ride', 'swim', 'strength', 'brick', 'other'] as const;
 export type Intensity = (typeof INTENSITIES)[number];
@@ -14,7 +16,6 @@ export type WorkoutType = (typeof TYPES)[number];
 const MAX_PLAN_CHARS = 8000;
 const MAX_PLAN_DAYS = 182; // about 26 weeks ahead
 const MAX_DISTANCE_KM = 9999.99; // scheduled_workouts.planned_distance_km numeric(6, 2)
-const KM_PER_MI = 1.609344;
 
 export interface ParsedRow {
   date: string; // YYYY-MM-DD

@@ -24,7 +24,9 @@ test('todaysWorkout ranks downgraded sessions above easy ones (review)', () => {
 
 test('planDriver carries only stored values', () => {
   assert.deepEqual(planDriver(w(TODAY, 'tempo', { planned_duration_min: 45 })), { metric: 'Plan today', value: 'tempo, 45 min' });
-  assert.deepEqual(planDriver(w(TODAY, null, { planned_type: 'ride', planned_distance_km: 25.75 })), { metric: 'Plan today', value: 'ride, 25.75 km' });
+  assert.deepEqual(planDriver(w(TODAY, null, { planned_type: 'ride', planned_distance_km: 25.75 })), { metric: 'Plan today', value: 'ride, 16 mi' });
+  // "Sat: 13.1 mi long" is stored as 21.08 km and reads back as written.
+  assert.deepEqual(planDriver(w(TODAY, 'long', { planned_distance_km: 21.08 })), { metric: 'Plan today', value: 'long, 13.1 mi' });
 });
 
 test('no plan at all adds nothing; a plan with nothing today says so', () => {
@@ -65,6 +67,22 @@ test('the plan driver lets the voice cite the planned minutes and nothing else',
   const voice = "Load is 412 min, up 8% on the week. Today's 45 min tempo is on the plan and the body reads settled.";
   assert.equal(validateVoice(voice, base).ok, false, '45 is unbacked without the plan driver');
   assert.equal(validateVoice(voice, [...base, p.driver!]).ok, true);
+});
+
+test('a mile plan: the read cites the session in miles and passes the validator (Q32 B)', () => {
+  const base = [{ metric: 'Weekly volume', value: '31.4 mi' }];
+  const p = planForRead([w(TODAY, 'long', { planned_distance_km: 21.08, planned_description: 'Sat: 13.1 mi long' })], TODAY);
+  assert.equal(p.driver!.value, 'long, 13.1 mi');
+  assert.match(p.promptLine, /: long, 13\.1 mi$/);
+  for (const voice of [
+    "Today's long run is 13.1 mi on your plan, and the week sits at 31.4 mi.",
+    'The plan holds 13.1 miles today on top of 31.4 mi for the week.',
+  ]) {
+    assert.equal(validateVoice(voice, base).ok, false, `13.1 is unbacked without the plan driver: ${voice}`);
+    assert.equal(validateVoice(voice, [...base, p.driver!]).ok, true, voice);
+  }
+  // The km the plan stores is not a driver: a read quoting it fails.
+  assert.equal(validateVoice('The plan holds 21.08 km today.', [...base, p.driver!]).ok, false);
 });
 
 test('voice that talks the athlete out of the plan fails validation (review findings)', () => {
@@ -131,6 +149,13 @@ test('plan override: a true description of an engine change passes; advice still
   assert.ok(validateVoice('The plan moved the intervals to Sunday.', drivers).bannedHits.includes('plan override'));
 });
 
+test('readNamesPlan: the session miles as stated, in any spelling (Q32 B)', () => {
+  const d = { metric: 'Plan today', value: 'long, 13.1 mi' };
+  assert.equal(readNamesPlan('The 13.1 mi ahead meet good sleep.', d), true);
+  assert.equal(readNamesPlan('The 13.1 miles ahead meet good sleep.', d), true);
+  assert.equal(readNamesPlan('Volume reached 113.1 mi this block.', d), false);
+});
+
 test('readNamesPlan: the word plan, or the session minutes or km as stated', () => {
   const d = { metric: 'Plan today', value: 'tempo, 45 min, 10.5 km' };
   assert.equal(readNamesPlan('Your plan has a tempo today and the body is settled.', d), true);
@@ -160,8 +185,8 @@ test('planTodayCard: only with a plan; states the session, the rest day, or noth
   assert.equal(planTodayCard([], '2026-10-28'), null, 'no plan, no card');
   const tempo = planTodayCard([row('2026-10-28', 'tempo', 45), row('2026-10-29', 'easy', 30)], '2026-10-28')!;
   assert.deepEqual([tempo.id, tempo.value, tempo.unit, tempo.trend, tempo.translation], ['plan_today', '45', 'min', 'tempo', 'On your plan today: tempo, 45 min.']);
-  const long = planTodayCard([row('2026-10-28', 'long', null, 25.8)], '2026-10-28')!;
-  assert.deepEqual([long.value, long.unit, long.trend], ['25.8', 'km', 'long']);
+  const long = planTodayCard([row('2026-10-28', 'long', null, 21.08)], '2026-10-28')!;
+  assert.deepEqual([long.value, long.unit, long.trend, long.translation], ['13.1', 'mi', 'long', 'On your plan today: long, 13.1 mi.']);
   assert.equal(planTodayCard([row('2026-10-28', 'steady_state', null)], '2026-10-28')!.value, 'Steady state');
   assert.equal(planTodayCard([row('2026-10-28', 'rest', null)], '2026-10-28')!.translation, 'Your plan has a rest day today.');
   assert.equal(planTodayCard([row('2026-10-29', 'easy', 30)], '2026-10-28')!.translation, 'Nothing on your plan today.');
