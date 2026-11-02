@@ -108,6 +108,84 @@ final class ScoraUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "18 mi a week")).firstMatch.exists)
     }
 
+    // Accessibility pass: the key screens at the largest accessibility text
+    // size (AX5), on the DEBUG demo data. Key controls exist and can be tapped.
+
+    private func launchAtAX5(_ args: [String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = args + ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        return app
+    }
+
+    private func assertHittable(_ e: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(e.waitForExistence(timeout: 10), "\(what) exists", file: file, line: line)
+        XCTAssertTrue(e.isHittable, "\(what) can be tapped", file: file, line: line)
+    }
+
+    // At AX5 lower content starts off screen (and lazy stacks have not built
+    // it yet), so swipe until it shows.
+    private func scrollTo(_ e: XCUIElement, in app: XCUIApplication) -> Bool {
+        for _ in 0..<8 where !(e.exists && e.isHittable) { app.swipeUp() }
+        return e.exists && e.isHittable
+    }
+
+    func testDashboardAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-cards"])
+        assertHittable(app.buttons["Your plan"], "Your plan")
+        assertHittable(app.buttons["This week"], "This week")
+        assertHittable(app.buttons["Ask about your training"], "Ask about your training")
+        assertHittable(app.buttons["Sign Out"], "Sign Out")
+        for name in ["Your plan", "This week", "Ask about your training", "Sign Out"] {
+            let f = app.buttons[name].frame
+            XCTAssertGreaterThanOrEqual(f.height, 44, "\(name) is at least 44 pt tall")
+            XCTAssertGreaterThanOrEqual(f.width, 44, "\(name) is at least 44 pt wide")
+        }
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Sleep 7:12'")).firstMatch.exists)
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Sleep, 7:12 hrs'")).firstMatch
+        XCTAssertTrue(scrollTo(card, in: app), "the Sleep card can be reached and tapped")
+    }
+
+    func testDriverChartAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-chart"])
+        let chart = app.descendants(matching: .any)["Chart of HRV, nightly average"]
+        XCTAssertTrue(chart.waitForExistence(timeout: 10))
+        let value = chart.value as? String ?? ""
+        XCTAssertTrue(value.contains("Latest 52 ms") && value.contains("Low 41 ms, high 52 ms"), "chart reads its own numbers: \(value)")
+        assertHittable(app.buttons["Done"], "Done")
+    }
+
+    func testChatAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-chat"])
+        let chart = app.descendants(matching: .any)["Chart for this answer"]
+        XCTAssertTrue(chart.waitForExistence(timeout: 10))
+        XCTAssertEqual(chart.value as? String, "HRV (ms) by Week. 8 values, from 1 to 8. First 41, last 52. Low 41, high 52.")
+        assertHittable(app.buttons["Send"], "Send")
+        assertHittable(app.textFields["Message"], "Message field")
+    }
+
+    func testThisWeekAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-weekly"])
+        assertHittable(app.buttons["Share this week's review"], "Share")
+        XCTAssertTrue(app.staticTexts["SUNDAY REVIEW"].exists)
+    }
+
+    func testYourPlanAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-plan", "-demo-plan-sessions"])
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 10))
+        assertHittable(app.buttons["Done"], "Done")
+        let watch = app.buttons.matching(identifier: "Send to Watch").firstMatch
+        XCTAssertTrue(watch.waitForExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(watch.frame.height, 44, "Send to Watch is at least 44 pt tall")
+    }
+
+    func testPlanSetupAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-plan", "-demo-plan-setup"])
+        XCTAssertTrue(app.staticTexts["Build a plan"].waitForExistence(timeout: 10))
+        assertHittable(app.buttons["Cancel"], "Cancel")
+        XCTAssertTrue(scrollTo(app.buttons["Build my plan"], in: app), "Build my plan can be reached and tapped")
+    }
+
     func testLaunchPerformance() throws {
         if #available(macOS 10.15, iOS 13.0, tvOS 13.0, watchOS 7.0, *) {
             // This measures how long it takes to launch your application.
