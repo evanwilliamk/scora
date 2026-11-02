@@ -166,6 +166,18 @@ enum ReadDate {
     return "Read for \(shown)"
   }
 
+  // The plan's "Today:" line belongs to the day the read was made for; an
+  // earlier day's read does not show it as today's session.
+  static func todayLine(_ line: String?, loadedDay: String?, today: String) -> String? {
+    guard let line, !line.isEmpty, !isOld(loadedDay: loadedDay, today: today) else { return nil }
+    return line
+  }
+
+  // Likewise the Plan today card: an earlier day's read keeps its numbers, not that day's session.
+  static func cards(_ cards: [DashboardCard], loadedDay: String?, today: String) -> [DashboardCard] {
+    isOld(loadedDay: loadedDay, today: today) ? cards.filter { $0.id != "plan_today" } : cards
+  }
+
   // "2026-10-31" as "Saturday, October 31".
   static func spoken(_ day: String) -> String? {
     let parse = DateFormatter()
@@ -213,8 +225,11 @@ enum ReadCache {
     return base.appendingPathComponent("Scora", isDirectory: true).appendingPathComponent("last-read.json")
   }
 
-  static func save(_ body: Data, day: String, athleteId: String, at date: Date = Date(), to url: URL = defaultURL) {
-    guard !athleteId.isEmpty,
+  // `athleteId`: who the read was asked for. `signedIn`: who is signed in as
+  // it lands; a reply that outlived a sign-out (or a switch) is not kept.
+  static func save(_ body: Data, day: String, athleteId: String, signedIn: String? = nil,
+                   at date: Date = Date(), to url: URL = defaultURL) {
+    guard !athleteId.isEmpty, signedIn == nil || signedIn == athleteId,
           let data = try? JSONEncoder().encode(Entry(athleteId: athleteId, day: day, savedAt: date, body: body)) else { return }
     do {
       try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -358,9 +373,10 @@ struct DashboardView: View {
           todaysRead
             .id("top")
           if let week { WeekSoFarView(week: week) }
-          if !cards.isEmpty {
+          let shownCards = ReadDate.cards(cards, loadedDay: loadedDay, today: today)
+          if !shownCards.isEmpty {
             LazyVGrid(columns: columns, spacing: 12) {
-              ForEach(cards) { card in
+              ForEach(shownCards) { card in
                 cardView(card)
               }
             }
@@ -546,8 +562,8 @@ struct DashboardView: View {
             return .handled
           })
         // The plan's session for today (CLAUDE.md §3.3), only on a SCORA plan.
-        if let today = read.today, !today.isEmpty {
-          Text(today).font(.footnote).foregroundColor(.orange)
+        if let line = ReadDate.todayLine(read.today, loadedDay: loadedDay, today: today) {
+          Text(line).font(.footnote).foregroundColor(.orange)
             .fixedSize(horizontal: false, vertical: true)
         }
         // A refresh that failed leaves the earlier read up, and says so.
@@ -767,7 +783,8 @@ struct DashboardView: View {
     // fill Sleep + Recovery when Oura isn't connected.
     // The local date lets the read find today's session in the athlete's plan
     // and the plan engine evaluate the athlete's tomorrow, not the server's.
-    var payload: [String: Any] = ["athleteId": tokenManager.athleteId, "today": day]
+    let athleteId = tokenManager.athleteId
+    var payload: [String: Any] = ["athleteId": athleteId, "today": day]
     if let health = await HealthManager.shared.fetchSummary(),
        let encoded = try? JSONEncoder().encode(health),
        let dict = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any] {
@@ -790,12 +807,12 @@ struct DashboardView: View {
     }
     do {
       let decoded = try JSONDecoder().decode(ReadResponse.self, from: data)
-      let athleteId = tokenManager.athleteId
       await MainActor.run {
         // A newer reply already landed: this one is older news.
         guard loadGate.accept(token) else { return }
         show(decoded, day: day, at: Date())
-        ReadCache.save(data, day: day, athleteId: athleteId)
+        // Kept for the athlete it was asked for, only if they are still signed in.
+        ReadCache.save(data, day: day, athleteId: athleteId, signedIn: tokenManager.athleteId)
         // A newer load still in flight keeps the spinner.
         if loadGate.isLatest(token) { isLoading = false }
       }
