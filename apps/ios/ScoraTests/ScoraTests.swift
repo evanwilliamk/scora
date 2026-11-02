@@ -1134,6 +1134,10 @@ final class ScoraTests: XCTestCase {
     // athlete goes straight to the dashboard. No real network: the transport
     // is a stub.
     func testSignInSkipsOnboardingWhenTheAPISaysItIsDone() async {
+        // a1 is the athlete signed in, so the API's answer applies to them.
+        let signedIn = UserDefaults.standard.string(forKey: "scora.athleteId")
+        UserDefaults.standard.set("a1", forKey: "scora.athleteId")
+        defer { UserDefaults.standard.set(signedIn, forKey: "scora.athleteId") }
         let saved = OnboardingSync.transport
         defer { OnboardingSync.transport = saved; OnboardingSync.pending = nil; OnboardingState.needsOnboarding = false }
         OnboardingSync.pending = nil
@@ -1170,6 +1174,10 @@ final class ScoraTests: XCTestCase {
     // "Skip for now" after a failed save: the choice stays on the phone and is
     // sent again until the API takes it.
     func testSkippedOnboardingChoiceIsKeptUntilTheAPIAcceptsIt() async throws {
+        // a1 is the athlete signed in, so the API's answer applies to them.
+        let signedIn = UserDefaults.standard.string(forKey: "scora.athleteId")
+        UserDefaults.standard.set("a1", forKey: "scora.athleteId")
+        defer { UserDefaults.standard.set(signedIn, forKey: "scora.athleteId") }
         let saved = OnboardingSync.transport
         defer { OnboardingSync.transport = saved; OnboardingSync.pending = nil; OnboardingState.needsOnboarding = false; TimeZoneSync.forget() }
         var sent: [URLRequest] = []

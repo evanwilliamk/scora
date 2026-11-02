@@ -178,6 +178,17 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertFalse(gate.isLatest(first), "nor does its error line show")
   }
 
+  // Work that outlives a sign-out changes nothing for whoever is signed in next.
+  func testLateRepliesAfterSignOutAreDropped() {
+    XCTAssertTrue(TokenManager.answerApplies(askedFor: "42", signedIn: "42"))
+    XCTAssertFalse(TokenManager.answerApplies(askedFor: "42", signedIn: ""), "signed out meanwhile")
+    XCTAssertFalse(TokenManager.answerApplies(askedFor: "42", signedIn: "77"), "another athlete signed in")
+    XCTAssertFalse(TokenManager.answerApplies(askedFor: "", signedIn: ""))
+    XCTAssertTrue(TimeZoneSync.keepsRecord(sentFor: "42", signedIn: "42"))
+    XCTAssertFalse(TimeZoneSync.keepsRecord(sentFor: "42", signedIn: nil))
+    XCTAssertFalse(TimeZoneSync.keepsRecord(sentFor: "42", signedIn: "77"))
+  }
+
   // Week So Far speaks full day names and counts minutes correctly.
   func testWeekSoFarSpokenLabels() {
     XCTAssertEqual(WeekSoFarDay(date: "2026-10-26", weekday: "Mon", runMin: 1).spokenLabel, "Monday, 1 minute")
