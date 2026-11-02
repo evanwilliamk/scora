@@ -157,6 +157,27 @@ final class DashboardReviewTests: XCTestCase {
     XCTAssertEqual(down, .failed("Down for a minute."))
   }
 
+  // This Week: a cancelled pull is quiet, a failure uses This Week's own words
+  // (not Today's Read's), and an older reply landing late is dropped.
+  func testWeeklyFetchUsesItsOwnLinesAndIgnoresCancellation() async {
+    let cancelled = await ReadFetch.run(lines: NetworkText.weekly) { throw URLError(.cancelled) }
+    XCTAssertEqual(cancelled, .cancelled)
+    XCTAssertNil(cancelled.errorLine)
+    let offline = await ReadFetch.run(lines: NetworkText.weekly) { throw URLError(.notConnectedToInternet) }
+    XCTAssertEqual(offline, .failed(NetworkText.weekly.offline))
+    let url = URL(string: "https://example.invalid/api/weekly")!
+    let down = await ReadFetch.run(lines: NetworkText.weekly) {
+      (Data(#"{"error":"LLM failed"}"#.utf8), HTTPURLResponse(url: url, statusCode: 500, httpVersion: nil, headerFields: nil)!)
+    }
+    XCTAssertEqual(down, .failed(NetworkText.weekly.other))
+
+    var gate = ReadLoadGate()
+    let first = gate.begin(), second = gate.begin()
+    XCTAssertTrue(gate.accept(second))
+    XCTAssertFalse(gate.accept(first), "the older weekly reply does not overwrite the newer one")
+    XCTAssertFalse(gate.isLatest(first), "nor does its error line show")
+  }
+
   // Week So Far speaks full day names and counts minutes correctly.
   func testWeekSoFarSpokenLabels() {
     XCTAssertEqual(WeekSoFarDay(date: "2026-10-26", weekday: "Mon", runMin: 1).spokenLabel, "Monday, 1 minute")

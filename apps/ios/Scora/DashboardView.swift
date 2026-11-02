@@ -843,15 +843,17 @@ enum ReadFetchOutcome: Equatable {
 enum ReadFetch {
   static let failureLine = NetworkText.read.other
 
-  static func run(_ loader: () async throws -> (Data, URLResponse)) async -> ReadFetchOutcome {
+  // `lines`: the screen's own words for a failure (This Week passes its own).
+  static func run(lines: NetworkText.Lines = NetworkText.read,
+                  _ loader: () async throws -> (Data, URLResponse)) async -> ReadFetchOutcome {
     do {
       let (data, resp) = try await loader()
       if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
-        return .failed(APIErrorText.message(from: data, fallback: failureLine))
+        return .failed(APIErrorText.message(from: data, fallback: lines.other))
       }
       return .data(data)
     } catch {
-      return isCancellation(error) ? .cancelled : .failed(NetworkText.read.line(for: error))
+      return isCancellation(error) ? .cancelled : .failed(lines.line(for: error))
     }
   }
 
