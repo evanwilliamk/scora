@@ -638,13 +638,23 @@ struct PlanBlockResponse: Decodable {
 
 struct PlanBlockView: View {
   let block: PlanBlock
+  // The phase names under the strip grow with Dynamic Type, so the strip does too.
+  @ScaledMetric(relativeTo: .caption2) private var stripHeight: CGFloat = 26
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Text(block.headline).font(.subheadline.bold()).foregroundColor(.white)
-        Spacer()
-        if let race = block.raceLine { Text(race).font(.caption).foregroundColor(.gray) }
+      // The race line drops under the week at large text sizes instead of clipping.
+      ViewThatFits(in: .horizontal) {
+        HStack {
+          Text(block.headline).font(.subheadline.bold()).foregroundColor(.white)
+          Spacer()
+          if let race = block.raceLine { Text(race).font(.caption).foregroundColor(.gray) }
+        }
+        VStack(alignment: .leading, spacing: 2) {
+          Text(block.headline).font(.subheadline.bold()).foregroundColor(.white)
+            .fixedSize(horizontal: false, vertical: true)
+          if let race = block.raceLine { Text(race).font(.caption).foregroundColor(.gray) }
+        }
       }
       // One segment per phase, as wide as its weeks, its name under it; this
       // week's phase in orange.
@@ -664,7 +674,7 @@ struct PlanBlockView: View {
           }
         }
       }
-      .frame(height: 26)
+      .frame(height: stripHeight)
       if let focus = block.phases.first(where: \.current)?.focus, !focus.isEmpty {
         Text(focus.prefix(1).uppercased() + focus.dropFirst()).font(.footnote).foregroundColor(Color(white: 0.7))
       }
@@ -773,8 +783,9 @@ struct PlanView: View {
     VStack(spacing: 0) {
       HStack {
         Text("Your Plan").font(.headline.bold()).foregroundColor(.white)
+          .accessibilityAddTraits(.isHeader)
         Spacer()
-        Button("Done") { dismiss() }.foregroundColor(.orange)
+        Button { dismiss() } label: { Text("Done").minTapTarget() }.foregroundColor(.orange)
       }
       .padding()
 
@@ -929,6 +940,7 @@ struct PlanView: View {
       if let block { PlanBlockView(block: block) }
       if !extras.changes.isEmpty {
         Text("Plan changes").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase).padding(.top, 4)
+          .accessibilityAddTraits(.isHeader)
         ForEach(extras.changes) { c in
           VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
@@ -939,6 +951,7 @@ struct PlanView: View {
               // Acknowledge: the change stays in the plan, it leaves this list.
               Button(action: { Task { await dismissChange(c) } }) {
                 Image(systemName: "xmark").font(.caption2.bold()).foregroundColor(.gray)
+                  .minTapTarget()
               }
               .disabled(dismissals.isPending(c.id))
               .accessibilityLabel("Dismiss this plan change")
@@ -974,6 +987,7 @@ struct PlanView: View {
       if let prediction = extras.prediction {
         VStack(alignment: .leading, spacing: 4) {
           Text("Race estimate").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+            .accessibilityAddTraits(.isHeader)
           if let h = prediction.headline {
             Text(h).scaledSerif(22, relativeTo: .title2).foregroundColor(.white)
           }
@@ -983,6 +997,7 @@ struct PlanView: View {
       }
       if extras.unmarked.contains(where: { $0.rowId != nil }) {
         Text("Past sessions").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+          .accessibilityAddTraits(.isHeader)
         ForEach(extras.unmarked.filter { $0.rowId != nil }) { w in
           VStack(alignment: .leading, spacing: 6) {
             // At accessibility sizes the buttons go under the day, so neither clips.
@@ -995,10 +1010,10 @@ struct PlanView: View {
               if !typeSize.isAccessibilitySize { Spacer() }
               HStack(spacing: 10) {
                 // A miss is recorded, never rescheduled (CLAUDE.md §6.2).
-                Button("Completed") { Task { await mark(w, done: true) } }
+                Button { Task { await mark(w, done: true) } } label: { Text("Completed").minTapTarget() }
                   .font(.caption.bold()).foregroundColor(.orange)
                   .accessibilityLabel(PlanSheet.markLabel(w, done: true)).accessibilityIdentifier("Completed")
-                Button("Missed") { Task { await mark(w, done: false) } }
+                Button { Task { await mark(w, done: false) } } label: { Text("Missed").minTapTarget() }
                   .font(.caption.bold()).foregroundColor(.gray)
                   .accessibilityLabel(PlanSheet.markLabel(w, done: false)).accessibilityIdentifier("Missed")
               }
@@ -1014,6 +1029,7 @@ struct PlanView: View {
         }
       }
       Text("Coming up").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+        .accessibilityAddTraits(.isHeader)
       if let note { Text(note).font(.footnote).foregroundColor(.gray) }
       if let watchNote { Text(watchNote).font(.footnote).foregroundColor(.gray) }
       ForEach(watchLedger.unattachedNotes(workouts), id: \.self) { n in
@@ -1036,6 +1052,7 @@ struct PlanView: View {
                 if sendingId == w.id { ProgressView().tint(.orange) }
                 Text("Send to Watch")
               }
+              .frame(minHeight: 44).contentShape(Rectangle())
             }
             .font(.caption.bold()).foregroundColor(.orange).padding(.top, 2)
             .disabled(sendingId != nil)
