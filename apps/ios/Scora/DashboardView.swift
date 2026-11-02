@@ -519,34 +519,38 @@ struct DashboardView: View {
   // MARK: Header
 
   private var header: some View {
-    HStack {
+    // At accessibility sizes the buttons take their own row under the name,
+    // so neither the name nor Sign Out is pushed off the screen.
+    let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout())
+    return layout {
       Text("SCORA")
         .font(.headline.bold())
         .foregroundColor(.white)
-      Spacer()
-      Button(action: { showPlan = true }) {
-        Image(systemName: "list.bullet.rectangle")
-          .foregroundColor(.orange)
+        .accessibilityAddTraits(.isHeader)
+      if !typeSize.isAccessibilitySize { Spacer() }
+      HStack(spacing: 4) {
+        Button(action: { showPlan = true }) {
+          Image(systemName: "list.bullet.rectangle").minTapTarget()
+        }
+        .accessibilityLabel("Your plan")
+        Button(action: { showWeekly = true }) {
+          Image(systemName: "calendar").minTapTarget()
+        }
+        .accessibilityLabel("This week")
+        Button(action: { showChat = true }) {
+          Image(systemName: "bubble.left.and.bubble.right").minTapTarget()
+        }
+        .accessibilityLabel("Ask about your training")
+        Button(action: { tokenManager.logout() }) {
+          Text("Sign Out").font(.subheadline).minTapTarget()
+        }
+        .padding(.leading, 4)
       }
-      .accessibilityLabel("Your plan")
-      .padding(.trailing, 4)
-      Button(action: { showWeekly = true }) {
-        Image(systemName: "calendar")
-          .foregroundColor(.orange)
-      }
-      .accessibilityLabel("This week")
-      .padding(.trailing, 4)
-      Button(action: { showChat = true }) {
-        Image(systemName: "bubble.left.and.bubble.right")
-          .foregroundColor(.orange)
-      }
-      .accessibilityLabel("Ask about your training")
-      Button("Sign Out") { tokenManager.logout() }
-        .font(.subheadline)
-        .foregroundColor(.orange)
-        .padding(.leading, 8)
+      .foregroundColor(.orange)
     }
-    .padding()
+    .padding(.horizontal)
+    .padding(.vertical, 6)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color.black)
   }
 
@@ -558,6 +562,7 @@ struct DashboardView: View {
         .font(.caption.bold())
         .foregroundColor(.gray)
         .textCase(.uppercase)
+        .accessibilityAddTraits(.isHeader)
 
       if let read {
         // Posture badge and the raw numbers first (PRD §5.A.3, CLAUDE.md §3.3).
@@ -923,6 +928,12 @@ struct ScaledSerif: ViewModifier {
 }
 
 extension View {
+  // At least 44 by 44 points to tap (Apple HIG), whatever the label's size.
+  // Goes on a button's label, so the larger frame is part of what is tapped.
+  func minTapTarget() -> some View {
+    frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+  }
+
   func scaledSerif(_ size: CGFloat, relativeTo style: Font.TextStyle = .body) -> some View {
     modifier(ScaledSerif(size, relativeTo: style))
   }

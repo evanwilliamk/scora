@@ -58,14 +58,23 @@ struct WeekSoFarView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Week So Far").font(.caption.bold()).foregroundColor(.gray).textCase(.uppercase)
+        .accessibilityAddTraits(.isHeader)
       HStack(alignment: .bottom, spacing: 6) {
         ForEach(Array(zip(week.days, zip(week.heights, week.plannedHeights))), id: \.0.date) { day, hp in
           let (h, p) = hp
           VStack(spacing: 4) {
             ZStack(alignment: .bottom) {
-              RoundedRectangle(cornerRadius: 2)
-                .fill(h == nil ? Color(white: 0.15) : (day.runMin ?? 0) > 0 ? Color.orange : Color(white: 0.3))
-                .frame(height: max(3, 44 * (h ?? 0)))
+              // A day still ahead is an outline, not a darker fill, so it does
+              // not differ from a day with no run by color alone.
+              if h == nil {
+                RoundedRectangle(cornerRadius: 2)
+                  .stroke(Color(white: 0.3), lineWidth: 1)
+                  .frame(height: 3)
+              } else {
+                RoundedRectangle(cornerRadius: 2)
+                  .fill((day.runMin ?? 0) > 0 ? Color.orange : Color(white: 0.3))
+                  .frame(height: max(3, 44 * (h ?? 0)))
+              }
               // The plan's outline sits in front, so it shows even when the run met it.
               if let p, p > 0 {
                 RoundedRectangle(cornerRadius: 2)
@@ -81,7 +90,8 @@ struct WeekSoFarView: View {
           .accessibilityLabel(day.spokenLabel)
         }
       }
-      .frame(height: 64, alignment: .bottom)
+      // No fixed height: the day letters grow with Dynamic Type and must not
+      // run into the line below.
       Text(week.line).font(.footnote).foregroundColor(Color(white: 0.75))
         .fixedSize(horizontal: false, vertical: true)
     }
