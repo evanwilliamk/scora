@@ -884,3 +884,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: the stepper counts whole units of `PlanDistance.unit` (miles today, starting at 19 mi, about 30 km) and `PlanSetup.km` converts to km at two decimals before posting `current_weekly_km`, which stays km with its 0 to 500 range. The offered range is the whole miles whose posted km the level's templates take (`PlanLevel.range()`), capped at 310 mi (500 km). Also: an earlier day's read no longer shows Week So Far (`ReadDate.weekSoFar`), the smaller change than labeling it with that read's week.
 - Why: one unit per screen; the API contract does not move, and a km preference later flips the form with the rest of the plan.
 - To reverse: `PlanSetup.km` / `PlanLevel.range(in:)` with `.km`, or drop `ReadDate.weekSoFar` from the dashboard.
+
+### 2026-11-02: OpenAI outages always end in a logged fallback
+- Status: DECIDED
+- Branch: claude/outage-telemetry
+- Context: `generateValidatedVoice` threw on a failed first call unless the caller set `fallbackOnLlmError`, and chat returned a 500 with no voice_emission line, so outages fell out of gates 1.1.4 and 2.1.5.
+- Choice: the flag is gone; every surface gets the driver fallback and one emission line. Chat answers 200 with "No answer could be reached just now, so nothing is shown for this question.", `unavailable: true`, no drivers, and the query refunded. Alternative: keep the 500 and log a line beside it.
+- Why: one rule in the shared function instead of a flag per caller; the athlete gets a sentence, not an error.
+- To reverse: `CDV_OUTAGE_REPLY` in index.ts for the wording; restore the 500 in the chat route's first-call catch.

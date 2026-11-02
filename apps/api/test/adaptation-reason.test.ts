@@ -169,3 +169,15 @@ test('telemetry: final_ok is set from the stored text, for a pass, a fallback an
   assert.deepEqual([through.fallback, through.final_ok], [true, false]);
   assert.doesNotMatch(JSON.stringify(through), /rest|9 hours|429/);
 });
+
+test('an OpenAI outage on the reason is the fixed sentence and one checked fallback line', async () => {
+  const fixed = reasonText(moved);
+  const down = openAiReasonLlm('k', (async () => new Response('{"error":{"message":"Sleep 5:40 overloaded"}}', { status: 503 })) as any);
+  const r = await writeReason(moved, evidence, down, fixed);
+  assert.deepEqual([r.source, r.text, r.finalOk], ['fallback', fixed, true]);
+  // The route writes exactly this one line per reason (index.ts writeReason hook).
+  const line = voiceEmissionLine(reasonEmission(r));
+  const e = JSON.parse(line.slice('telemetry '.length));
+  assert.deepEqual([e.surface, e.fallback, e.final_ok, e.banned, e.unbacked], ['adaptation_reason', true, true, [], 0]);
+  assert.doesNotMatch(line, /5:40|overloaded/);
+});
