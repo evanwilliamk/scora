@@ -5,7 +5,7 @@ import { settle, unwrap } from './settle';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
-import { SnapshotCache, planCardExpansion, checkCardPosture } from './card-expand';
+import { SnapshotCache, planCardExpansion, checkCardPosture, cardErrorFallback } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec, localRunDay, sixWeekRuns, weekdayRunDates } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations, citedChunks, libraryClaimHits } from './knowledge-retrieval';
 import {
@@ -902,8 +902,9 @@ fastify.post('/api/card-expand', async (request, reply) => {
     return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: true });
   } catch (e) {
     fastify.log.error(`Card expansion failed: ${e instanceof Error ? e.message : e}`);
-    trackVoice(fastify.log, { surface: 'card', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0 });
-    return reply.send({ cardId, reply: card.translation ?? '', drivers: [], generated: false });
+    const fallback = cardErrorFallback(plan.drivers, card.title, snapshot.posture);
+    trackVoice(fastify.log, fallback.emission);
+    return reply.send({ cardId, reply: fallback.reply, drivers: plan.drivers, generated: false });
   }
 });
 

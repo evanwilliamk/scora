@@ -860,3 +860,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: no schema change. Stored km is converted at display time by one helper, `apps/api/src/units.ts` (`distanceUnit()`, `formatPlanDistance()`, `planDistanceValue()`), mirrored on iOS by `PlanDistance` in PlanView.swift. Miles round to one decimal (13.1 mi stored as 21.08 km reads 13.1 mi, 16 mi reads 16 mi). The athlete's Strava measurement_preference is not stored or fetched anywhere today, so the unit is miles for everyone, matching metrics.ts. Covers the Plan today driver, the PLAN TODAY prompt line, the Plan Today card and the Your Plan sheet; the Today: line, weekly plan driver and adaptation reasons state no stored distances. Template km, plan engine km, pasted descriptions and the plan setup form's current_weekly_km input are unchanged. Alternatives: A (store the written unit, needs a column) or keep km.
 - Why: one unit across the read, and the voice can quote the plan in the same unit as Weekly volume and Long run. A km-written plan ("10 km") now reads 6.2 mi, the cost of having no stored preference.
 - To reverse: make `distanceUnit()` (units.ts) and `PlanDistance.unit` return km, or pass a real preference into them once one is stored.
+
+### 2026-11-02: Card expansion error path sends the driver read, not the card translation
+- Status: DECIDED (review when you can)
+- Branch: claude/gate-fail-through
+- Context: when the card-expand LLM call failed, the route sent the card's translation, which cites counts that are not drivers ("across 3 runs"), so it could never count as a validated fallback for gate 1.1.4.
+- Choice: send `buildFallbackVoice(drivers, card.title)` (the text `checkCardPosture` already falls back to) with the card's drivers, `generated: false`. Alternative: keep the translation and log it as a fail-through on every card error.
+- Why: every voice-like text sent is now either a passing draft or a checked fallback.
+- To reverse: `cardErrorFallback` in apps/api/src/card-expand.ts, return `card.translation` instead.
