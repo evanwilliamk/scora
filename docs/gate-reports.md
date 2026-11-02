@@ -11,18 +11,23 @@ npx tsx scripts/voice-gate-report.ts <log-file>
 npx tsx scripts/log-audit.ts <log-file>
 ```
 
-`voice-gate-report.ts` exits 0 when every bar with data passes, 1 when one fails, 3 when the file has no telemetry lines. `log-audit.ts` exits 1 on any finding and prints line numbers and categories only, never the matched text.
+`voice-gate-report.ts` exits 0 when every bar with data passes, 1 when one fails (this wins over 3), 3 when there is not enough telemetry to judge: no telemetry lines at all, or any `voice_emission` line without `final_ok` (1.1.4 INCOMPLETE). 3 is never a pass. `log-audit.ts` exits 1 on any finding and prints line numbers and categories only, never the matched text.
 
 | Gate | Bar | Source line | Report section |
 |---|---|---|---|
 | 1.1.1 Daily delivery on time | within 5 min of the set time, 13 of 14 mornings | `push_delivery` | Morning delivery |
 | 1.1.2 Opened from the push | within 4 h, 12 of 14 mornings | `push_sent`, `push_open` | Opened within 4h |
 | 1.1.3 / 2.1.4 Banned phrases | 0 in Phase 0, under 0.5% after | `voice_emission` | Banned-phrase hit rate |
-| 1.1.4 Validator fail-throughs | 0 | `voice_emission.final_ok` | Validator fail-throughs |
+| 1.1.4 Validator fail-throughs | 0 | `voice_emission.final_ok` | Validator fail-throughs; fail-through and unchecked columns |
 | 1.1.6 No PHI in logs | none | every line | `log-audit.ts` |
 | 1.1.7 Numbers first | every morning message | `push_sent.numeric_first` | Numeric-first |
-| 2.1.5 Validator fallback rate | under 10% | `voice_emission` | fallback column |
+| 2.1.5 Validator fallback rate | under 10% | `voice_emission.fallback` | Validator fallback rate; fallback column |
 | 2.1.8 Plan-aware reads | plan named on 60% of plan days, per athlete | `read_plan` | Plan named |
+
+1.1.4 and 2.1.5 count every voice surface: daily, weekly, card, cdv, adaptation_reason, why and more, one row each plus `all`. An OpenAI outage on any of them logs a fallback line, so outages count toward 2.1.5.
+
+- 1.1.4: FAIL on any `final_ok: false`; otherwise INCOMPLETE (with the count) while any line has no `final_ok` (logged before 2026-11-02); PASS when every line is checked and none failed; NO DATA with no voice lines.
+- 2.1.5: fallbacks over all emissions, strict bar: 10.0% is a FAIL, under it PASS; NO DATA with no voice lines.
 
 Morning gates judge each athlete's last 14 mornings. With fewer, a gate can already fail but shows NOT ENOUGH MORNINGS instead of passing. Mornings no phone accepted are left out of the open rate.
 
