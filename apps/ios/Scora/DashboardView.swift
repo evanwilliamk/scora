@@ -366,6 +366,9 @@ struct DashboardView: View {
           .background(ouraBanner.connected ? Color.orange.opacity(0.25) : Color(white: 0.16))
           .transition(.move(edge: .top).combined(with: .opacity))
           .onTapGesture { withAnimation { self.ouraBanner = nil } }
+          // Tapping dismisses it, so VoiceOver says it is a control and what it does.
+          .accessibilityAddTraits(.isButton)
+          .accessibilityHint("Dismisses this notice")
       }
       ScrollViewReader { scroller in
       ScrollView {
