@@ -61,9 +61,6 @@ const cases: { how: number | 'network'; line: string }[] = [
 
 for (const route of routes) {
   for (const c of cases) {
-    // Calories asks Strava for the athlete profile outside a try, so a
-    // network failure there stays the route's 500 "Calorie estimates failed."
-    if (route.name === 'calories' && c.how === 'network') continue;
     test(`${route.name}: Strava ${c.how} answers 401 with "${c.line}"`, async () => {
       if (route.env) process.env[route.env] = 'on';
       try {

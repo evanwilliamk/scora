@@ -922,8 +922,9 @@ fastify.post('/api/card-expand', async (request, reply) => {
       check: (v) => postureClaimHits(v, snapshot.posture),
       log: fastify.log,
     });
-    // An outage comes back as the logged driver read: not generated.
-    return reply.send({ cardId, reply: checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title), drivers: plan.drivers, generated: !result.llmError });
+    const text = checkCardPosture(result.voice, snapshot.posture, plan.drivers, card.title);
+    // generated: the reply is the model's own validated draft; any fallback (outage, rejected drafts, posture guard) is false.
+    return reply.send({ cardId, reply: text, drivers: plan.drivers, generated: !result.usedFallback && text === result.voice });
   } catch (e) {
     // Not an OpenAI failure (those return above): something else threw before
     // any emission was logged, so this is the only line for the tap.
@@ -1253,9 +1254,16 @@ fastify.get('/api/calories', async (request, reply) => {
     }
     const headers = { Authorization: `Bearer ${token}` };
     const after = Math.floor(Date.now() / 1000) - 14 * 86400;
-    const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', { headers });
-    if (!athleteRes.ok) return reply.code(401).send({ error: vendorFailureLine('Strava', await vendorHttpError(athleteRes, 'Strava')) });
-    const athlete = (await athleteRes.json()) as { weight?: number | null };
+    // A failed profile fetch (HTTP error, timeout, network, unreadable body)
+    // answers like the activity pull below: 401 with the athlete sentence.
+    let athlete: { weight?: number | null };
+    try {
+      const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', { headers });
+      if (!athleteRes.ok) throw await vendorHttpError(athleteRes, 'Strava');
+      athlete = (await athleteRes.json()) as { weight?: number | null };
+    } catch (e) {
+      return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
+    }
     let activities: any[];
     try {
       activities = await fetchActivitiesSince(token, after);
