@@ -876,3 +876,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: below 0.1 a distance keeps two decimals with a 0.01 floor (units.ts and PlanDistance alike; it stays a number the validator can match). The app shows the server's `error` only when it reads as a sentence (ends in "." or "?", no "Missing:" prefix, no env name); otherwise the screen's own line.
 - Why: "under 0.1 mi" has no number for the driver-existence check; the full-stop rule matches every athlete-facing message the API sends today without a list to maintain.
 - To reverse: `planDistanceValue` / `PlanDistance.format`; `APIErrorText.isForAthlete`.
+
+### 2026-11-02: Plan setup asks weekly volume in the athlete's unit
+- Status: DECIDED
+- Branch: claude/ios-plan-setup-miles
+- Context: plan distances and the API's volume errors read in miles (Q32 B), but the plan setup form still asked "30 km a week".
+- Choice: the stepper counts whole units of `PlanDistance.unit` (miles today, starting at 19 mi, about 30 km) and `PlanSetup.km` converts to km at two decimals before posting `current_weekly_km`, which stays km with its 0 to 500 range. The offered range is the whole miles whose posted km the level's templates take (`PlanLevel.range()`), capped at 310 mi (500 km). Also: an earlier day's read no longer shows Week So Far (`ReadDate.weekSoFar`), the smaller change than labeling it with that read's week.
+- Why: one unit per screen; the API contract does not move, and a km preference later flips the form with the rest of the plan.
+- To reverse: `PlanSetup.km` / `PlanLevel.range(in:)` with `.km`, or drop `ReadDate.weekSoFar` from the dashboard.
