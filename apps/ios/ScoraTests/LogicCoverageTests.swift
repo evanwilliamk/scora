@@ -409,3 +409,41 @@ final class APIReplyShapeTests: XCTestCase {
     XCTAssertNil(ReadDate.spoken("2026-02-30"))
   }
 }
+
+final class PlanDateTests: XCTestCase {
+  // Four weeks after a day just before spring forward is still local midnight
+  // 28 calendar days later, not 23:00 the day before.
+  func testEarliestRaceAcrossSpringForwardIsALocalDay() {
+    var ny = Calendar(identifier: .gregorian)
+    ny.timeZone = TimeZone(identifier: "America/New_York")!
+    let now = ISO8601DateFormatter().date(from: "2026-02-20T23:30:00Z")! // 18:30 EST Feb 20
+    let race = PlanSetup.earliestRace(from: now, calendar: ny)
+    XCTAssertEqual(PlanDay.today(race, zone: ny.timeZone), "2026-03-20")
+    XCTAssertEqual(ny.dateComponents([.hour, .minute], from: race), DateComponents(hour: 0, minute: 0))
+  }
+
+  func testPlanDayIsTheGivenZonesDate() {
+    let instant = ISO8601DateFormatter().date(from: "2026-11-01T06:30:00Z")!
+    XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "America/New_York")!), "2026-11-01")
+    XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "America/Los_Angeles")!), "2026-10-31")
+  }
+
+  func testUpcomingIsTodayOnSortedAndCapped() {
+    func w(_ d: String) -> PlanWorkout {
+      PlanWorkout(date: d, type: "run", intensity: nil, durationMin: 30, distanceKm: nil, description: nil)
+    }
+    let days = (1...20).map { String(format: "2026-11-%02d", $0) }
+    let rows = days.reversed().map(w) + [w("2026-10-31")]
+    let up = PlanDay.upcoming(rows, today: "2026-11-02")
+    XCTAssertEqual(up.count, 14)
+    XCTAssertEqual(up.first?.date, "2026-11-02", "today's session is listed")
+    XCTAssertEqual(up.map(\.date), Array(days[1..<15]))
+    XCTAssertTrue(PlanDay.upcoming([w("2026-10-31")], today: "2026-11-02").isEmpty)
+  }
+
+  func testUnknownLevelNamesReadAsWords() {
+    XCTAssertEqual(PlanSetup.levelName("first_timer"), "First timer")
+    XCTAssertEqual(PlanSetup.levelName("returning_athlete"), "Returning Athlete")
+    XCTAssertEqual(PlanSetup.levelText("returning_athlete"), "Returning Athlete")
+  }
+}
