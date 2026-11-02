@@ -18,7 +18,7 @@ import {
 } from './oura';
 import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from './usage';
 import { generateValidatedVoice } from './voice';
-import { checkCdvWithRetry, cdvEmission } from './cdv-check';
+import { checkCdvWithRetry, cdvEmission, cdvTextOk } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 import { vendorErrorKind, vendorHttpError } from './vendor-error';
 
@@ -265,6 +265,10 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
 });
 
 // CDV endpoint - simple and safe
+// What chat says when OpenAI is down: no number, no advice, checked like any
+// other chat reply before it is sent.
+const CDV_OUTAGE_REPLY = 'No answer could be reached just now, so nothing is shown for this question.';
+
 fastify.post('/api/cdv', async (request, reply) => {
   try {
     const body = request.body as any;
@@ -485,14 +489,27 @@ Answer THIS question specifically using the data above. If the data can't answer
     } catch (e) {
       fastify.log.error({ kind: vendorErrorKind(e) }, 'OpenAI error');
       // No answer, so no query spent: give it back.
+      let refunded = false;
       if (quota?.allowed) {
         try {
           await refundCdvQuota(athleteId, quota.day);
+          refunded = true;
         } catch (re) {
           fastify.log.error({ err: re }, 'CDV quota refund failed');
         }
       }
-      return reply.code(500).send({ error: 'LLM failed' });
+      // An outage answers with a plain sentence and still logs its one
+      // voice_emission line, so gates 1.1.4 and 2.1.5 count it as a fallback.
+      const voice = CDV_OUTAGE_REPLY;
+      trackVoice(fastify.log, { surface: 'cdv', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0, finalOk: cdvTextOk(voice, dataBlock, String(message ?? '')) });
+      return reply.send({
+        voice,
+        drivers: [],
+        unavailable: true,
+        data: { weeklyMiles: parseFloat(weeklyMiles), runCount, lastRun: lastRun.name },
+        remaining: quota ? quota.remaining + (refunded ? 1 : 0) : undefined,
+        limit: quota?.limit,
+      });
     }
 
     // Validators on the reply (CLAUDE.md §3.2): every number in the voice and
