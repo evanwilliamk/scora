@@ -85,9 +85,13 @@ struct OnboardingView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       progress.padding(.horizontal, 24).padding(.top, 24)
-      Spacer(minLength: 24)
-      content.padding(.horizontal, 24)
-      Spacer()
+      // Scrolls when the text is too large for one screen; centered otherwise.
+      GeometryReader { geo in
+        ScrollView {
+          content.padding(.horizontal, 24).padding(.vertical, 24)
+            .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .leading)
+        }
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)
@@ -142,9 +146,11 @@ struct OnboardingView: View {
         Text("Morning read")
           .scaledSerif(28, relativeTo: .title)
           .foregroundColor(.white)
+          .accessibilityAddTraits(.isHeader)
         Text("Your read arrives as a notification each morning. Time zone: \(OnboardingState.zoneLabel(.current)).")
           .font(.body)
           .foregroundColor(.gray)
+          .fixedSize(horizontal: false, vertical: true)
         DatePicker("Delivery time", selection: $deliveryTime, displayedComponents: .hourAndMinute)
           .datePickerStyle(.wheel)
           .labelsHidden()
@@ -163,10 +169,10 @@ struct OnboardingView: View {
         }
           .disabled(isSaving)
         if errorText != nil {
-          Button("Skip for now") { skipDelivery() }
-            .font(.subheadline)
+          Button(action: skipDelivery) {
+            Text("Skip for now").font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+          }
             .foregroundColor(.gray)
-            .frame(maxWidth: .infinity)
         }
       }
     case .done:
@@ -185,6 +191,7 @@ struct OnboardingView: View {
         .scaledSerif(28, relativeTo: .title)
         .foregroundColor(.white)
         .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
       Text(body)
         .font(.body)
         .foregroundColor(.gray)
@@ -192,10 +199,10 @@ struct OnboardingView: View {
       primaryButton(primary.0, action: primary.1)
         .padding(.top, 8)
       if let secondary {
-        Button(secondary.0, action: secondary.1)
-          .font(.subheadline)
+        Button(action: secondary.1) {
+          Text(secondary.0).font(.subheadline).frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+        }
           .foregroundColor(.gray)
-          .frame(maxWidth: .infinity)
       }
     }
   }

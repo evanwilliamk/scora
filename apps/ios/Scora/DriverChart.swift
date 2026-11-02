@@ -52,6 +52,35 @@ struct DriverSeries: Decodable, Identifiable, Equatable {
     let n = v.rounded() == v ? String(Int(v)) : String(format: "%.1f", v)
     return "\(n) \(unit)"
   }
+
+  // What VoiceOver reads for the chart, built only from the points it draws
+  // (those with a date that parses) and the baseline line; nothing estimated.
+  func accessibilitySummary(zone: TimeZone = .current) -> String {
+    let drawn = points.filter { Self.localDay($0.date, zone: zone) != nil }
+    guard let first = drawn.first, let last = drawn.last,
+          let low = drawn.map(\.value).min(), let high = drawn.map(\.value).max() else {
+      return "No recorded values."
+    }
+    let f = { (v: Double) in Self.format(v, unit: unit) }
+    var parts = [drawn.count == 1 ? "1 recorded value" : "\(drawn.count) recorded values, \(Self.spokenDay(first.date, zone: zone)) to \(Self.spokenDay(last.date, zone: zone))"]
+    parts.append("Latest \(f(last.value))")
+    if drawn.count > 1 { parts.append("Low \(f(low)), high \(f(high))") }
+    if let b = baseline { parts.append("\(baselineLabel ?? "Average before"): \(f(b))".capitalizedFirst) }
+    return parts.joined(separator: ". ") + "."
+  }
+
+  static func spokenDay(_ s: String, zone: TimeZone = .current) -> String {
+    guard let d = localDay(s, zone: zone) else { return s }
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = zone
+    f.dateFormat = "MMMM d"
+    return f.string(from: d)
+  }
+}
+
+private extension String {
+  var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
 enum ReadText {
@@ -83,21 +112,20 @@ struct DriverChartView: View {
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
+    ScrollView {
     VStack(alignment: .leading, spacing: 14) {
-      HStack {
+      HStack(alignment: .top) {
         Text(series.label).font(.headline.bold()).foregroundColor(.white)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityAddTraits(.isHeader)
         Spacer()
-        Button("Done") { dismiss() }.foregroundColor(.orange)
+        Button { dismiss() } label: { Text("Done").minTapTarget() }.foregroundColor(.orange)
       }
       if let latest = series.latest {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-          Text(DriverSeries.format(latest.value, unit: series.unit))
-            .scaledSerif(28, relativeTo: .title)
-            .foregroundColor(.white)
-          if let b = series.baseline {
-            Text("\(series.baselineLabel ?? "average before"): \(DriverSeries.format(b, unit: series.unit))")
-              .font(.footnote).foregroundColor(.gray)
-          }
+        // The baseline drops under the value at large text sizes instead of clipping.
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .firstTextBaseline, spacing: 8) { latestAndBaseline(latest) }
+          VStack(alignment: .leading, spacing: 4) { latestAndBaseline(latest) }
         }
       }
       Chart {
@@ -121,14 +149,31 @@ struct DriverChartView: View {
         }
       }
       .frame(height: 200)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel("Chart of \(series.label)")
+      .accessibilityValue(series.accessibilitySummary())
       Text("Each point is a recorded value. Days with no reading are left out.")
         .font(.caption).foregroundColor(.gray)
-      Spacer()
+        .fixedSize(horizontal: false, vertical: true)
     }
     .padding()
+    .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)
     .preferredColorScheme(.dark)
+  }
+
+  @ViewBuilder
+  private func latestAndBaseline(_ latest: SeriesPoint) -> some View {
+    Text(DriverSeries.format(latest.value, unit: series.unit))
+      .scaledSerif(28, relativeTo: .title)
+      .foregroundColor(.white)
+    if let b = series.baseline {
+      Text("\(series.baselineLabel ?? "average before"): \(DriverSeries.format(b, unit: series.unit))")
+        .font(.footnote).foregroundColor(.gray)
+        .fixedSize(horizontal: false, vertical: true)
+    }
   }
 
   // Points the chart can place. Days are local calendar days, so they are

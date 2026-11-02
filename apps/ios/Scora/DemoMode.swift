@@ -59,7 +59,7 @@ enum DemoMode {
     ])
     return [
       ChatMessage(isUser: true, text: "How has my HRV moved over two months?", drivers: []),
-      ChatMessage(isUser: false, text: "HRV rose from 41ms to 52ms over eight weeks, with one dip in week 3.", drivers: [], chartHTML: CDVChart.html(for: spec)),
+      ChatMessage(isUser: false, text: "HRV rose from 41ms to 52ms over eight weeks, with one dip in week 3.", drivers: [], chartHTML: CDVChart.html(for: spec), chartSummary: CDVChart.summary(for: spec)),
     ]
   }
 

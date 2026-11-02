@@ -65,7 +65,9 @@ enum CDVReply {
 
   static func message(from data: Data) -> ChatMessage {
     guard let r = decode(data) else { return .error(unreadable) }
-    return ChatMessage(isUser: false, text: r.voice, drivers: r.drivers, chartHTML: r.chart.flatMap(CDVChart.html(for:)))
+    let html = r.chart.flatMap(CDVChart.html(for:))
+    return ChatMessage(isUser: false, text: r.voice, drivers: r.drivers, chartHTML: html,
+                       chartSummary: html == nil ? nil : r.chart.flatMap(CDVChart.summary(for:)))
   }
 }
 
@@ -130,6 +132,49 @@ enum CDVChart {
       .replacingOccurrences(of: "<", with: "\\u003c")
       .replacingOccurrences(of: ">", with: "\\u003e")
       .replacingOccurrences(of: "&", with: "\\u0026")
+  }
+
+  // What VoiceOver reads for the chart: its own inline values, in the order
+  // drawn, for a single-series x/y chart. Anything else (layers, folds,
+  // aggregates) returns nil, and the label stays generic rather than guess.
+  static func summary(for spec: JSONValue) -> String? {
+    guard case .object(let o) = spec,
+          case .object(let data)? = o["data"], case .array(let rows)? = data["values"],
+          case .object(let enc)? = o["encoding"],
+          case .object(let y)? = enc["y"], case .string(let yField)? = y["field"],
+          y["aggregate"] == nil, enc["color"] == nil else { return nil }
+    var xField: String?
+    var xTitle: String?
+    if case .object(let x)? = enc["x"], case .string(let f)? = x["field"] {
+      xField = f
+      if case .string(let t)? = x["title"] { xTitle = t } else { xTitle = f }
+    }
+    var ys: [Double] = []
+    var xs: [String] = []
+    for row in rows {
+      guard case .object(let r) = row, case .number(let v)? = r[yField] else { continue }
+      ys.append(v)
+      if let xField, let x = r[xField] { xs.append(spoken(x)) }
+    }
+    guard let first = ys.first, let last = ys.last, let low = ys.min(), let high = ys.max() else { return nil }
+    let yTitle: String
+    if case .string(let t)? = y["title"] { yTitle = t } else { yTitle = yField }
+    var parts = [xTitle.map { "\(yTitle) by \($0)" } ?? yTitle]
+    var count = ys.count == 1 ? "1 value" : "\(ys.count) values"
+    if ys.count > 1, xs.count == ys.count, let a = xs.first, let b = xs.last { count += ", from \(a) to \(b)" }
+    parts.append(count)
+    parts.append(ys.count == 1 ? "Value \(spoken(.number(first)))" : "First \(spoken(.number(first))), last \(spoken(.number(last)))")
+    if ys.count > 1 { parts.append("Low \(spoken(.number(low))), high \(spoken(.number(high)))") }
+    return parts.joined(separator: ". ") + "."
+  }
+
+  private static func spoken(_ v: JSONValue) -> String {
+    switch v {
+    case .number(let n): return n.rounded() == n && abs(n) < 1e15 ? String(Int(n)) : String(format: "%.1f", n)
+    case .string(let s): return s
+    case .bool(let b): return b ? "true" : "false"
+    default: return ""
+    }
   }
 
   static func html(for spec: JSONValue) -> String? {
@@ -265,6 +310,8 @@ struct ChatMessage: Identifiable {
   let text: String
   let drivers: [Driver]
   var chartHTML: String? = nil
+  // Spoken summary of the chart's own values, when its shape allows one.
+  var chartSummary: String? = nil
   // The answer and its drawn chart as one image, once the chart has rendered.
   var shareImage: UIImage? = nil
 }
@@ -305,15 +352,18 @@ struct ChatView: View {
         Text("SCORA")
           .font(.headline.bold())
           .foregroundColor(.white)
+          .accessibilityAddTraits(.isHeader)
         Spacer()
         if let remaining {
           Text("\(max(0, remaining)) left today")
             .font(.caption)
             .foregroundColor(remaining == 0 ? .orange : .gray)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.trailing, 8)
         }
-        Button("Sign Out") { tokenManager.logout() }
-          .font(.subheadline)
+        Button(action: { tokenManager.logout() }) {
+          Text("Sign Out").font(.subheadline).minTapTarget()
+        }
           .foregroundColor(.orange)
       }
       #if DEBUG
@@ -368,6 +418,7 @@ struct ChatView: View {
           Image(systemName: "arrow.up.circle.fill")
             .font(.system(size: 32))
             .foregroundColor(input.isEmpty || limitReached ? .gray : .orange)
+            .minTapTarget()
         }
         .disabled(input.isEmpty || isLoading || limitReached)
         .accessibilityLabel("Send")
@@ -409,34 +460,36 @@ struct ChatView: View {
             .frame(height: 220)
             .background(Color(white: 0.1))
             .cornerRadius(12)
-            // The WebView's SVG has no spoken text; the answer above carries it.
+            // The WebView's SVG has no spoken text, so the chart reads its own values.
             .accessibilityElement()
             .accessibilityLabel("Chart for this answer")
+            .accessibilityValue(msg.chartSummary ?? "")
           if let card = msg.shareImage {
             ShareLink(item: ShareCard(image: card), preview: SharePreview("SCORA chart", image: Image(uiImage: card))) {
               Label("Share", systemImage: "square.and.arrow.up")
                 .font(.caption.bold())
                 .foregroundColor(.gray)
+                .frame(minHeight: 44).contentShape(Rectangle())
             }
             .accessibilityLabel("Share this answer and chart")
           }
         }
         
         ForEach(msg.drivers) { d in
-          HStack {
-            Text(d.metric)
-              .font(.caption.bold())
-              .foregroundColor(.white)
-            Spacer()
-            Text(d.value)
-              .font(.caption)
-              .foregroundColor(.orange)
-            if let trend = d.trend, !trend.isEmpty {
-              Text(trend)
-                .font(.caption2)
-                .foregroundColor(.gray)
+          // The value goes under the metric at large text sizes instead of clipping.
+          ViewThatFits(in: .horizontal) {
+            HStack {
+              Text(d.metric).font(.caption.bold()).foregroundColor(.white)
+              Spacer()
+              driverValue(d)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+              Text(d.metric).font(.caption.bold()).foregroundColor(.white)
+                .fixedSize(horizontal: false, vertical: true)
+              HStack(alignment: .firstTextBaseline) { driverValue(d) }
             }
           }
+          .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.horizontal, 12)
           .padding(.vertical, 8)
           .background(Color(white: 0.1))
@@ -447,6 +500,18 @@ struct ChatView: View {
     }
   }
   
+  @ViewBuilder
+  private func driverValue(_ d: Driver) -> some View {
+    Text(d.value)
+      .font(.caption)
+      .foregroundColor(.orange)
+    if let trend = d.trend, !trend.isEmpty {
+      Text(trend)
+        .font(.caption2)
+        .foregroundColor(.gray)
+    }
+  }
+
   private func send() {
     let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty, !isLoading else { return }

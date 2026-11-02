@@ -60,10 +60,12 @@ struct WeeklyView: View {
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
 
-  private let columns = [
-    GridItem(.flexible(), spacing: 12),
-    GridItem(.flexible(), spacing: 12),
-  ]
+  @Environment(\.dynamicTypeSize) private var typeSize
+
+  // Two tiles a row; one at the accessibility text sizes, so a value is not squeezed.
+  private var columns: [GridItem] {
+    Array(repeating: GridItem(.flexible(), spacing: 12), count: typeSize.isAccessibilitySize ? 1 : 2)
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -71,12 +73,14 @@ struct WeeklyView: View {
         Text("This Week")
           .font(.headline.bold())
           .foregroundColor(.white)
+          .accessibilityAddTraits(.isHeader)
         Spacer()
         // PRD §5.A.5: the Sunday card can be forwarded (doc 10 2.1.6).
         if let shareImage {
           ShareLink(item: ShareCard(image: shareImage), preview: SharePreview("SCORA Sunday review", image: Image(uiImage: shareImage))) {
             Image(systemName: "square.and.arrow.up")
               .foregroundColor(.white)
+              .minTapTarget()
           }
           .accessibilityLabel("Share this week's review")
         }
@@ -132,6 +136,7 @@ struct WeeklyView: View {
       Text("SUNDAY REVIEW")
         .font(.caption.bold())
         .foregroundColor(.gray)
+        .accessibilityAddTraits(.isHeader)
 
       if let read {
         Text(read.voice)

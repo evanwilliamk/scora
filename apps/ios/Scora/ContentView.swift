@@ -10,6 +10,7 @@ struct ContentView: View {
       Text("SCORA")
         .font(.system(size: 48, weight: .bold, design: .default))
         .foregroundColor(.white)
+        .accessibilityAddTraits(.isHeader)
       
       Text("Endurance athlete insights")
         .font(.subheadline)
