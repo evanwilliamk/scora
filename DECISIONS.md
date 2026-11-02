@@ -892,3 +892,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: the flag is gone; every surface gets the driver fallback and one emission line. Chat answers 200 with "No answer could be reached just now, so nothing is shown for this question.", `unavailable: true`, no drivers, and the query refunded. Alternative: keep the 500 and log a line beside it.
 - Why: one rule in the shared function instead of a flag per caller; the athlete gets a sentence, not an error.
 - To reverse: `CDV_OUTAGE_REPLY` in index.ts for the wording; restore the 500 in the chat route's first-call catch.
+
+### 2026-11-02: Strava fetch failures say whether to reconnect or wait
+- Status: DECIDED (reversible, copy for Evan to review)
+- Branch: claude/strava-error-line
+- Context: a failed Strava activities pull answered 401 "Strava token invalid or expired", which the app now hides, so a revoked connection read as a generic "Pull to try again".
+- Choice: still 401, but `error` is "Strava needs to be connected again." when Strava answered 401 or 403 after the token refresh, and "Strava is not answering right now." for a timeout, network error, 5xx or a bad body. Applies to read, weekly, chat, race prediction and calories. Oura failures are not surfaced by any route (they fall back), so the Oura lines exist in the helper but are unused. Token-lookup failures keep "Strava not connected or refresh failed. Please reconnect Strava." Alternative: a 503 for the outage case (the app would show the same sentence; status left as is).
+- Why: the athlete learns whether a retry will help; both lines pass `APIErrorText.isForAthlete` with no Swift change.
+- To reverse: `vendorFailureLine` in apps/api/src/vendor-error.ts for the wording; restore the old string in the index.ts catches.
