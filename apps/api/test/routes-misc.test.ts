@@ -198,6 +198,22 @@ test('chat: a refund the count no longer allows is not reported as one (review 1
   assert.equal(r.json().remaining, 1, 'the count the athlete sees is the stored one');
 });
 
+test('chat: a model reply with no text is an outage, logged once and refunded (review 11-02 late)', async () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  connected({ cdv_count: 0, cdv_count_date: today });
+  connected({ cdv_count: 0, cdv_count_date: today });
+  rest.answer('athletes', { body: [] });
+  connected({ cdv_count: 1, cdv_count_date: today });
+  guard.stravaActivities(twoWeeks());
+  guard.openAi({ status: 200, body: { choices: [{ message: { content: null } }] } });
+  const { result: r, emissions } = await emissionsDuring(app.log, () => post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today }));
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().unavailable, true);
+  assert.deepEqual(emissions.map((e) => [e.surface, e.fallback]), [['cdv', true]], 'one line, not zero');
+  const counts = rest.requests.filter((q) => q.method === 'PATCH' && q.table === 'athletes').map((q) => q.body.cdv_count);
+  assert.deepEqual(counts, [1, 0], 'counted, then given back');
+});
+
 test('chat: prescriptive drafts are replaced, never sent', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
   connected({ cdv_count: 0, cdv_count_date: today });

@@ -480,7 +480,11 @@ Answer THIS question specifically using the data above. If the data can't answer
       });
       if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
       const json: any = await res.json();
-      return json.choices[0].message.content;
+      // No text (a null content, a missing choice) is no answer: the outage
+      // path below, which logs its line and refunds, not a 500 with neither.
+      const content = json?.choices?.[0]?.message?.content;
+      if (typeof content !== 'string') throw new Error('OpenAI reply had no text');
+      return content;
     };
 
     let rawText: string;
