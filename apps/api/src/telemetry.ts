@@ -17,6 +17,13 @@ export interface VoiceEmission {
   finalOk: boolean;
 }
 
+// A catch as logged: the fixed label only. "wrong direction for HRV vs week"
+// names a driver, and a driver name next to a count ("HRV vs week"],
+// "unbacked":2) reads as a health value to the log audit (gate 1.1.6).
+export function catchLabel(hit: string): string {
+  return hit.startsWith('wrong direction for ') ? 'wrong direction' : hit;
+}
+
 export function voiceEmissionLine(e: VoiceEmission): string {
   return `telemetry ${JSON.stringify({
     event: 'voice_emission',
@@ -24,7 +31,7 @@ export function voiceEmissionLine(e: VoiceEmission): string {
     attempts: e.attempts,
     fallback: e.fallback,
     caught: e.attempts > 1 || e.fallback,
-    banned: [...new Set(e.bannedHits)],
+    banned: [...new Set(e.bannedHits.map(catchLabel))],
     unbacked: e.unbackedCount,
     final_ok: e.finalOk,
   })}`;

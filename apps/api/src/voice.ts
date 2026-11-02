@@ -1,5 +1,5 @@
 import { validateVoice, buildFallbackVoice, Driver, ValidationResult } from './validator';
-import { trackVoice, type VoiceSurface } from './telemetry';
+import { catchLabel, trackVoice, type VoiceSurface } from './telemetry';
 
 // Generate a voice read and guarantee it passes the validators before it's
 // emitted (§3.2). Flow: LLM draft -> validate -> if it fails, one retry with
@@ -86,7 +86,7 @@ async function callOpenAI(
 // For logs: labels and a count only. The unbacked numbers themselves can be
 // health values the model invented or misquoted (doc 10 §6.5, no PHI in logs).
 function logNote(v: ValidationResult): string {
-  return `banned: ${v.bannedHits.join(', ') || 'none'}; unbacked numbers: ${v.unbackedNumbers.length}`;
+  return `banned: ${[...new Set(v.bannedHits.map(catchLabel))].join(', ') || 'none'}; unbacked numbers: ${v.unbackedNumbers.length}`;
 }
 
 function violationNote(v: ValidationResult): string {
