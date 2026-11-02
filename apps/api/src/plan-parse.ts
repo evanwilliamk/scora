@@ -7,6 +7,7 @@
 // closed. Anything else is rejected with a reason the app can show.
 
 import { KM_PER_MI } from './units';
+import { vendorHttpError } from './vendor-error';
 
 const INTENSITIES = ['easy', 'moderate', 'hard', 'tempo', 'threshold', 'intervals', 'long', 'recovery', 'rest'] as const;
 const TYPES = ['run', 'ride', 'swim', 'strength', 'brick', 'other'] as const;
@@ -229,7 +230,7 @@ export function openAiPlanLlm(apiKey: string, fetchImpl: typeof fetch = fetch): 
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
     });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
     const json: any = await res.json();
     return json.choices?.[0]?.message?.content ?? '';
   };

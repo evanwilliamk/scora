@@ -20,8 +20,8 @@ import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from '
 import { generateValidatedVoice } from './voice';
 import { checkCdvWithRetry, cdvEmission } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
+import { vendorErrorKind, vendorHttpError } from './vendor-error';
 
-class LlmHttpError extends Error {}
 import {
   registerDeviceToken, unregisterDeviceToken,
   getDeviceTokens,
@@ -135,8 +135,8 @@ fastify.get('/api/auth/strava/callback', async (request, reply) => {
     });
 
     if (!tokenResponse.ok) {
-      const errText = await tokenResponse.text();
-      fastify.log.error({ err: errText }, 'Strava token error');
+      const err = await vendorHttpError(tokenResponse, 'Strava token exchange failed:');
+      fastify.log.error({ kind: vendorErrorKind(err) }, 'Strava token error');
       return reply.code(400).send({ error: 'Token exchange failed' });
     }
 
@@ -474,7 +474,7 @@ Answer THIS question specifically using the data above. If the data can't answer
           temperature: 0.5,
         }),
       });
-      if (!res.ok) throw new LlmHttpError(await res.text());
+      if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
       const json: any = await res.json();
       return json.choices[0].message.content;
     };
@@ -483,8 +483,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     try {
       rawText = await askModel(userPrompt);
     } catch (e) {
-      const err = e instanceof LlmHttpError ? e.message : String(e);
-      fastify.log.error({ err }, 'OpenAI error');
+      fastify.log.error({ kind: vendorErrorKind(e) }, 'OpenAI error');
       // No answer, so no query spent: give it back.
       if (quota?.allowed) {
         try {

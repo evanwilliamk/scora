@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { vendorHttpError } from './vendor-error';
 
 // Oura OAuth + data pull. Mirrors strava.ts, with three Oura-specific
 // differences that bit the earlier attempt:
@@ -63,10 +64,7 @@ export async function exchangeOuraCode(code: string): Promise<any> {
     body,
   });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Oura token exchange failed (${response.status}): ${detail}`);
-  }
+  if (!response.ok) throw await vendorHttpError(response, 'Oura token exchange failed:');
   return response.json();
 }
 
@@ -86,10 +84,7 @@ async function refreshOuraToken(refreshToken: string, fetchImpl: typeof fetch = 
     signal: AbortSignal.timeout(15_000),
   });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Oura token refresh failed (${response.status}): ${detail}`);
-  }
+  if (!response.ok) throw await vendorHttpError(response, 'Oura token refresh failed:');
   return response.json();
 }
 

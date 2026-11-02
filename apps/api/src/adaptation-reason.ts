@@ -9,6 +9,7 @@ import type { AdaptationDecision } from '../../../packages/plan-engine/src/index
 import type { Driver } from './metrics';
 import { normalizeForCheck, validateVoice } from './validator';
 import type { VoiceEmission } from './telemetry';
+import { vendorErrorKind, vendorHttpError } from './vendor-error';
 
 export const reasonLlmEnabled = () => process.env.ADAPTATION_REASON_LLM === 'on';
 
@@ -206,7 +207,7 @@ export async function writeReason(d: Decided, evidence: Driver[], llm: ReasonLlm
   try {
     text = (await llm(system, user)).trim().replace(/^"(.*)"$/s, '$1');
   } catch (e) {
-    return { text: fallback, source: 'fallback', issues: [`llm failed: ${e instanceof Error ? e.message : e}`], finalOk: fallbackOk() };
+    return { text: fallback, source: 'fallback', issues: [`llm failed: ${vendorErrorKind(e)}`], finalOk: fallbackOk() };
   }
   const issues = reasonIssues(text, d, evidence);
   return issues.length === 0 ? { text, source: 'llm', issues, finalOk: true } : { text: fallback, source: 'fallback', issues, finalOk: fallbackOk() };
@@ -238,7 +239,7 @@ export function openAiReasonLlm(apiKey: string, fetchImpl: typeof fetch = fetch)
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
     });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
     const json: any = await res.json();
     return json.choices?.[0]?.message?.content ?? '';
   };
