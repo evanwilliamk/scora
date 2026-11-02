@@ -16,9 +16,9 @@ Test paths: `api/` is `apps/api/test/`, `engine/` is `packages/plan-engine/test/
 
 | Status | Count |
 |---|---|
-| TESTED | 31 (1.1.3 and 6.2 c, d, e also got new tests) |
-| GAP filled | 3 (2.1.4, 6.2 b, 6.5 e) |
-| FAILING | 2 rows (2.1.5, 6.5 a), plus one finding inside 6.2 b: 3 findings |
+| TESTED | 33 (1.1.3 and 6.2 c, d, e also got new tests; 2.1.5 and 6.2 b fixed 2026-11-02) |
+| GAP filled | 2 (2.1.4, 6.5 e) |
+| FAILING | 1 row (6.5 a): 1 finding |
 | NOT CODE | 62 |
 
 98 rows in all.
@@ -28,8 +28,8 @@ Test paths: `api/` is `apps/api/test/`, `engine/` is `packages/plan-engine/test/
 | Id | Finding | Test |
 |---|---|---|
 | 6.5 | OAuth tokens are stored in plain text: `storeStravaTokens` (strava.ts) and `storeOuraTokens` (oura.ts) write the raw access and refresh tokens to `athletes`. No app-level encryption. | api/acceptance-gaps.test.ts |
-| 2.1.5 / §7 | The voice gate report prints the fallback percentage but no PASS/FAIL against the 10% bar. §7 asks for measured vs threshold on every hard gate. | api/acceptance-gaps.test.ts |
-| 6.2 | The fixed reason for `posture_rest_hard_no_window` ("...no other day this week could take it.") trips the reason checker's ADVICE pattern on "take it". The sentence is still stored as the fallback, so athletes do see a reason, but the "fixed sentences pass the checks they stand in for" invariant fails for this code. | api/acceptance-gaps.test.ts |
+
+Fixed 2026-11-02 (branch claude/acceptance-fixes): 2.1.5 (the gate report now prints PASS/FAIL against the 10% fallback bar) and 6.2 (the no-window reason now ends "no other day this week had room for it", which passes the reason checks).
 
 Note (not a finding): CDV and adaptation-reason telemetry lines carry no `final_ok`, so the 1.1.4 fail-through count covers daily, weekly, card and why only.
 
@@ -62,7 +62,7 @@ Note (not a finding): CDV and adaptation-reason telemetry lines carry no `final_
 | 2.1.2 | Open rate 7 of 10 users | NOT CODE | real users; no per-user 10-of-14 report yet |
 | 2.1.3 | Voice panel signal (informal) | NOT CODE | Evan, users |
 | 2.1.4 | Banned-phrase rate under 0.5% | GAP filled | api/acceptance-gaps (0.5% boundary is a fail) |
-| 2.1.5 | Validator fallback rate under 10% | FAILING | api/acceptance-gaps (fallbacks counted, no verdict) |
+| 2.1.5 | Validator fallback rate under 10% | TESTED | api/acceptance-gaps (fallbacks counted; PASS/FAIL against the strict 10% bar, 10.0% fails) |
 | 2.1.6 | Coach-forwarding signal | NOT CODE | user check-in |
 | 2.1.7 | Twilio approved and stable | NOT CODE | Twilio dashboard |
 | 2.1.8 | Plan-aware reads in 60% of workout days | TESTED | api/gate-report (plan-aware gate), plan-read, voice/matcher |
@@ -162,7 +162,7 @@ Note (not a finding): CDV and adaptation-reason telemetry lines carry no `final_
 | Id | Criterion | Status | Test |
 |---|---|---|---|
 | 6.2 a | Plans never LLM-invented | TESTED | engine/assembler, template-loader, api/plan-generate (no template, no plan), manual-plan (invented numbers dropped) |
-| 6.2 b | Adaptations always show a plain-English reason | GAP filled (one code FAILING, see above) | api/acceptance-gaps (every reason code), adaptation-reason, plan-adapt |
+| 6.2 b | Adaptations always show a plain-English reason | TESTED | api/acceptance-gaps (every reason code's fixed sentence passes the reason checks), adaptation-reason, plan-adapt |
 | 6.2 c | Weekly volume never past 10% | TESTED; GAP filled | engine/adaptation-rules; engine/acceptance-6-2 (400 generated weeks, every posture) |
 | 6.2 d | Long run distances never adapted | TESTED; GAP filled | engine/adaptation-rules; engine/acceptance-6-2 |
 | 6.2 e | Race week freezes adaptations | TESTED; GAP filled | engine/adaptation-rules; engine/acceptance-6-2 (also: nothing moves into race week, coach and external plans never adapt) |
@@ -203,5 +203,5 @@ Note (not a finding): CDV and adaptation-reason telemetry lines carry no `final_
 
 | Id | Criterion | Status | Test |
 |---|---|---|---|
-| 7 a | Gate report script: measured vs threshold | TESTED | api/gate-report, phase1-gates, plan-gates, plan-invariants (2.1.5 verdict missing, see findings) |
+| 7 a | Gate report script: measured vs threshold | TESTED | api/gate-report, phase1-gates, plan-gates, plan-invariants (2.1.5 verdict added) |
 | 7 b | Evan sign-off, lessons, strategy memo, panels, coach survey | NOT CODE | Evan |
