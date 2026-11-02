@@ -2,6 +2,7 @@
 // stub; nothing here calls OpenAI.
 
 import { test } from 'node:test';
+import { VendorHttpError } from '../src/vendor-error';
 import assert from 'node:assert/strict';
 import { evaluateAdaptation } from '../../../packages/plan-engine/src/index';
 import type { AdaptationDecision, PlannedWorkout } from '../../../packages/plan-engine/src/index';
@@ -81,9 +82,9 @@ test('writeReason: a good line is used, a bad or failed one falls back to the fi
   assert.equal(bad.text, fixed);
   assert.ok(bad.issues.length > 0);
 
-  const failed = await writeReason(moved, evidence, async () => { throw new Error('429'); }, fixed);
+  const failed = await writeReason(moved, evidence, async () => { throw new VendorHttpError('OpenAI', 429); }, fixed);
   assert.deepEqual([failed.source, failed.text], ['fallback', fixed]);
-  assert.match(failed.issues[0], /llm failed: 429/);
+  assert.equal(failed.issues[0], 'llm failed: http_429');
 });
 
 test('the fixed sentences pass the same checks they stand in for', () => {

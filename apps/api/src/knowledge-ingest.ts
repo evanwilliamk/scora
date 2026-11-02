@@ -6,6 +6,7 @@
 // calls only happen from the admin script.
 
 import { z } from 'zod';
+import { vendorHttpError } from './vendor-error';
 
 export const EMBEDDING_MODEL = 'text-embedding-3-small';
 export const EMBEDDING_DIMS = 1536;
@@ -269,7 +270,7 @@ export function openAiEmbedder(apiKey: string, fetchImpl: typeof fetch = fetch):
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts }),
     });
-    if (!res.ok) throw new IngestError(`OpenAI embeddings failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw await vendorHttpError(res, 'OpenAI embeddings failed:');
     const json: any = await res.json();
     return (json.data as any[])
       .slice()

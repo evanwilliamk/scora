@@ -59,11 +59,11 @@ test('one old race does not hide stronger recent training, and races keep the 3-
 });
 
 test('no data, no claim: too few runs, no long run, unknown race', () => {
-  assert.deepEqual(predictRace([], '10k', TODAY), { ok: false, race: '10k', reason: 'not_enough_runs', needed: '3 runs of 3 km or more in the last 8 weeks' });
+  assert.deepEqual(predictRace([], '10k', TODAY), { ok: false, race: '10k', reason: 'not_enough_runs', needed: '3 runs of 1.9 mi or more in the last 8 weeks' });
   assert.equal((predictRace(training.slice(0, 2), '10k', TODAY) as any).reason, 'not_enough_runs');
   const noLong = [run('2026-10-04', 10, 50), run('2026-10-08', 8, 42), run('2026-10-14', 5, 24)];
   const m = predictRace(noLong, 'marathon', TODAY);
-  assert.deepEqual(m, { ok: false, race: 'marathon', reason: 'no_long_run', needed: 'a run of at least 22 km in the last 8 weeks' });
+  assert.deepEqual(m, { ok: false, race: 'marathon', reason: 'no_long_run', needed: 'a run of at least 13.2 mi in the last 8 weeks' });
   assert.equal((predictRace(training, 'ultra', TODAY) as any).reason, 'unknown_race');
   for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty']) {
     assert.deepEqual(predictRace(training, name, TODAY), { ok: false, race: name, reason: 'unknown_race' });
@@ -95,4 +95,20 @@ test('treadmill runs never feed a race prediction (distance is an estimate)', ()
   const p = predictRace(treadmill, 'half_marathon', TODAY);
   assert.equal(p.ok, false);
   assert.equal(!p.ok && p.reason, 'not_enough_runs');
+});
+
+test('needed lines state miles, rounded up so a run of that length always counts', async () => {
+  const { KM_PER_MI } = await import('../src/units');
+  for (const race of ['10k', 'half_marathon', 'marathon']) {
+    const p = predictRace([run('2026-10-12', 2, 10)], race, TODAY);
+    assert.equal(p.ok, false);
+    const m = /at least ([\d.]+) mi in/.exec((p as any).needed);
+    assert.ok(m, (p as any).needed);
+    // A run of exactly the stated miles clears the long-run bar: the
+    // prediction no longer asks for a long run.
+    const stated = Number(m[1]) * KM_PER_MI;
+    const again = predictRace([run('2026-10-12', 2, 10), run('2026-10-13', stated, stated * 5)], race, TODAY);
+    assert.notEqual((again as any).reason, 'no_long_run', race);
+    assert.doesNotMatch((p as any).needed, /km/);
+  }
 });

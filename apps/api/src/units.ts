@@ -30,8 +30,8 @@ export function formatPlanDistance(km: number, unit: DistanceUnit = distanceUnit
   return `${planDistanceValue(km, unit)} ${unit}`;
 }
 
-// A weekly volume bound from a template (stored km) in the athlete's unit,
-// for plan setup messages. Miles keep one decimal, rounded so the sentence
+// A distance bound (stored km) in the athlete's unit: a weekly volume bound
+// in plan setup messages, a run length in race prediction "needed" lines. Miles keep one decimal, rounded so the sentence
 // stays true: a lower bound ("starts from") rounds up, an upper bound
 // ("under") rounds down. km stay as stored.
 export function formatVolumeBound(km: number, side: 'atLeast' | 'under', unit: DistanceUnit = distanceUnit()): string {
