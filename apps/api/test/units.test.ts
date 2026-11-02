@@ -23,3 +23,15 @@ test('km plans convert to miles by default, and stay as stored in km', () => {
   assert.equal(formatPlanDistance(25.75, 'km'), '25.75 km');
   assert.equal(formatPlanDistance(8, 'km'), '8 km');
 });
+
+test('a positive distance never reads as 0', () => {
+  assert.equal(formatPlanDistance(0.05), '0.03 mi');
+  assert.equal(formatPlanDistance(0.01), '0.01 mi');
+  assert.equal(formatPlanDistance(0.0001), '0.01 mi');
+  assert.equal(formatPlanDistance(0.15), '0.09 mi');
+  assert.equal(formatPlanDistance(0.161), '0.1 mi');
+  assert.equal(formatPlanDistance(0.1608), '0.1 mi');
+  assert.equal(formatPlanDistance(0.004, 'km'), '0.01 km');
+  assert.equal(formatPlanDistance(0.05, 'km'), '0.05 km');
+  assert.equal(formatPlanDistance(0), '0 mi');
+});

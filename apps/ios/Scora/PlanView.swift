@@ -90,8 +90,17 @@ enum PlanDistance {
   static var unit: Unit { .mi }
 
   // One decimal, a whole number without it: 21.08 km reads "13.1 mi", 25.75 km "16 mi".
+  // A positive distance never reads as 0: under 0.1 it keeps two decimals, and
+  // nothing above zero shows less than 0.01 (the same rule as the API's units.ts).
   static func format(km: Double, unit: Unit = PlanDistance.unit) -> String {
     let v = unit == .mi ? km / kmPerMile : km
+    if v > 0 && v < 0.1 {
+      let small = max(0.01, (v * 100).rounded() / 100)
+      // 0.0999 rounds to "0.1", as the API's +toFixed(2) does.
+      var n = String(format: "%.2f", small)
+      while n.hasSuffix("0") { n.removeLast() }
+      return "\(n) \(unit.rawValue)"
+    }
     let r = (v * 10).rounded() / 10
     let n = r.rounded() == r ? String(Int(r)) : String(format: "%.1f", r)
     return "\(n) \(unit.rawValue)"

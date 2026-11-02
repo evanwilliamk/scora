@@ -16,9 +16,13 @@ export function distanceUnit(measurementPreference?: string | null): DistanceUni
 
 // A stored km value in the athlete's unit, as the number shown. Miles round to
 // one decimal (13.1 mi stored as 21.08 km reads back as 13.1, 16 mi as 16);
-// km stay as stored.
+// km stay as stored. A positive distance never reads as 0: under 0.1 it keeps
+// two decimals, and nothing above zero shows less than 0.01 (the same rule as
+// PlanDistance in the iOS app).
 export function planDistanceValue(km: number, unit: DistanceUnit = distanceUnit()): number {
-  return unit === 'mi' ? +(Number(km) / KM_PER_MI).toFixed(1) : Number(km);
+  const v = unit === 'mi' ? Number(km) / KM_PER_MI : Number(km);
+  if (v > 0 && v < 0.1) return Math.max(0.01, +v.toFixed(2));
+  return unit === 'mi' ? +v.toFixed(1) : v;
 }
 
 // "13.1 mi" / "25.75 km": the exact string the read and the card show.

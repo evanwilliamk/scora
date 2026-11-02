@@ -128,6 +128,18 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(PlanDistance.format(km: 8, unit: .km), "8 km")
     }
 
+    func testPlanDistancePositiveNeverReadsZero() {
+        XCTAssertEqual(PlanDistance.format(km: 0.05), "0.03 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.01), "0.01 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.0001), "0.01 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.15), "0.09 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.161), "0.1 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.1608), "0.1 mi")
+        XCTAssertEqual(PlanDistance.format(km: 0.004, unit: .km), "0.01 km")
+        XCTAssertEqual(PlanDistance.format(km: 0.05, unit: .km), "0.05 km")
+        XCTAssertEqual(PlanDistance.format(km: 0), "0 mi")
+    }
+
     func testPlanTodayUsesTheGivenZone() {
         let instant = Date(timeIntervalSince1970: 1_792_195_200) // 2026-10-17 00:00 UTC
         XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "UTC")!), "2026-10-17")
