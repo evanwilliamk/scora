@@ -31,7 +31,7 @@ Test paths: `api/` is `apps/api/test/`, `engine/` is `packages/plan-engine/test/
 
 Fixed 2026-11-02 (branch claude/acceptance-fixes): 2.1.5 (the gate report now prints PASS/FAIL against the 10% fallback bar) and 6.2 (the no-window reason now ends "no other day this week had room for it", which passes the reason checks).
 
-Note (not a finding): CDV and adaptation-reason telemetry lines carry no `final_ok`, so the 1.1.4 fail-through count covers daily, weekly, card and why only.
+Fixed 2026-11-02 (branch claude/gate-fail-through): every voice surface (daily, weekly, card, cdv, adaptation_reason, why, more) now logs `final_ok` for the text it sent, so 1.1.4 counts all of them. Two fail-throughs closed on the way: a CDV METRIC decimal backed only by a clock time reached the fallback, and the card error path sent the card translation (counts that are not drivers).
 
 ## Phase 0 (dogfood) hard gates
 
@@ -40,7 +40,7 @@ Note (not a finding): CDV and adaptation-reason telemetry lines carry no `final_
 | 1.1.1 | APNS delivery on time 13 of 14 mornings | TESTED | api/gate-report, delivery, scheduler-*, send-push |
 | 1.1.2 | Founder opens 12 of 14 within 4h | TESTED | api/gate-report (morning gate) |
 | 1.1.3 | Zero banned-phrase hits over 14 reads | TESTED | api/validator, banned-phrases-4-1, routes-read; GAP filled: acceptance-gaps (0 of 14 passes) |
-| 1.1.4 | Zero validator fail-throughs | TESTED | api/voice (final_ok line), gate-report |
+| 1.1.4 | Zero validator fail-throughs | TESTED | api/voice, cdv-check, adaptation-reason, card-expand (final_ok on every surface's line, pass, fallback and fail-through), gate-report (per-surface count; a line without final_ok reads INCOMPLETE, not PASS) |
 | 1.1.5 | At least one "wow" moment | NOT CODE | Evan, dogfood-log.md |
 | 1.1.6 | Zero PHI in logs | TESTED | api/log-audit, telemetry |
 | 1.1.7 | Numeric-first format, null workout line on Free | TESTED | api/numeric-line, scheduler-push, routes-read (no Today line for pasted plans), gate-report |
