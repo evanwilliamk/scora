@@ -18,7 +18,7 @@ import {
 } from './oura';
 import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from './usage';
 import { generateValidatedVoice } from './voice';
-import { checkCdvWithRetry } from './cdv-check';
+import { checkCdvWithRetry, cdvEmission } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 
 class LlmHttpError extends Error {}
@@ -502,10 +502,7 @@ Answer THIS question specifically using the data above. If the data can't answer
     // they never vouch for the voice. One retry, then the plain fallback.
     const final = await checkCdvWithRetry(rawText, dataBlock, String(message ?? ''), (note) => askModel(`${userPrompt}\n\n${note}`));
     const checked = final.checked;
-    trackVoice(fastify.log, {
-      surface: 'cdv', attempts: final.attempts, fallback: checked.fallback,
-      bannedHits: final.seenBanned, unbackedCount: final.seenUnbacked,
-    });
+    trackVoice(fastify.log, cdvEmission(final));
     if (checked.fallback) {
       fastify.log.warn(`CDV validator catch after ${final.attempts} attempts (banned: ${checked.bannedHits.join(', ') || 'none'}; unbacked numbers: ${checked.unbackedNumbers.length}), using fallback`);
     }
