@@ -7,6 +7,8 @@ export interface SurfaceStats {
   caught: number; // needed a retry or fell back
   fallbacks: number;
   bannedEmissions: number; // emissions with at least one banned-phrase hit
+  failThroughs: number; // sent text that did not pass (final_ok false)
+  unchecked: number; // lines with no final_ok (logged before every surface set it)
 }
 
 export interface GateReport {
@@ -16,6 +18,7 @@ export interface GateReport {
   fallbackRate: number;
   failThroughs: number; // emitted text that did not pass (final_ok false)
   checked: number; // emissions carrying final_ok
+  unchecked: number; // emissions without final_ok: 1.1.4 cannot pass while any remain
   lines: string[];
 }
 
@@ -43,39 +46,48 @@ function telemetryEvents(logText: string): any[] {
   return out;
 }
 
+// doc 10 1.1.4 counts every surface that sends voice-like text: daily,
+// weekly, card, cdv, adaptation_reason, why and more. Each logs final_ok for
+// the text it sent; a line without it (an older log) is unchecked, so the
+// gate reads INCOMPLETE rather than passing over a surface it cannot see.
 export function voiceGateReport(logText: string): GateReport {
+  const blank = (): SurfaceStats => ({ emissions: 0, caught: 0, fallbacks: 0, bannedEmissions: 0, failThroughs: 0, unchecked: 0 });
   const bySurface: Record<string, SurfaceStats> = {};
-  const total: SurfaceStats = { emissions: 0, caught: 0, fallbacks: 0, bannedEmissions: 0 };
-  let failThroughs = 0;
-  let checked = 0;
+  const total = blank();
   for (const e of telemetryEvents(logText)) {
     if (e.event !== 'voice_emission') continue;
-    if (typeof e.final_ok === 'boolean') {
-      checked++;
-      if (!e.final_ok) failThroughs++;
-    }
-    const s = (bySurface[e.surface] ??= { emissions: 0, caught: 0, fallbacks: 0, bannedEmissions: 0 });
+    const s = (bySurface[e.surface] ??= blank());
     for (const t of [s, total]) {
       t.emissions++;
       if (e.caught) t.caught++;
       if (e.fallback) t.fallbacks++;
       if (Array.isArray(e.banned) && e.banned.length) t.bannedEmissions++;
+      if (typeof e.final_ok !== 'boolean') t.unchecked++;
+      else if (!e.final_ok) t.failThroughs++;
     }
   }
+  const failThroughs = total.failThroughs;
+  const unchecked = total.unchecked;
+  const checked = total.emissions - unchecked;
   const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(1)}%` : 'n/a');
   const bannedRate = total.emissions ? total.bannedEmissions / total.emissions : 0;
   const fallbackRate = total.emissions ? total.fallbacks / total.emissions : 0;
+  const row = (k: string, s: SurfaceStats) =>
+    `${k.padEnd(18)} ${String(s.emissions).padStart(9)}  ${pct(s.caught, s.emissions).padStart(6)}  ${pct(s.fallbacks, s.emissions).padStart(8)}  ${pct(s.bannedEmissions, s.emissions).padStart(6)}  ${String(s.failThroughs).padStart(12)}  ${String(s.unchecked).padStart(9)}`;
+  const failVerdict = checked === 0 && unchecked === 0 ? 'NO DATA'
+    : failThroughs > 0 ? 'FAIL'
+    : unchecked > 0 ? `INCOMPLETE (${unchecked} emissions without final_ok)`
+    : 'PASS';
   const lines = [
-    'surface            emissions  caught  fallback  banned',
-    ...Object.entries(bySurface).sort().map(([k, s]) =>
-      `${k.padEnd(18)} ${String(s.emissions).padStart(9)}  ${pct(s.caught, s.emissions).padStart(6)}  ${pct(s.fallbacks, s.emissions).padStart(8)}  ${pct(s.bannedEmissions, s.emissions).padStart(6)}`),
-    `${'all'.padEnd(18)} ${String(total.emissions).padStart(9)}  ${pct(total.caught, total.emissions).padStart(6)}  ${pct(total.fallbacks, total.emissions).padStart(8)}  ${pct(total.bannedEmissions, total.emissions).padStart(6)}`,
+    'surface            emissions  caught  fallback  banned  fail-through  unchecked',
+    ...Object.entries(bySurface).sort().map(([k, s]) => row(k, s)),
+    row('all', total),
     '',
     `Banned-phrase hit rate ${pct(total.bannedEmissions, total.emissions)} (bar: under 0.5%): ${total.emissions === 0 ? 'NO DATA' : bannedRate < BANNED_RATE_MAX ? 'PASS' : 'FAIL'}`,
     `Validator fallback rate ${pct(total.fallbacks, total.emissions)} (bar: under 10%): ${total.emissions === 0 ? 'NO DATA' : fallbackRate < FALLBACK_RATE_MAX ? 'PASS' : 'FAIL'}`,
-    `Validator fail-throughs ${failThroughs} of ${checked} checked emissions (bar: 0): ${checked === 0 ? 'NO DATA' : failThroughs === 0 ? 'PASS' : 'FAIL'}`,
+    `Validator fail-throughs ${failThroughs} of ${checked} checked emissions (bar: 0): ${failVerdict}`,
   ];
-  return { bySurface, total, bannedRate, fallbackRate, failThroughs, checked, lines };
+  return { bySurface, total, bannedRate, fallbackRate, failThroughs, checked, unchecked, lines };
 }
 
 // doc 10 1.1.1: the morning read lands within 5 minutes of the set time on

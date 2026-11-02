@@ -4,10 +4,10 @@ import { voiceEmissionLine } from '../src/telemetry';
 import { generateValidatedVoice } from '../src/voice';
 
 test('one countable line per emission: labels and counts, never text', () => {
-  const line = voiceEmissionLine({ surface: 'daily', attempts: 2, fallback: false, bannedHits: ['you should', 'you should'], unbackedCount: 1 });
+  const line = voiceEmissionLine({ surface: 'daily', attempts: 2, fallback: false, bannedHits: ['you should', 'you should'], unbackedCount: 1, finalOk: true });
   assert.ok(line.startsWith('telemetry '));
   assert.deepEqual(JSON.parse(line.slice('telemetry '.length)), {
-    event: 'voice_emission', surface: 'daily', attempts: 2, fallback: false, caught: true, banned: ['you should'], unbacked: 1,
+    event: 'voice_emission', surface: 'daily', attempts: 2, fallback: false, caught: true, banned: ['you should'], unbacked: 1, final_ok: true,
   });
 });
 

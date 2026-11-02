@@ -11,9 +11,10 @@ export interface VoiceEmission {
   fallback: boolean;
   bannedHits: string[];
   unbackedCount: number;
-  // Whether the emitted text itself passes the validators (doc 10 1.1.4, zero
-  // fail-throughs). Left out by surfaces that do not check their fallback.
-  finalOk?: boolean;
+  // Whether the text actually sent passes the validators, model draft or
+  // fallback alike (doc 10 1.1.4, zero fail-throughs). Required: every
+  // surface checks what it sends.
+  finalOk: boolean;
 }
 
 export function voiceEmissionLine(e: VoiceEmission): string {
@@ -25,7 +26,7 @@ export function voiceEmissionLine(e: VoiceEmission): string {
     caught: e.attempts > 1 || e.fallback,
     banned: [...new Set(e.bannedHits)],
     unbacked: e.unbackedCount,
-    ...(e.finalOk === undefined ? {} : { final_ok: e.finalOk }),
+    final_ok: e.finalOk,
   })}`;
 }
 
