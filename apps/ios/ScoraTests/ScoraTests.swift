@@ -113,9 +113,19 @@ final class ScoraTests: XCTestCase {
     func testPlanWorkoutLabels() {
         let w = PlanWorkout(date: "2026-10-20", type: "run", intensity: "tempo", durationMin: 45, distanceKm: 8, description: nil)
         XCTAssertEqual(w.dayLabel, "Tue Oct 20")
-        XCTAssertEqual(w.detail, "tempo · 45 min · 8 km")
+        XCTAssertEqual(w.detail, "tempo · 45 min · 5 mi")
         let ride = PlanWorkout(date: "2026-10-24", type: "ride", intensity: nil, durationMin: nil, distanceKm: 25.75, description: nil)
-        XCTAssertEqual(ride.detail, "ride · 25.8 km")
+        XCTAssertEqual(ride.detail, "ride · 16 mi")
+    }
+
+    func testPlanDistanceReadsMilesAsWritten() {
+        // "Sat: 13.1 mi long" is stored as 21.08 km (numeric(6, 2)) and reads back as written.
+        for mi in [3.1, 5, 6.2, 10, 13.1, 16, 26.2, 50] {
+            let stored = (mi * PlanDistance.kmPerMile * 100).rounded() / 100
+            XCTAssertEqual(PlanDistance.format(km: stored), mi.rounded() == mi ? "\(Int(mi)) mi" : "\(mi) mi")
+        }
+        XCTAssertEqual(PlanDistance.format(km: 25.75, unit: .km), "25.8 km")
+        XCTAssertEqual(PlanDistance.format(km: 8, unit: .km), "8 km")
     }
 
     func testPlanTodayUsesTheGivenZone() {

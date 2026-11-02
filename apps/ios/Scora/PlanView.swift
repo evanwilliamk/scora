@@ -70,15 +70,31 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
     return out.string(from: d)
   }
 
-  // "tempo · 45 min · 8 km": the parsed values, nothing added.
+  // "tempo · 45 min · 5 mi": the parsed values, nothing added; a distance is
+  // the stored km in the athlete's unit (PlanDistance).
   var detail: String {
     var parts: [String] = []
     if let intensity { parts.append(intensity) } else { parts.append(type) }
     if let durationMin { parts.append("\(durationMin) min") }
-    if let distanceKm {
-      parts.append(distanceKm.rounded() == distanceKm ? "\(Int(distanceKm)) km" : String(format: "%.1f km", distanceKm))
-    }
+    if let distanceKm { parts.append(PlanDistance.format(km: distanceKm)) }
     return parts.joined(separator: " · ")
+  }
+}
+
+// Plans store km; the athlete reads them in their distance unit, the same
+// rule as the API's units.ts (DECISIONS.md 2026-11-02, Q32 B). No preference
+// is stored yet, so it is miles, like every other distance in the read.
+enum PlanDistance {
+  enum Unit: String { case mi, km }
+  static let kmPerMile = 1.609344
+  static var unit: Unit { .mi }
+
+  // One decimal, a whole number without it: 21.08 km reads "13.1 mi", 25.75 km "16 mi".
+  static func format(km: Double, unit: Unit = PlanDistance.unit) -> String {
+    let v = unit == .mi ? km / kmPerMile : km
+    let r = (v * 10).rounded() / 10
+    let n = r.rounded() == r ? String(Int(r)) : String(format: "%.1f", r)
+    return "\(n) \(unit.rawValue)"
   }
 }
 
