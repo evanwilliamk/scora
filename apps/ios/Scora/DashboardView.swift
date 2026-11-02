@@ -864,13 +864,25 @@ enum ReadFetch {
 
 // What an API failure says to the athlete: the server's own `error` sentence
 // when the body has one, else a fixed line. Never a raw body (a proxy's HTML
-// page or a framework's JSON).
+// page or a framework's JSON). The server's sentences for the athlete end in
+// a full stop; its bare labels for developers ("LLM failed", "Strava token
+// invalid or expired", "Missing: athleteId", Fastify's "Bad Request") do not,
+// and neither those nor anything naming an env variable reach the screen.
 enum APIErrorText {
   private struct Body: Decodable { let error: String }
   static func message(from data: Data, fallback: String) -> String {
-    guard let text = (try? JSONDecoder().decode(Body.self, from: data))?.error,
-          !text.isEmpty, text.count <= 200, !text.contains("<") else { return fallback }
+    guard let raw = (try? JSONDecoder().decode(Body.self, from: data))?.error else { return fallback }
+    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard isForAthlete(text) else { return fallback }
     return text
+  }
+
+  static func isForAthlete(_ text: String) -> Bool {
+    guard !text.isEmpty, text.count <= 200, !text.contains("<"),
+          text.hasSuffix(".") || text.hasSuffix("?"),
+          !text.hasPrefix("Missing:"),
+          text.range(of: #"[A-Z]{2,}_[A-Z]"#, options: .regularExpression) == nil else { return false }
+    return true
   }
 }
 

@@ -218,6 +218,23 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(APIErrorText.message(from: Data(#"{"statusCode":500,"message":"boom"}"#.utf8), fallback: "fallback"), "fallback")
     }
 
+    func testAPIErrorTextKeepsDeveloperLabelsOffScreen() {
+        // What the API sends today: labels for developers fall back, sentences for the athlete show.
+        for raw in ["LLM failed", "CDV failed", "Strava token invalid or expired", "Missing: athleteId",
+                    "Missing: message, athleteId", "Not found", "Unknown card: sleep", "Bad Request",
+                    "Oura not configured (OURA_CLIENT_ID missing).", "   "] {
+            let body = try! JSONSerialization.data(withJSONObject: ["error": raw])
+            XCTAssertEqual(APIErrorText.message(from: body, fallback: "fallback"), "fallback", raw)
+        }
+        for raw in ["You've used your 3 chats for today. Resets tomorrow.",
+                    "Message is too long (1000 characters at most).",
+                    "Strava not connected or refresh failed. Please reconnect Strava.",
+                    "No recent read. Refresh the dashboard first."] {
+            let body = try! JSONSerialization.data(withJSONObject: ["error": raw])
+            XCTAssertEqual(APIErrorText.message(from: body, fallback: "fallback"), raw)
+        }
+    }
+
     func testPlanChangeDayIsTheLocalDay() {
         let la = TimeZone(identifier: "America/Los_Angeles")!
         // 03:00 UTC on the 29th is 8 pm on the 28th in Los Angeles.
