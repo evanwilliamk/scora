@@ -13,6 +13,7 @@ export interface GateReport {
   bySurface: Record<string, SurfaceStats>;
   total: SurfaceStats;
   bannedRate: number;
+  fallbackRate: number;
   failThroughs: number; // emitted text that did not pass (final_ok false)
   checked: number; // emissions carrying final_ok
   lines: string[];
@@ -20,6 +21,8 @@ export interface GateReport {
 
 // doc 10 §6.1: banned-phrase hit rate < 0.5%.
 const BANNED_RATE_MAX = 0.005;
+// doc 10 2.1.5: validator fallback rate < 10% of emissions.
+const FALLBACK_RATE_MAX = 0.1;
 
 // Every `telemetry {...}` payload in a log export, plain or JSON-wrapped.
 function telemetryEvents(logText: string): any[] {
@@ -61,6 +64,7 @@ export function voiceGateReport(logText: string): GateReport {
   }
   const pct = (n: number, d: number) => (d ? `${((n / d) * 100).toFixed(1)}%` : 'n/a');
   const bannedRate = total.emissions ? total.bannedEmissions / total.emissions : 0;
+  const fallbackRate = total.emissions ? total.fallbacks / total.emissions : 0;
   const lines = [
     'surface            emissions  caught  fallback  banned',
     ...Object.entries(bySurface).sort().map(([k, s]) =>
@@ -68,9 +72,10 @@ export function voiceGateReport(logText: string): GateReport {
     `${'all'.padEnd(18)} ${String(total.emissions).padStart(9)}  ${pct(total.caught, total.emissions).padStart(6)}  ${pct(total.fallbacks, total.emissions).padStart(8)}  ${pct(total.bannedEmissions, total.emissions).padStart(6)}`,
     '',
     `Banned-phrase hit rate ${pct(total.bannedEmissions, total.emissions)} (bar: under 0.5%): ${total.emissions === 0 ? 'NO DATA' : bannedRate < BANNED_RATE_MAX ? 'PASS' : 'FAIL'}`,
+    `Validator fallback rate ${pct(total.fallbacks, total.emissions)} (bar: under 10%): ${total.emissions === 0 ? 'NO DATA' : fallbackRate < FALLBACK_RATE_MAX ? 'PASS' : 'FAIL'}`,
     `Validator fail-throughs ${failThroughs} of ${checked} checked emissions (bar: 0): ${checked === 0 ? 'NO DATA' : failThroughs === 0 ? 'PASS' : 'FAIL'}`,
   ];
-  return { bySurface, total, bannedRate, failThroughs, checked, lines };
+  return { bySurface, total, bannedRate, fallbackRate, failThroughs, checked, lines };
 }
 
 // doc 10 1.1.1: the morning read lands within 5 minutes of the set time on

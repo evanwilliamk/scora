@@ -73,11 +73,17 @@ test('2.1.5: the gate report counts fallbacks per surface and overall', () => {
   assert.match(r.lines.join('\n'), /^all\s+20\s+15\.0%\s+15\.0%/m);
 });
 
-test('FAILING finding 2.1.5 / §7: the gate report states a pass or fail against the 10% fallback bar', {
-  todo: 'gate-report.ts prints the fallback percentage but no verdict against the 10% bar (doc 10 §7 asks for measured vs threshold)',
-}, () => {
-  const text = voiceGateReport(log(20, 0, 3)).lines.join('\n');
-  assert.match(text, /fallback rate .*10%.*FAIL/i);
+test('2.1.5 / §7: the gate report states a pass or fail against the 10% fallback bar, strictly', () => {
+  const over = voiceGateReport(log(20, 0, 3));
+  assert.equal(over.fallbackRate, 0.15);
+  assert.match(over.lines.join('\n'), /Validator fallback rate 15\.0% \(bar: under 10%\): FAIL/);
+  const at = voiceGateReport(log(20, 0, 2));
+  assert.equal(at.fallbackRate, 0.1);
+  assert.match(at.lines.join('\n'), /Validator fallback rate 10\.0% \(bar: under 10%\): FAIL/);
+  const under = voiceGateReport(log(21, 0, 2));
+  assert.ok(under.fallbackRate < 0.1);
+  assert.match(under.lines.join('\n'), /Validator fallback rate 9\.5% \(bar: under 10%\): PASS/);
+  assert.match(voiceGateReport('').lines.join('\n'), /Validator fallback rate n\/a \(bar: under 10%\): NO DATA/);
 });
 
 // ---------------------------------------------------------------------------
@@ -121,17 +127,16 @@ test('6.2: every reason code has a fixed reason sentence that passes the reason 
     const text = reasonText(d);
     assert.ok(text.length > 20, `empty reason for ${d.reason_code}`);
     assert.doesNotMatch(text, /undefined|null|NaN/, `reason has a hole: ${text}`);
-    // The no-window sentence is pinned by the finding below.
-    if (d.reason_code !== 'posture_rest_hard_no_window') assert.deepEqual(reasonIssues(text, d, []), [], `${d.reason_code}: ${text}`);
+    assert.deepEqual(reasonIssues(text, d, []), [], `${d.reason_code}: ${text}`);
   }
 });
 
-test('FAILING finding 6.2: the fixed no-window reason passes the reason checks it stands in for', {
-  todo: 'reasonText for posture_rest_hard_no_window ends "no other day this week could take it", and ADVICE in adaptation-reason.ts reads "take it" as advice',
-}, () => {
+test('6.2: the fixed no-window reason is a plain observation and passes the reason checks it stands in for', () => {
   const d = decided('rest', 'intervals', false)!;
   assert.equal(d.reason_code, 'posture_rest_hard_no_window');
-  assert.deepEqual(reasonIssues(reasonText(d), d, []), []);
+  const text = reasonText(d);
+  assert.equal(text, "Tuesday's intervals is now an easy run at the same 50 minutes. Today's posture reads rest, and no other day this week had room for it.");
+  assert.deepEqual(reasonIssues(text, d, []), []);
 });
 
 test('6.2: a move that displaces an easy session names that change too', () => {
