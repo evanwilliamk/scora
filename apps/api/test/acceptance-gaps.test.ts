@@ -73,11 +73,17 @@ test('2.1.5: the gate report counts fallbacks per surface and overall', () => {
   assert.match(r.lines.join('\n'), /^all\s+20\s+15\.0%\s+15\.0%/m);
 });
 
-test('FAILING finding 2.1.5 / §7: the gate report states a pass or fail against the 10% fallback bar', {
-  todo: 'gate-report.ts prints the fallback percentage but no verdict against the 10% bar (doc 10 §7 asks for measured vs threshold)',
-}, () => {
-  const text = voiceGateReport(log(20, 0, 3)).lines.join('\n');
-  assert.match(text, /fallback rate .*10%.*FAIL/i);
+test('2.1.5 / §7: the gate report states a pass or fail against the 10% fallback bar, strictly', () => {
+  const over = voiceGateReport(log(20, 0, 3));
+  assert.equal(over.fallbackRate, 0.15);
+  assert.match(over.lines.join('\n'), /Validator fallback rate 15\.0% \(bar: under 10%\): FAIL/);
+  const at = voiceGateReport(log(20, 0, 2));
+  assert.equal(at.fallbackRate, 0.1);
+  assert.match(at.lines.join('\n'), /Validator fallback rate 10\.0% \(bar: under 10%\): FAIL/);
+  const under = voiceGateReport(log(21, 0, 2));
+  assert.ok(under.fallbackRate < 0.1);
+  assert.match(under.lines.join('\n'), /Validator fallback rate 9\.5% \(bar: under 10%\): PASS/);
+  assert.match(voiceGateReport('').lines.join('\n'), /Validator fallback rate n\/a \(bar: under 10%\): NO DATA/);
 });
 
 // ---------------------------------------------------------------------------

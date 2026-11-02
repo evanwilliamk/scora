@@ -16,6 +16,6 @@ const morning = morningGateReport(text);
 const planAware = planAwareGateReport(text);
 console.log([...report.lines, '', ...delivery.lines, '', ...morning.lines, '', ...planAware.lines].join('\n'));
 // 0 pass, 1 a bar failed, 3 no telemetry lines found (not a pass).
-const voiceFail = (report.total.emissions > 0 && report.bannedRate >= 0.005) || report.failThroughs > 0;
+const voiceFail = (report.total.emissions > 0 && (report.bannedRate >= 0.005 || report.fallbackRate >= 0.1)) || report.failThroughs > 0;
 const noData = report.total.emissions === 0 && delivery.pass === null;
 process.exit(noData ? 3 : voiceFail || delivery.pass === false || morning.openPass === false || morning.numericPass === false || planAware.pass === false ? 1 : 0);
