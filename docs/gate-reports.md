@@ -26,7 +26,7 @@ npx tsx scripts/log-audit.ts <log-file>
 
 1.1.4 and 2.1.5 count every voice surface: daily, weekly, card, cdv, adaptation_reason, why and more, one row each plus `all`. An OpenAI outage on any of them logs a fallback line, so outages count toward 2.1.5.
 
-- 1.1.4: FAIL on any `final_ok: false`; otherwise INCOMPLETE (with the count) while any line has no `final_ok` (logged before 2026-11-02); PASS when every line is checked and none failed; NO DATA with no voice lines.
+- 1.1.4: FAIL on any `final_ok: false`; otherwise INCOMPLETE (with the count) while any line has no `final_ok` (logged by a build from before every surface set it); PASS when every line is checked and none failed; NO DATA with no voice lines.
 - 2.1.5: fallbacks over all emissions, strict bar: 10.0% is a FAIL, under it PASS; NO DATA with no voice lines.
 
 Morning gates judge each athlete's last 14 mornings. With fewer, a gate can already fail but shows NOT ENOUGH MORNINGS instead of passing. Mornings no phone accepted are left out of the open rate.
