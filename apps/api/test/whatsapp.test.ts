@@ -141,3 +141,37 @@ test('review 6: a signature over the URL with or without the default port verifi
   assert.equal(verifyTwilioSignature('tok', 'https://api.scora.app/whatsapp?x=1', params, twilioSignature('tok', 'https://api.scora.app:8443/whatsapp?x=1', params)), false);
   assert.equal(verifyTwilioSignature('tok', 'https://api.scora.app/whatsapp?x=1', params, twilioSignature('tok', 'https://evil.test/whatsapp?x=1', params)), false);
 });
+
+test('gate 1.1.4: why and more replies each log a voice_emission line with final_ok, and nothing the log audit flags', async () => {
+  const { expansionReply } = await import('../src/whatsapp');
+  const { voiceGateReport } = await import('../src/gate-report');
+  const { auditLog } = await import('../src/log-audit');
+  const drivers = [{ metric: 'HRV', value: '38ms', trend: '-9% wk' }, { metric: 'Sleep', value: '6:42' }];
+  const replies = [
+    'HRV at 38ms, down 9% on the week, shaped today.',
+    'HRV at 31ms is the lowest in a month.', 'HRV at 29ms.',
+  ];
+  const realFetch = globalThis.fetch;
+  let outage = false;
+  globalThis.fetch = (async () => outage
+    ? new Response('{"error":{"message":"HRV 38ms rejected"}}', { status: 503 })
+    : new Response(JSON.stringify({ choices: [{ message: { content: replies.shift() } }] }))) as typeof fetch;
+  const lines: string[] = [];
+  const keep = (m: string) => lines.push(m);
+  const log = { warn: keep, error: keep, info: keep };
+  try {
+    assert.equal(await expansionReply('why', 'read', 'back-off', drivers, log), 'HRV at 38ms, down 9% on the week, shaped today.');
+    assert.match(await expansionReply('more', 'read', 'back-off', drivers, log), /HRV 38ms \(-9% wk\)/);
+    outage = true;
+    assert.match(await expansionReply('why', 'read', 'back-off', drivers, log), /^Behind today's read: /, 'an outage still answers');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const emissions = lines.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice('telemetry '.length)));
+  assert.deepEqual(emissions.map((e) => [e.surface, e.final_ok, e.fallback]), [['why', true, false], ['more', true, true], ['why', true, true]]);
+  const gate = voiceGateReport(lines.join('\n'));
+  assert.equal(gate.failThroughs, 0);
+  assert.equal(gate.unchecked, 0);
+  assert.deepEqual(auditLog(lines.join('\n')), []);
+  for (const l of lines) assert.doesNotMatch(l, /38|31|29|6:42|HRV at/, l);
+});

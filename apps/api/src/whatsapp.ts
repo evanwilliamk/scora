@@ -1,12 +1,13 @@
 // WhatsApp doorbell core (Plan tier, PRD §5.B.2, CLAUDE.md §3.3, §7).
 //
-// Pure pieces only: the morning message, the bounded reply commands, and
-// Twilio's webhook signature check. Nothing here sends a message, stores a
+// The morning message, the bounded reply commands, the why/more expansions
+// (the only OpenAI call) and Twilio's webhook signature check. Nothing here sends a message, stores a
 // phone number or reads the database; the route, opt-in and Twilio account
 // wait on Evan (money, privacy text).
 
 import crypto from 'node:crypto';
 import { validateVoice, type Driver } from './validator';
+import { generateValidatedVoice } from './voice';
 
 // The morning message, numbers first (CLAUDE.md §3.3):
 //   Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412
@@ -103,9 +104,9 @@ export function parseReply(text: string): ReplyCommand {
   return { cmd: 'unknown' };
 }
 
-// Fixed replies for the commands that need no data. 'why' and 'more' come
-// from the read (why: an LLM expansion through the validators; more: the
-// full voice), so they are not here. Plain text, no emoji (CLAUDE.md §3.7).
+// Fixed replies for the commands that need no data. 'why' and 'more' are LLM
+// expansions of the read through the validators (expansionReply below), so
+// they are not here. Plain text, no emoji (CLAUDE.md §3.7).
 export function fixedReply(c: ReplyCommand): string | null {
   switch (c.cmd) {
     case 'pause':
@@ -215,4 +216,29 @@ export function morePrompt(read: string, posture: string, drivers: { metric: str
     userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${postureLine(posture)}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
     maxTokens: 200,
   };
+}
+
+// The why or more reply text, through the same validators as the read, with
+// its own voice_emission telemetry line (surface 'why' or 'more', final_ok
+// for the text sent) so gate 1.1.4 counts these replies too. An OpenAI
+// failure answers with the deterministic driver read rather than nothing, and
+// still logs its line. The line carries labels and counts only (gate 1.1.6).
+export async function expansionReply(
+  kind: 'why' | 'more',
+  read: string,
+  posture: string,
+  drivers: Driver[],
+  log?: { warn: (msg: string) => void; error: (msg: string) => void; info?: (msg: string) => void },
+): Promise<string> {
+  const p = kind === 'why' ? whyPrompt(read, posture, drivers) : morePrompt(read, posture, drivers);
+  const r = await generateValidatedVoice({
+    ...p,
+    drivers,
+    model: 'gpt-4o',
+    surface: kind,
+    leadIn: kind === 'why' ? 'Behind today\'s read' : 'The fuller read',
+    fallbackOnLlmError: true,
+    log,
+  });
+  return r.voice;
 }
