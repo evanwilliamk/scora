@@ -67,7 +67,8 @@ test('an unreachable host is a failed result, not a throw', async () => {
   // Port 1 on loopback: nothing listens there, and no other test can take it.
   process.env.APNS_TEST_HOST = 'http://127.0.0.1:1';
   // The module read its host at import; a fresh import picks up the dead host.
-  const fresh = await import('../src/push?dead');
+  // The query string makes a new module instance; TS cannot resolve it, so name the type.
+  const fresh: typeof import('../src/push') = await import('../src/push?dead' as string);
   const r = await fresh.sendPush('x', { title: 't', body: 'b' });
   assert.equal(r.ok, false);
   assert.equal(r.status, 0);

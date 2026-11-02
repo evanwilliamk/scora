@@ -191,7 +191,7 @@ function selectColumns(table: string, sel: string, out: [string, string][]) {
 function usedColumns(c: Chain): [string, string][] {
   const out: [string, string][] = [];
   for (const m of c.text.matchAll(/\.select\(\s*(?:'([^']*)'|([A-Z_]+))/g)) {
-    let sel = m[1];
+    let sel: string | undefined = m[1];
     if (sel === undefined) {
       const s = readFileSync(join(srcDir, c.file), 'utf8');
       sel = new RegExp(`const ${m[2]}\\s*=\\s*'([^']*)'`).exec(s)?.[1];

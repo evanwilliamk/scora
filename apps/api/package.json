@@ -11,7 +11,7 @@
     "build": "echo 'No build needed, using tsx runtime'",
     "start": "npx tsx src/index.ts",
     "test": "node --import tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint src"
   },
   "dependencies": {
