@@ -18,11 +18,6 @@ interface GenerateParams {
   // like a banned phrase: fed back for the retry, then the fallback.
   check?: (voice: string) => string[];
   log?: { warn: (msg: string) => void; error: (msg: string) => void; info?: (msg: string) => void };
-  // When the OpenAI call itself fails (network, timeout, 429, 5xx) on the
-  // first draft, return the deterministic fallback instead of throwing. Opted
-  // into by the daily read and the weekly review so an outage still sends a
-  // validated read; other surfaces keep their own catch.
-  fallbackOnLlmError?: boolean;
 }
 
 export interface GenerateResult {
@@ -108,7 +103,6 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     surface,
     log,
     check,
-    fallbackOnLlmError = false,
   } = params;
   const llmFailed = (attempt: number, e: unknown) =>
     log?.error(`voice_llm_error ${JSON.stringify({ event: 'voice_llm_error', surface: surface ?? null, attempt, kind: llmErrorKind(e) })}`);
@@ -129,14 +123,15 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
   };
   const note = (v: ValidationResult) => { seen.push(...v.bannedHits); unbacked += v.unbackedNumbers.length; };
 
-  // Attempt 1. A hard failure propagates unless the caller opted into the
-  // fallback; then no retry, since a second call into an outage only adds
-  // latency before the same fallback.
+  // Attempt 1. A hard failure (network, timeout, 429, 5xx) on any surface
+  // ends in the deterministic fallback with its telemetry line, so an outage
+  // still sends validated text and still counts in gates 1.1.4 and 2.1.5. No
+  // retry: a second call into an outage only adds latency before the same
+  // fallback. Callers never log the emission themselves.
   let first: string;
   try {
     first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens);
   } catch (e) {
-    if (!fallbackOnLlmError) throw e;
     llmFailed(1, e);
     const voice = buildFallbackVoice(drivers, leadIn);
     return done({ voice, validation: validate(voice), usedFallback: true, attempts: 1, llmError: true });

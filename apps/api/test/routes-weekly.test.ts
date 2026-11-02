@@ -9,6 +9,7 @@ import { fakeRest, type FakeRest } from './helpers/fake-rest';
 import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { validateVoice } from '../src/validator';
+import { emissionsDuring } from './helpers/emission-spy';
 
 blankEnv();
 
@@ -81,8 +82,9 @@ test('weekly: the model failing is the validated fallback review, not a 500', as
   connected();
   guard.stravaActivities(week());
   guard.openAi({ status: 429, body: { error: { message: 'rate limited' } } });
-  const r = await weekly();
+  const { result: r, emissions } = await emissionsDuring(app.log, weekly);
   assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(emissions.map((e) => [e.surface, e.fallback, e.final_ok]), [['weekly', true, true]]);
   const { read, drivers } = r.json();
   assert.equal(llmCalls().length, 1);
   assert.match(read.voice, /^This week: /);

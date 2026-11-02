@@ -237,7 +237,6 @@ export async function expansionReply(
     model: 'gpt-4o',
     surface: kind,
     leadIn: kind === 'why' ? 'Behind today\'s read' : 'The fuller read',
-    fallbackOnLlmError: true,
     log,
   });
   return r.voice;

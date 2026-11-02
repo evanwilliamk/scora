@@ -177,3 +177,26 @@ test('script exit code: fail-throughs INCOMPLETE is not a pass', () => {
   assert.equal(code([...passing, ok(), ok(false)].join('\n')), 1, 'a fail-through fails even with unchecked lines');
   assert.equal(code('nothing here'), 3);
 });
+
+test('1.1.4: an OpenAI outage logged by generateValidatedVoice counts as a fallback, never a fail-through', async () => {
+  const { generateValidatedVoice } = await import('../src/voice');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('{"error":{"message":"overloaded"}}', { status: 503 })) as typeof fetch;
+  const lines: string[] = [];
+  // As pino writes it: the telemetry line inside a JSON record's msg.
+  const log = { warn() {}, error() {}, info: (m: string) => lines.push(JSON.stringify({ level: 30, msg: m })) };
+  try {
+    for (const surface of ['daily', 'weekly', 'card', 'why', 'more'] as const) {
+      await generateValidatedVoice({ systemPrompt: 's', userPrompt: 'u', drivers: [{ metric: 'HRV', value: '52ms' }], surface, log });
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  // The chat route's own outage line (index.ts, CDV_OUTAGE_REPLY).
+  lines.push(voiceEmissionLine({ surface: 'cdv', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0, finalOk: true }));
+  const r = voiceGateReport(lines.join('\n'));
+  assert.equal(lines.length, 6, 'one line per surface');
+  assert.deepEqual([r.total.emissions, r.total.fallbacks, r.total.caught, r.failThroughs, r.unchecked], [6, 6, 6, 0, 0]);
+  assert.match(r.lines.at(-1)!, /fail-throughs 0 of 6 .*PASS/);
+  assert.match(r.lines.join('\n'), /Validator fallback rate 100\.0% .*FAIL/);
+});

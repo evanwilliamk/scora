@@ -9,6 +9,7 @@ import { fakeRest, type FakeRest } from './helpers/fake-rest';
 import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { validateVoice } from '../src/validator';
+import { emissionsDuring } from './helpers/emission-spy';
 
 blankEnv();
 
@@ -153,10 +154,12 @@ test('the model failing is the validated fallback read, never an unvalidated one
   connected();
   guard.stravaActivities(steady());
   guard.openAi({ status: 503, body: { error: { message: 'overloaded' } } });
-  const r = await read();
+  const { result: r, emissions } = await emissionsDuring(app.log, read);
   assert.equal(r.statusCode, 200, r.body);
   const { read: out, drivers } = r.json();
   assert.equal(llmCalls().length, 1, 'no retry into an outage');
+  // Gate 1.1.4 and 2.1.5 still see the outage: one checked fallback line.
+  assert.deepEqual(emissions.map((e) => [e.surface, e.fallback, e.final_ok]), [['daily', true, true]]);
   assert.match(out.voice, /^Today's numbers: /);
   assert.ok(out.numbers);
   assert.ok(validateVoice(out.voice, drivers).ok, out.voice);
@@ -225,8 +228,9 @@ test('card expand: the model down falls back to the card\'s own line', async () 
   const card = cards.find((c) => c.id === 'training_load');
   assert.ok(card && card.available, 'training_load card is available');
   guard.openAi({ status: 503, body: {} });
-  const e = await expand(card.id);
+  const { result: e, emissions } = await emissionsDuring(app.log, () => expand(card.id));
   assert.equal(e.statusCode, 200);
+  assert.deepEqual(emissions.map((x) => [x.surface, x.fallback, x.final_ok]), [['card', true, true]], 'one line, not two');
   assert.equal(llmCalls().length, 2, 'the read, then the failed expansion');
   // The plain driver read, not the card translation ("across 3 runs" cites
   // no driver): a validated fallback, as the gate counts it (doc 10 1.1.4).

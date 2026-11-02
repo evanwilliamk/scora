@@ -8,6 +8,7 @@ import { fakeRest, type FakeRest } from './helpers/fake-rest';
 import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { validateVoice } from '../src/validator';
+import { emissionsDuring } from './helpers/emission-spy';
 
 blankEnv();
 
@@ -160,7 +161,7 @@ test('chat: a clean answer counts one query and draws the chart from the activit
   assert.deepEqual({ n: count.body.cdv_count, d: count.body.cdv_count_date }, { n: 2, d: today });
 });
 
-test('chat: a failed model call gives the query back', async () => {
+test('chat: a failed model call is a plain sentence, one logged fallback, and gives the query back', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
   // Token lookup, quota, its count, then the refund's own read of the counted row.
   connected({ cdv_count: 1, cdv_count_date: today });
@@ -169,8 +170,14 @@ test('chat: a failed model call gives the query back', async () => {
   connected({ cdv_count: 2, cdv_count_date: today });
   guard.stravaActivities(twoWeeks());
   guard.openAi({ status: 500, body: { error: { message: 'upstream' } } });
-  const r = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today });
-  assert.equal(r.statusCode, 500, r.body);
+  const { result: r, emissions } = await emissionsDuring(app.log, () => post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today }));
+  assert.equal(r.statusCode, 200, r.body);
+  const body = r.json();
+  assert.match(body.voice, /^No answer could be reached just now/);
+  assert.doesNotMatch(r.body, /upstream|OpenAI|500/);
+  assert.deepEqual([body.drivers, body.unavailable, body.remaining], [[], true, 2]);
+  assert.equal(llmCalls().length, 1, 'no retry into an outage');
+  assert.deepEqual(emissions.map((e) => [e.surface, e.attempts, e.fallback, e.final_ok]), [['cdv', 1, true, true]]);
   const counts = rest.requests.filter((q) => q.method === 'PATCH' && q.table === 'athletes').map((q) => q.body.cdv_count);
   assert.deepEqual(counts, [2, 1], 'counted, then given back');
 });
