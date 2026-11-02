@@ -182,6 +182,22 @@ test('chat: a failed model call is a plain sentence, one logged fallback, and gi
   assert.deepEqual(counts, [2, 1], 'counted, then given back');
 });
 
+test('chat: a refund the count no longer allows is not reported as one (review 11-02 late)', async () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  connected({ cdv_count: 1, cdv_count_date: today });
+  connected({ cdv_count: 1, cdv_count_date: today });
+  rest.answer('athletes', { body: [] });
+  // By the refund's read the row has moved to the next day: nothing to give back.
+  connected({ cdv_count: 1, cdv_count_date: addDays(today, 1) });
+  guard.stravaActivities(twoWeeks());
+  guard.openAi({ status: 503, body: {} });
+  const r = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today });
+  assert.equal(r.statusCode, 200, r.body);
+  const counts = rest.requests.filter((q) => q.method === 'PATCH' && q.table === 'athletes').map((q) => q.body.cdv_count);
+  assert.deepEqual(counts, [2], 'counted, never given back');
+  assert.equal(r.json().remaining, 1, 'the count the athlete sees is the stored one');
+});
+
 test('chat: prescriptive drafts are replaced, never sent', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
   connected({ cdv_count: 0, cdv_count_date: today });

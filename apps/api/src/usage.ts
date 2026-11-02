@@ -121,21 +121,24 @@ export async function consumeCdvQuota(
 // Give back a query counted by consumeCdvQuota whose answer never came (the
 // LLM call failed), so a provider outage does not spend the athlete's day.
 // Only on the same quota day and never below zero. Same read-modify-write
-// caveat as consumeCdvQuota.
+// caveat as consumeCdvQuota. True only when a query was given back, so the
+// route reports the count that is stored, never one it did not write.
 export async function refundCdvQuota(
   athleteId: string,
   day: string,
   supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
-): Promise<void> {
+): Promise<boolean> {
   const { data: athlete, error } = await supabase
     .from('athletes')
     .select('cdv_count, cdv_count_date')
     .eq('strava_id', String(athleteId))
     .single();
   if (error || !athlete) throw new Error('Athlete not found');
-  if (athlete.cdv_count_date !== day || !(athlete.cdv_count > 0)) return;
-  await supabase
+  if (athlete.cdv_count_date !== day || !(athlete.cdv_count > 0)) return false;
+  const { error: saveError } = await supabase
     .from('athletes')
     .update({ cdv_count: athlete.cdv_count - 1 })
     .eq('strava_id', String(athleteId));
+  if (saveError) throw new Error('CDV refund not saved');
+  return true;
 }

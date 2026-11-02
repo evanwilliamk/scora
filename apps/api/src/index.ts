@@ -492,8 +492,7 @@ Answer THIS question specifically using the data above. If the data can't answer
       let refunded = false;
       if (quota?.allowed) {
         try {
-          await refundCdvQuota(athleteId, quota.day);
-          refunded = true;
+          refunded = await refundCdvQuota(athleteId, quota.day);
         } catch (re) {
           fastify.log.error({ err: re }, 'CDV quota refund failed');
         }

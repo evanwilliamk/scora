@@ -52,13 +52,13 @@ test('a higher limit (Plan tier seam) is respected', async () => {
 test('a refund gives back one query on the same day, never below zero or on another day', async () => {
   const { db } = fakeDb({ cdv_count: 0, cdv_count_date: '2026-10-17' });
   const q = await consumeCdvQuota('42', 3, db, '2026-10-17');
-  await refundCdvQuota('42', q.day, db);
+  assert.equal(await refundCdvQuota('42', q.day, db), true);
   assert.equal((await consumeCdvQuota('42', 3, db, '2026-10-17')).used, 1, 'the refunded query is free again');
 
   const zero = fakeDb({ cdv_count: 0, cdv_count_date: '2026-10-17' });
-  await refundCdvQuota('42', '2026-10-17', zero.db);
+  assert.equal(await refundCdvQuota('42', '2026-10-17', zero.db), false);
   assert.equal(zero.updates.length, 0);
   const other = fakeDb({ cdv_count: 2, cdv_count_date: '2026-10-18' });
-  await refundCdvQuota('42', '2026-10-17', other.db);
+  assert.equal(await refundCdvQuota('42', '2026-10-17', other.db), false);
   assert.equal(other.updates.length, 0, 'a new day already reset the count');
 });
