@@ -17,7 +17,7 @@ import {
   OURA_CLIENT_ID,
 } from './oura';
 import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from './usage';
-import { generateValidatedVoice } from './voice';
+import { generateValidatedVoice, OPENAI_TIMEOUT_MS } from './voice';
 import { checkCdvWithRetry, cdvEmission, cdvTextOk } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 import { vendorErrorKind, vendorHttpError } from './vendor-error';
@@ -477,6 +477,9 @@ Answer THIS question specifically using the data above. If the data can't answer
           max_tokens: 350,
           temperature: 0.5,
         }),
+        // A hung upstream ends in the outage reply and its logged line, not a
+        // request that never answers.
+        signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
       });
       if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
       const json: any = await res.json();

@@ -214,6 +214,18 @@ test('chat: a model reply with no text is an outage, logged once and refunded (r
   assert.deepEqual(counts, [1, 0], 'counted, then given back');
 });
 
+test('chat: every model call carries a timeout, so a hung OpenAI ends in the logged outage (review 11-02 late)', async () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  connected({ cdv_count: 0, cdv_count_date: today });
+  connected({ cdv_count: 0, cdv_count_date: today });
+  guard.stravaActivities(twoWeeks());
+  guard.openAi('You should go for a long run today.\nCHART: none', 'Steady.\nCHART: none');
+  const r = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(llmCalls().length, 2);
+  for (const c of llmCalls()) assert.ok(c.init?.signal instanceof AbortSignal, 'first call and retry both time out');
+});
+
 test('chat: prescriptive drafts are replaced, never sent', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
   connected({ cdv_count: 0, cdv_count_date: today });

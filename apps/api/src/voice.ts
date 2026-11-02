@@ -30,8 +30,9 @@ export interface GenerateResult {
 }
 
 // Per-call cap on the OpenAI request. Two calls at most per read, so a hung
-// upstream costs the route at most twice this before the fallback.
-const OPENAI_TIMEOUT_MS = 20_000;
+// upstream costs the route at most twice this before the fallback. Chat
+// (index.ts) uses the same cap.
+export const OPENAI_TIMEOUT_MS = 20_000;
 
 class OpenAIHttpError extends Error {
   constructor(readonly status: number) {
