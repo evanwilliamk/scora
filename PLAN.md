@@ -130,12 +130,50 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
   - [!] Code half, ASK (Q30): an `athletes.tier` column (default `free`, Evan can set `plan` by hand), one `requireTier` check on every Plan-tier route, coach-assigned athletes kept out of generation. Done when route tests show a Free athlete gets the Free behavior from each Plan-tier route. Stripe then only writes the column. Route-by-route design: `docs/tier-gating-design.md` (recommends doc 07's `subscription_tiers` table, keyed by Strava id for now)
   - [~] Free-tier boundaries today vs §5.1, pinned in route tests, 3 gaps listed: `docs/free-tier-boundaries.md` (`claude/free-tier-boundaries`)
 
-## Later phases (not started, see the 90-day plan)
+## Later phases (refined 2026-11-03 from the 90-day plan §4, doc 07 §4.6 to §5.5, doc 10 §4 and §6.3)
 
-- Phase 2 (rest): Stripe subscriptions, WorkoutKit, WhatsApp doorbell
+Marking: `[ ]` workable unattended (pure code, or behind a flag that defaults off, tested with fakes or PGlite, no auth, payments, new personal data or legal copy). `[!] ASK (reason)` needs Evan first. Workable items come first in each phase.
+
+### Phase 2 (rest)
+
+- [ ] Runna through the calendar import: a feed whose PRODID or event text names Runna is stored as `external_source='runna'`, and Runna-style titles ("Easy Run", "Tempo", "Long Run") map to kind and intensity by the existing keywords; synthetic fixture only, same validator, still `ICAL_IMPORT=on`. Done when an import test turns the fixture into a runna-tagged plan and an unknown title falls back as today
+- [!] ASK (payments, keys, waits on Q30): Stripe subscriptions. Payment Links for Plan, Customer Portal, `POST /api/stripe/webhook` with signature check writing the tier row from `docs/tier-gating-design.md`. Done when a test-mode subscription moves an athlete to `plan` and a cancel moves them back to `free`
+- [!] ASK (partner access, possible cost or agreement): Runna direct integration (CLAUDE.md §8.4). Runna has no public plan API; needs a partner agreement. Done when Evan has API access or drops it for the calendar path above
 - [~] WhatsApp doorbell core: message composer, reply parser, Twilio signature check; no sending or storage (`claude/whatsapp-core`, on `claude/integration-2026-10-22`)
 - [ ] WhatsApp doorbell live: Twilio sandbox account, opt-in copy, inbound route, why-expansion prompt (Evan: account and copy). Done when a reply "why" in the sandbox returns a validated expansion
   - [!] Code half, ASK (Q29): store the athlete's WhatsApp number (E.164) with an opt-in timestamp, `POST /api/whatsapp/inbound` that checks the Twilio signature (built), handles why/more/pause/stop/help (built) and answers in TwiML, flag `WHATSAPP=on`. Done when route tests answer each reply word from a signed fake request; no message is sent until Evan adds the Twilio account
-- Phase 3: Stripe Connect marketplace, coach dashboard, messaging
+
+### Phase 3 (Coach tier and coach-side platform)
+
+Voice-vs-plan rule (CLAUDE.md §1): a coach-authored plan is a plan, not voice. The voice may observe the coach's plan and its changes; it never prescribes, never overrides the coach, never calls itself a coach. Coach notes and messages are the coach's words, shown as the coach's, never passed through or blended into the voice. Agents never write training content or coach templates.
+
+Workable unattended (pure code or flag `COACH_PLATFORM=on`, default off; seeded by hand in tests, no coach accounts):
+
+- [ ] Coach plan validator in `packages/plan-engine`: a coach-authored plan payload (dated sessions, kind, minutes or km, optional steps) is checked for shape only: valid dates, units, steps that sum to the session, convertible to WorkoutKit. SCORA's template and 10% rules are not applied to the coach. Done when unit tests accept a valid fixture and reject each malformed case with a reason
+- [ ] Coach plan replaces the AI plan, read side (CLAUDE.md §5.3, doc 10 4.1.11): with a `source='coach'` plan active, generate, options and block return the Coach behavior, the adaptation engine never auto-adapts it, and the Today line shows coach sessions that carry steps. Done when PGlite route tests with a hand-seeded coach plan show all four
+- [ ] Voice reads the coach plan as a plan (§1.3): the read and Sunday review get coach sessions labeled as the coach's plan; tests show the validator still rejects any prescription, override or SCORA-as-coach line on a coach-plan fixture. Done when voice and validator tests pass on that fixture
+- [ ] Assignment window filter: one pure function that clips any athlete data query to the assignment's start and end (doc 10 §6.3: no data before assignment start). Done when unit tests show data before start and after end is never returned
+- [ ] Athlete monitoring alert rules, pure: the doc 07 §4.10 types (missed_workouts_n, low_sleep_streak, hrv_crash, rhr_elevation, app_inactive) computed from existing data, thresholds as named constants, factual alert text with the driver value, no advice. No storage, no delivery. Done when unit tests fire and do not fire each type on fixture series
+- [ ] Coach analytics math, pure: fitness, fatigue and TSB (CTL/ATL) and weekly load by intensity from stored Strava activities. Done when unit tests match hand-computed values on a fixture
+- [ ] Multi-athlete dashboard summary builder, pure: per athlete one row (posture, last sleep, 7-day load, plan adherence from done/missed marks, open alert count) from existing stores through fakes; no route. Done when tests build rows for 3 fake athletes, one with no data
+- [ ] Workout builder core, pure: a structured workout model (warm-up, repeats, recovery, cool-down) with validation and conversion to plan session steps and to WorkoutKit through the existing converter. Done when round-trip tests keep totals equal
+- [ ] Coach template library format: coach templates use the `packages/plan-templates` YAML schema plus `author` and `coach_id`; loader and schema tests on a synthetic fixture with placeholder content. Done when loader tests pass and SCORA templates still load unchanged
+- [ ] Weekly coach note slot in the Sunday read: the review accepts an optional note string from a fake source and shows it as its own block attributed to the coach, outside the voice text and never sent to the LLM. Done when tests show the voice block unchanged with and without a note
+- [ ] iOS Coach tier display on DEBUG demo data (`-demo-coach`): "Your coach: <name>" on the dashboard and "Your coach's plan" on Your Plan, plan setup hidden. Done when seen on the simulator; no real coach data
+
+Needs Evan (most items above become routes only after the gate):
+
+- [!] ASK (auth and roles, gate): coach accounts and roles. How a coach signs in (same app with Sign in with Apple, or web), how an assignment is created before Stripe Connect (Evan by hand?), and the rule that a coach sees only their own athletes. Unblocks: the coach tables migration, coach-side routes, alert storage and delivery, messaging, coach note storage, coach plan write, and real data for the iOS Coach tier display
+- [!] ASK (new personal data, after the gate): migration for `coach_profiles`, `coach_athlete_assignments`, `coach_alerts` as doc 07 §4.6, §4.7, §4.10, keyed for the Strava-id era, RLS on. Done when PGlite migration tests pass
+- [!] ASK (roles, after the gate): coach-side routes (doc 07 §5.5): dashboard, athlete detail, plan read and write with `triggered_by='coach_manual'` named changes, alerts list and acknowledge, analytics, workout builder save, template list. Done when route tests show a coach gets 403 on an athlete not assigned to them
+- [!] ASK (stores coach-facing alerts, APNS to coaches): alert storage, nightly job and delivery. Done when a fake athlete with a short-sleep streak creates one alert for the assigned coach only
+- [!] ASK (new personal data: message bodies): in-app messaging, `messages` table, doc 07 §5.4 routes, APNS delivery, retention rule. Done when route tests send, page and mark read within one assignment only
+- [!] ASK (stores coach-written text): weekly coach note storage and the coach write route. Done when a stored note shows in that athlete's Sunday read
+- [!] ASK (consent and privacy copy): athlete consent to share data with an assigned coach, and the copy for it. Done when Evan approves the text
+- [!] ASK (personal data, coach agreement): marketplace listing, coach profile, `GET /coach/directory` and profile view, directory UI. Done when 5 seeded profiles list and filter by specialization
+- [!] ASK (payments, Stripe Connect): Express onboarding for coaches, booking by direct charge with a 15% application fee, Connect webhooks, assignment ended on cancel or failed payment (doc 10 §6.3). Done when a test-mode booking creates an active assignment and a cancel ends it
+
+### Not scheduled
+
 - Coaching phase (Evan, 2026-10-13): SCORA becomes a coaching app, prescriptive guidance grounded in the knowledge library. Timing and scope set by Evan; see spec §7
 - Rev 5 elements (Daily Call, feel-before-reveal, calibration record): not yet adopted, see `docs/scora-master-context-rev5.md`

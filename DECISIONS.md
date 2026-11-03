@@ -908,3 +908,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: "Your first read lands today at 6:30 AM." before the chosen time, "tomorrow at 6:30 AM." after the scheduler's 120 minute send window, and "Your first read lands shortly." inside the window (the next scheduler pass sends it, including a late window running past midnight). Time format follows the phone's locale. Alternative: Q33 B, no timing ("lands at 6:30").
 - Why: always true, same tone; the "shortly" case exists because the server sends a read up to two hours after the chosen time.
 - To reverse: `OnboardingState.firstReadTitle` in apps/ios/Scora/OnboardingView.swift; restore the fixed title in the `.done` case.
+
+### 2026-11-03: Phase 3 broken into plan items; coach plans are never auto-adapted
+- Status: DECIDED (reversible, planning only)
+- Branch: claude/plan-phase3
+- Context: "Later phases" in PLAN.md was one-line bullets, so the night worker had no eligible items.
+- Choice: 12 workable items (pure code or `COACH_PLATFORM=on`, hand-seeded tests) and 11 ASK items, with one gate (coach accounts and roles) that unblocks the coach-side routes. Two planning calls: the adaptation engine never auto-adapts a coach's plan (only `coach_manual` changes), and coach notes are shown as the coach's words outside the voice, never sent to the LLM. Alternative: run the same deterministic rules on coach plans with named reasons.
+- Why: CLAUDE.md §5.3 says the coach's plan overrides SCORA's; adapting it would put SCORA between athlete and coach. Keeping coach text out of the voice keeps §1 intact.
+- To reverse: edit the two Phase 3 items in PLAN.md before they are built.
