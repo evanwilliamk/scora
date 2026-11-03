@@ -284,7 +284,7 @@ export function openAiEmbedder(apiKey: string, fetchImpl: typeof fetch = fetch):
 export function sqlStore(db: { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> }): KnowledgeStore {
   return {
     async upsertSource(s) {
-      // Look up, insert unless another run just did (migration 20261103000000
+      // Look up, insert unless another run just did (migration 20261103020000
       // makes a null author one value), then read the row either way.
       const sel = 'select id from knowledge_sources where title = $1 and author is not distinct from $2 limit 1';
       const before = await db.query(sel, [s.title, s.author]);

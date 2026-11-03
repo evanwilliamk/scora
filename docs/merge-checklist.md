@@ -60,7 +60,7 @@ All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrati
 11. `20261101000000_create_scora_plan_idempotent.sql`: the same plan setup sent twice keeps the plan it made, with its marks and changes; redefines `create_scora_plan()` only.
 12. `20261101010000_due_deliveries.sql`: `scora_due_deliveries()` and `scora_delivery_zone()`, so an idle push scheduler tick is one request instead of reading every athlete's preferences. Optional for correctness (without it the scheduler reads every athlete, as before, and checks again every 15 minutes), needed for scale; can be applied before or after the merge.
 
-13. `20261103000000_knowledge_source_unique.sql` (data-writes review): a unique index on `knowledge_sources (title, author) nulls not distinct`, so two ingest runs of a source with no author keep one row. Index only. Apply with or after migration 1, before the first ingest run; not needed before merge (the library is idle until `KNOWLEDGE_RETRIEVAL=on` and an ingest). If an ingest already ran, the duplicate check in the file's header must return no rows first.
+13. `20261103020000_knowledge_source_unique.sql` (data-writes review): a unique index on `knowledge_sources (title, author) nulls not distinct`, so two ingest runs of a source with no author keep one row. Index only. Apply with or after migration 1, before the first ingest run; not needed before merge (the library is idle until `KNOWLEDGE_RETRIEVAL=on` and an ingest). If an ingest already ran, the duplicate check in the file's header must return no rows first.
 
 The list above is complete as of 2026-11-03. Later ones, if any, follow in filename order.
 
