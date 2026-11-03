@@ -77,3 +77,72 @@ test('the Supabase store sends the cut to the three-argument refresh', async () 
     ['refresh_ical_plan', ['p_athlete_id', 'p_rows']],
   ]);
 });
+
+// supabase-js over PGlite, just the calls the plan store makes, with a hook
+// that runs once after the first database call (another request landing
+// between this request's steps).
+function pgliteSb(between: () => Promise<void>) {
+  let fired = false;
+  const after = async <T>(v: T) => {
+    if (!fired) { fired = true; await between(); }
+    return v;
+  };
+  const col = (k: string) => (k === 'training_plans.current_status' ? 'p.current_status' : `w.${k}`);
+  return {
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      const names = Object.keys(args);
+      const r = await db.query<{ v: unknown }>(
+        `select ${fn}(${names.map((n, i) => `${n} => $${i + 1}`).join(', ')}) as v`, names.map((n) => args[n]));
+      return after({ data: r.rows[0].v, error: null });
+    },
+    from: (table: string) => {
+      assert.equal(table, 'scheduled_workouts');
+      const where: [string, string, unknown][] = [];
+      let set: Record<string, unknown> | null = null;
+      const sql = () => where.map(([k, op], i) => `${col(k)} ${op} $${i + 1}`).join(' and ');
+      const q: any = {
+        select: (_cols: string) => (set ? run() : q),
+        update: (v: Record<string, unknown>) => { set = v; return q; },
+        eq: (k: string, v: unknown) => { where.push([k, '=', v]); return q; },
+        lte: (k: string, v: unknown) => { where.push([k, '<=', v]); return q; },
+        maybeSingle: async () => {
+          const r = await db.query(`select w.id, w.training_plan_id from scheduled_workouts w join training_plans p on p.id = w.training_plan_id where ${sql()}`,
+            where.map((x) => x[2]));
+          return after({ data: r.rows[0] ?? null, error: null });
+        },
+      };
+      const run = async () => {
+        const keys = Object.keys(set!);
+        const r = await db.query(
+          `update scheduled_workouts w set ${keys.map((k, i) => `${k} = $${where.length + i + 1}`).join(', ')} where ${sql()} returning w.id`,
+          [...where.map((x) => x[2]), ...keys.map((k) => set![k])]);
+        return after({ data: r.rows, error: null });
+      };
+      return q;
+    },
+  };
+}
+
+test('a mark sent while a calendar refresh lands is on the active plan, or refused', async () => {
+  const { supabasePlanStore } = await import('../src/plan-store');
+  const rows = importIcs(FEED, '2026-10-19', 'UTC').rows;
+  await sqlPlanStore(db).saveIcalPlan('pw3', rows);
+  const [mon] = await sqlPlanStore(db).workoutsBetween('pw3', '2026-10-19', '2026-10-19');
+  const sb = pgliteSb(async () => { await sqlPlanStore(db).refreshIcalPlan('pw3', rows, '2026-10-19'); });
+  const ok = await supabasePlanStore(sb).markCompleted('pw3', mon.id, true, '2026-10-19');
+  const [now] = await sqlPlanStore(db).workoutsBetween('pw3', '2026-10-19', '2026-10-19');
+  if (ok) assert.equal(now.athlete_completed, true, 'answered done, so the active plan shows it done');
+});
+
+test('a Watch send recorded while a calendar refresh lands is on the active plan, or refused', async () => {
+  const { supabasePlanStore } = await import('../src/plan-store');
+  const rows = importIcs(FEED, '2026-10-19', 'UTC').rows;
+  await sqlPlanStore(db).saveIcalPlan('pw4', rows);
+  const [mon] = await sqlPlanStore(db).workoutsBetween('pw4', '2026-10-19', '2026-10-19');
+  const sb = pgliteSb(async () => { await sqlPlanStore(db).refreshIcalPlan('pw4', rows, '2026-10-19'); });
+  const ok = await supabasePlanStore(sb).markWatchSent('pw4', mon.id);
+  const r = await db.query<{ t: string | null }>(
+    `select w.workout_kit_pushed_at::text as t from scheduled_workouts w join training_plans p on p.id = w.training_plan_id
+     where w.athlete_id = 'pw4' and p.current_status = 'active' and w.scheduled_date = '2026-10-19'`);
+  if (ok) assert.ok(r.rows[0].t, 'answered sent, so the active plan shows it sent');
+});

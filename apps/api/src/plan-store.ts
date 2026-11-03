@@ -76,24 +76,14 @@ export function sqlPlanStore(db: Db): PlanStore {
       return r.rows as StoredWorkout[];
     },
     async markCompleted(athleteId, workoutId, completed, today) {
-      const r = await db.query(
-        `update scheduled_workouts w set athlete_completed = $3, updated_at = now()
-         where w.id = $1 and w.athlete_id = $2 and w.scheduled_date <= $4::date
-           and exists (select 1 from training_plans p where p.id = w.training_plan_id and p.current_status = 'active')
-         returning w.id`,
-        [workoutId, athleteId, completed, today],
-      );
-      return r.rows.length === 1;
+      // Under the plan lock (migration 20261103010000), so a refresh or
+      // replace never lands between the check and the write.
+      const r = await db.query('select mark_scheduled_workout($1, $2::uuid, $3, $4::date) as ok', [athleteId, workoutId, completed, today]);
+      return r.rows[0]?.ok === true;
     },
     async markWatchSent(athleteId, workoutId) {
-      const r = await db.query(
-        `update scheduled_workouts w set workout_kit_pushed_at = now(), updated_at = now()
-         where w.id = $1 and w.athlete_id = $2
-           and exists (select 1 from training_plans p where p.id = w.training_plan_id and p.current_status = 'active')
-         returning w.id`,
-        [workoutId, athleteId],
-      );
-      return r.rows.length === 1;
+      const r = await db.query('select mark_workout_watch_sent($1, $2::uuid) as ok', [athleteId, workoutId]);
+      return r.rows[0]?.ok === true;
     },
   };
 }
@@ -143,35 +133,16 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
       }));
     },
     async markCompleted(athleteId, workoutId, completed, today) {
-      // Only the active plan's sessions: the row's plan is checked first.
-      const w = await sb.from('scheduled_workouts')
-        .select('id, training_plan_id, training_plans!inner(current_status)')
-        .eq('id', workoutId).eq('athlete_id', athleteId).lte('scheduled_date', today)
-        .eq('training_plans.current_status', 'active').maybeSingle();
-      check(w, 'Load workout');
-      if (!w.data) return false;
-      const r = await sb.from('scheduled_workouts')
-        .update({ athlete_completed: completed, updated_at: new Date().toISOString() })
-        // Same plan and date as checked: a plan replaced in between is not marked.
-        .eq('id', workoutId).eq('athlete_id', athleteId).eq('training_plan_id', (w.data as any).training_plan_id)
-        .lte('scheduled_date', today).select('id');
+      // One call under the plan lock (migration 20261103010000): a check and
+      // a second update could land on a plan replaced in between.
+      const r = await sb.rpc('mark_scheduled_workout', { p_athlete_id: athleteId, p_workout_id: workoutId, p_completed: completed, p_today: today });
       check(r, 'Mark workout');
-      return (r.data ?? []).length === 1;
+      return r.data === true;
     },
     async markWatchSent(athleteId, workoutId) {
-      const w = await sb.from('scheduled_workouts')
-        .select('id, training_plan_id, training_plans!inner(current_status)')
-        .eq('id', workoutId).eq('athlete_id', athleteId)
-        .eq('training_plans.current_status', 'active').maybeSingle();
-      check(w, 'Load workout');
-      if (!w.data) return false;
-      const now = new Date().toISOString();
-      const r = await sb.from('scheduled_workouts')
-        .update({ workout_kit_pushed_at: now, updated_at: now })
-        .eq('id', workoutId).eq('athlete_id', athleteId).eq('training_plan_id', (w.data as any).training_plan_id)
-        .select('id');
+      const r = await sb.rpc('mark_workout_watch_sent', { p_athlete_id: athleteId, p_workout_id: workoutId });
       check(r, 'Record Watch send');
-      return (r.data ?? []).length === 1;
+      return r.data === true;
     },
   };
 }
