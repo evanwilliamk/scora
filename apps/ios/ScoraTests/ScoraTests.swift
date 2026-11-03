@@ -892,6 +892,58 @@ final class ScoraTests: XCTestCase {
         XCTAssertEqual(older.scheduled.map(\.name), [downgraded.detail])
     }
 
+    // A session with a distance, and its Watch name as builds before miles wrote it.
+    private func distanceSession(_ date: String, km: Double, row: String) -> PlanWorkout {
+        let base = session(date, "tempo", 45, row: row)
+        var w = PlanWorkout(date: date, type: "run", intensity: "tempo", durationMin: 45, distanceKm: km, description: nil)
+        w.rowId = row
+        w.steps = base.steps
+        return w
+    }
+
+    @MainActor
+    func testAnOlderKmNamedCopyMatchesTheSameSessionInMiles() async {
+        for (km, kmName) in [(8.0, "tempo · 45 min · 8 km"), (21.08, "tempo · 45 min · 21.1 km")] {
+            let w = distanceSession("2026-11-03", km: km, row: "r1")
+            XCTAssertTrue(w.detail.hasSuffix(" mi"))
+            XCTAssertTrue(w.watchNames.contains(kmName))
+            // With this device's record of the send, and without one (another phone sent it).
+            let record = WatchLedger(sends: [WatchSendRecord(date: w.date, name: kmName, rowId: "r1", steps: w.steps)])
+            for ledger in [record, WatchLedger()] {
+                let watch = FakeWatch()
+                watch.scheduled = [WatchCopy(name: kmName, at: at6(3))]
+                let out = await WatchReconcile.run(workouts: [w], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+                XCTAssertEqual(watch.scheduled.map(\.name), [kmName], "the same session, written in km: left alone")
+                XCTAssertNil(out.note(for: w), "no false changed note")
+            }
+        }
+    }
+
+    @MainActor
+    func testAReallyChangedDistanceStillCountsAsChanged() async {
+        let w = distanceSession("2026-11-03", km: 10, row: "r1")
+        XCTAssertFalse(w.watchNames.contains("tempo · 45 min · 8 km"))
+        XCTAssertFalse(session("2026-11-03", "tempo", 50, row: "r1").watchNames.contains("tempo · 45 min · 8 km"))
+        let watch = FakeWatch()
+        watch.scheduled = [WatchCopy(name: "tempo · 45 min · 8 km", at: at6(3))]
+        let out = await WatchReconcile.run(workouts: [w], coveredThrough: nil, ledger: WatchLedger(), scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(watch.scheduled.isEmpty, "8 km became 10 km: the copy goes")
+        XCTAssertEqual(out.note(for: w), WatchReconcile.changed)
+    }
+
+    @MainActor
+    func testAPlanIdStillWinsOverAKmNameMatch() async {
+        // r1's copy carries r1's id and a km name that also fits r2, left on that day.
+        let r1 = distanceSession("2026-11-03", km: 8, row: "r1")
+        let r2 = distanceSession("2026-11-03", km: 8, row: "r2")
+        let watch = FakeWatch()
+        let workout = try! WorkoutExport.customWorkout(steps: r1.steps!, plannedType: r1.type, displayName: "tempo · 45 min · 8 km")
+        watch.scheduled = [WatchCopy(name: "tempo · 45 min · 8 km", at: at6(3), id: WatchPlanId.forSession(rowId: "r1"), workout: workout)]
+        let moved = distanceSession("2026-11-04", km: 8, row: "r1")
+        _ = await WatchReconcile.run(workouts: [r2, moved], coveredThrough: nil, ledger: WatchLedger(), scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertFalse(watch.scheduled.contains { WatchReconcile.day($0.at) == "2026-11-03" }, "found by id, not kept for r2's name")
+    }
+
     func testWatchPlanIdIsAStableUUIDv5() {
         // RFC 4122 v5 of "www.example.com" in the DNS namespace.
         let dns = UUID(uuidString: "6ba7b810-9dad-11d1-80b4-00c04fd430c8")!
