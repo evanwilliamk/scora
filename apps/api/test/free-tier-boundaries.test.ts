@@ -36,7 +36,10 @@ after(async () => {
 beforeEach(() => {
   rest.reset();
   guard.reset();
+  countLands();
 });
+// The quota count is a conditional update: it lands when a row comes back.
+const countLands = () => rest.handle('athletes', (q) => (q.method === 'PATCH' ? { body: [{ strava_id: '42' }] } : {}));
 
 const DAY = 86400000;
 const now = Date.now();
@@ -79,6 +82,7 @@ test('free cdv: the limit is 3 a day; the third is answered, the fourth is a 429
 
   rest.reset();
   guard.reset();
+  countLands();
   connected({ cdv_count: 3, cdv_count_date: today });
   connected({ cdv_count: 3, cdv_count_date: today });
   guard.stravaActivities(steady());
@@ -105,6 +109,7 @@ test('free cdv: the count resets at the athlete\'s local midnight from the store
   // Spent today (their day): an app date of tomorrow buys nothing.
   rest.reset();
   guard.reset();
+  countLands();
   connected({ cdv_count: 3, cdv_count_date: zoneToday });
   rest.answer('athlete_preferences', { body: [{ timezone: tz }] });
   connected({ cdv_count: 3, cdv_count_date: zoneToday });

@@ -10,7 +10,23 @@ function fakeDb(row: { cdv_count: number | null; cdv_count_date: string | null }
       assert.equal(table, 'athletes');
       return {
         select: () => ({ eq: () => ({ single: async () => (row ? { data: { ...row }, error: null } : { data: null, error: { message: 'none' } }) }) }),
-        update: (u: any) => ({ eq: async (_c: string, id: string) => { updates.push({ id, ...u }); if (row) Object.assign(row, u); return { error: null }; } }),
+        // Conditional update: written only when every filter still matches.
+        update: (u: any) => {
+          const filters: [string, unknown][] = [];
+          const b: any = {
+            eq: (c: string, v: unknown) => { filters.push([c, v]); return b; },
+            is: (c: string, v: unknown) => { filters.push([c, v]); return b; },
+            select: async () => {
+              const id = filters.find(([c]) => c === 'strava_id')?.[1];
+              const ok = row && filters.every(([c, v]) => c === 'strava_id' || ((row as any)[c] ?? null) === v);
+              if (!ok) return { data: [], error: null };
+              updates.push({ id, ...u });
+              Object.assign(row!, u);
+              return { data: [{ strava_id: id }], error: null };
+            },
+          };
+          return b;
+        },
       };
     },
   };

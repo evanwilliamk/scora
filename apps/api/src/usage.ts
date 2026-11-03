@@ -76,69 +76,83 @@ export async function athleteQuotaDay(
   return quotaDay(clientDay, now);
 }
 
+// Compare-and-swap attempts before giving up under contention.
+const CAS_TRIES = 5;
+
+// Write `values` only if the counter still holds what was read, so two
+// requests that read the same count cannot both write over it.
+async function swapCount(
+  supabase: Pick<SupabaseClient, 'from'>,
+  athleteId: string,
+  seen: { cdv_count: number | null; cdv_count_date: string | null },
+  values: { cdv_count: number; cdv_count_date?: string },
+): Promise<boolean> {
+  let q = supabase.from('athletes').update(values).eq('strava_id', String(athleteId));
+  q = seen.cdv_count == null ? q.is('cdv_count', null) : q.eq('cdv_count', seen.cdv_count);
+  q = seen.cdv_count_date == null ? q.is('cdv_count_date', null) : q.eq('cdv_count_date', seen.cdv_count_date);
+  const { data, error } = await q.select('strava_id');
+  if (error) throw new Error(`CDV count not saved: ${error.message}`);
+  return (data ?? []).length === 1;
+}
+
+async function readCount(supabase: Pick<SupabaseClient, 'from'>, athleteId: string) {
+  const { data, error } = await supabase
+    .from('athletes')
+    .select('cdv_count, cdv_count_date')
+    .eq('strava_id', String(athleteId))
+    .single();
+  if (error || !data) return null;
+  return data as { cdv_count: number | null; cdv_count_date: string | null };
+}
+
 // Check the athlete's CDV usage for today and, if under the limit, count this
 // query. Returns whether the call is allowed plus usage numbers for the UI.
 //
-// Read-modify-write (not atomic). At single-user scale a race could at worst
-// permit an occasional extra query — acceptable for a soft free-tier cap. If
-// this ever needs to be strict, move the increment into a Postgres RPC.
-// `supabase` and `today` are injectable for tests; production uses the
-// defaults.
+// The count is written only over the value read (compare-and-swap, retried),
+// so two queries at once cannot both take the last one, and a refund racing
+// a query loses neither. `supabase` and `today` are injectable for tests;
+// production uses the defaults.
 export async function consumeCdvQuota(
   athleteId: string,
   limit: number = FREE_CDV_DAILY_LIMIT,
   supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
   today: string = todayStr()
 ): Promise<CdvQuota> {
+  for (let i = 0; i < CAS_TRIES; i++) {
+    const athlete = await readCount(supabase, athleteId);
+    if (!athlete) throw new Error('Athlete not found. Please reconnect Strava.');
 
-  const { data: athlete, error } = await supabase
-    .from('athletes')
-    .select('cdv_count, cdv_count_date')
-    .eq('strava_id', String(athleteId))
-    .single();
+    // A new day resets the count; the day never moves backwards.
+    const day = athlete.cdv_count_date && athlete.cdv_count_date > today ? athlete.cdv_count_date : today;
+    const usedBefore = athlete.cdv_count_date === day ? athlete.cdv_count ?? 0 : 0;
 
-  if (error || !athlete) {
-    throw new Error('Athlete not found. Please reconnect Strava.');
+    if (usedBefore >= limit) {
+      return { allowed: false, used: usedBefore, remaining: 0, limit, day };
+    }
+
+    const usedAfter = usedBefore + 1;
+    if (await swapCount(supabase, athleteId, athlete, { cdv_count: usedAfter, cdv_count_date: day })) {
+      return { allowed: true, used: usedAfter, remaining: limit - usedAfter, limit, day };
+    }
   }
-
-  // A new day resets the count; the day never moves backwards.
-  const day = athlete.cdv_count_date && athlete.cdv_count_date > today ? athlete.cdv_count_date : today;
-  const usedBefore = athlete.cdv_count_date === day ? athlete.cdv_count ?? 0 : 0;
-
-  if (usedBefore >= limit) {
-    return { allowed: false, used: usedBefore, remaining: 0, limit, day };
-  }
-
-  const usedAfter = usedBefore + 1;
-  await supabase
-    .from('athletes')
-    .update({ cdv_count: usedAfter, cdv_count_date: day })
-    .eq('strava_id', String(athleteId));
-
-  return { allowed: true, used: usedAfter, remaining: limit - usedAfter, limit, day };
+  throw new Error('CDV count busy: not counted');
 }
 
 // Give back a query counted by consumeCdvQuota whose answer never came (the
 // LLM call failed), so a provider outage does not spend the athlete's day.
-// Only on the same quota day and never below zero. Same read-modify-write
-// caveat as consumeCdvQuota. True only when a query was given back, so the
+// Only on the same quota day and never below zero, written over the value
+// read like consumeCdvQuota. True only when a query was given back, so the
 // route reports the count that is stored, never one it did not write.
 export async function refundCdvQuota(
   athleteId: string,
   day: string,
   supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
 ): Promise<boolean> {
-  const { data: athlete, error } = await supabase
-    .from('athletes')
-    .select('cdv_count, cdv_count_date')
-    .eq('strava_id', String(athleteId))
-    .single();
-  if (error || !athlete) throw new Error('Athlete not found');
-  if (athlete.cdv_count_date !== day || !(athlete.cdv_count > 0)) return false;
-  const { error: saveError } = await supabase
-    .from('athletes')
-    .update({ cdv_count: athlete.cdv_count - 1 })
-    .eq('strava_id', String(athleteId));
-  if (saveError) throw new Error('CDV refund not saved');
-  return true;
+  for (let i = 0; i < CAS_TRIES; i++) {
+    const athlete = await readCount(supabase, athleteId);
+    if (!athlete) throw new Error('Athlete not found');
+    if (athlete.cdv_count_date !== day || !((athlete.cdv_count ?? 0) > 0)) return false;
+    if (await swapCount(supabase, athleteId, athlete, { cdv_count: (athlete.cdv_count ?? 0) - 1 })) return true;
+  }
+  throw new Error('CDV refund not saved: count busy');
 }

@@ -31,7 +31,10 @@ after(async () => {
 beforeEach(() => {
   rest.reset();
   guard.reset();
+  countLands();
 });
+// The quota count is a conditional update: it lands when a row comes back.
+const countLands = () => rest.handle('athletes', (q) => (q.method === 'PATCH' ? { body: [{ strava_id: '42' }] } : {}));
 
 const post = (url: string, payload: unknown) => app.inject({ method: 'POST', url, payload });
 const llmCalls = () => guard.calls.filter((c) => c.host === 'api.openai.com');
@@ -87,7 +90,10 @@ test('preferences: defaults for a new athlete; a save upserts and answers in app
   const upsert = rest.requests.find((q) => q.method === 'POST' && q.table === 'athlete_preferences')!;
   assert.equal(upsert.params.get('on_conflict'), 'athlete_id');
   assert.equal(upsert.body.delivery_minute, 390);
-  assert.ok(typeof upsert.body.onboarded_at === 'string', 'first onboarding is stamped');
+  assert.equal('onboarded_at' in upsert.body, false, 'the upsert writes only the fields sent');
+  const stamp = rest.requests.find((q) => q.method === 'PATCH' && q.table === 'athlete_preferences')!;
+  assert.ok(typeof stamp.body.onboarded_at === 'string', 'first onboarding is stamped');
+  assert.equal(stamp.params.get('onboarded_at'), 'is.null', 'only where none is set');
 
   const bad = await app.inject({ method: 'PUT', url: '/api/preferences', payload: { athleteId: 'a1', timezone: 'Mars/Olympus' } });
   assert.equal(bad.statusCode, 400);
@@ -166,7 +172,7 @@ test('chat: a failed model call is a plain sentence, one logged fallback, and gi
   // Token lookup, quota, its count, then the refund's own read of the counted row.
   connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
-  rest.answer('athletes', { body: [] });
+  rest.answer('athletes', { body: [{ strava_id: '42' }] });
   connected({ cdv_count: 2, cdv_count_date: today });
   guard.stravaActivities(twoWeeks());
   guard.openAi({ status: 500, body: { error: { message: 'upstream' } } });
@@ -186,7 +192,7 @@ test('chat: a refund the count no longer allows is not reported as one (review 1
   const today = new Date(now).toISOString().slice(0, 10);
   connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
-  rest.answer('athletes', { body: [] });
+  rest.answer('athletes', { body: [{ strava_id: '42' }] });
   // By the refund's read the row has moved to the next day: nothing to give back.
   connected({ cdv_count: 1, cdv_count_date: addDays(today, 1) });
   guard.stravaActivities(twoWeeks());
@@ -202,7 +208,7 @@ test('chat: a model reply with no text is an outage, logged once and refunded (r
   const today = new Date(now).toISOString().slice(0, 10);
   connected({ cdv_count: 0, cdv_count_date: today });
   connected({ cdv_count: 0, cdv_count_date: today });
-  rest.answer('athletes', { body: [] });
+  rest.answer('athletes', { body: [{ strava_id: '42' }] });
   connected({ cdv_count: 1, cdv_count_date: today });
   guard.stravaActivities(twoWeeks());
   guard.openAi({ status: 200, body: { choices: [{ message: { content: null } }] } });
