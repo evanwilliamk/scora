@@ -2,7 +2,7 @@ import SwiftUI
 
 // Free-tier onboarding after Strava sign-in (doc 09 §1.1, §1.4, §1.5):
 // Oura (optional) -> Apple Health -> plan paste (optional) -> time zone and
-// morning time -> "Your first read lands tomorrow morning."
+// morning time -> "Your first read lands today at 6:30 AM." (or tomorrow)
 // Sign in with Apple and the Stripe customer step are not built (auth and
 // payments wait on Evan).
 
@@ -58,6 +58,38 @@ enum OnboardingState {
   }
 
   static func defaultDeliveryTime() -> Date { deliveryTime(minute: 6 * 60) }
+
+  // The scheduler sends a read from the delivery minute until this many
+  // minutes later (scora_due_deliveries p_window_minutes).
+  static let deliveryWindowMinutes = 120
+
+  // The done screen's title, true for any time of day (Q33 A). Before the
+  // chosen time: today. Inside the send window: the next scheduler pass
+  // sends it, so shortly. After the window: tomorrow.
+  static func firstReadTitle(deliveryMinute: Int, now: Date = Date(), zone: TimeZone = .current) -> String {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = zone
+    let c = cal.dateComponents([.hour, .minute], from: now)
+    let nowMinute = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+    let m = ((deliveryMinute % 1440) + 1440) % 1440
+    let w = deliveryWindowMinutes
+    // A late time's window can run past midnight into this morning.
+    let inWindow = (nowMinute >= m && nowMinute < m + w) || nowMinute + 1440 < m + w
+    if inWindow { return "Your first read lands shortly." }
+    let day = nowMinute < m ? "today" : "tomorrow"
+    return "Your first read lands \(day) at \(timeLabel(minute: m))."
+  }
+
+  // "6:30 AM" or "06:30", by the phone's locale, for a minute of the day.
+  static func timeLabel(minute: Int, locale: Locale = .autoupdatingCurrent) -> String {
+    let f = DateFormatter()
+    f.calendar = pickerCalendar
+    f.timeZone = pickerCalendar.timeZone
+    f.locale = locale
+    f.dateStyle = .none
+    f.timeStyle = .short
+    return f.string(from: deliveryTime(minute: minute))
+  }
 
   // "America/Los_Angeles" -> "Los Angeles"
   static func zoneLabel(_ zone: TimeZone) -> String {
@@ -184,7 +216,7 @@ struct OnboardingView: View {
       }
     case .done:
       screen(
-        title: "Your first read lands tomorrow morning.",
+        title: OnboardingState.firstReadTitle(deliveryMinute: OnboardingState.deliveryMinute(from: deliveryTime)),
         body: "Until then, today's numbers are already on the dashboard.",
         primary: ("Go to today", finish),
         secondary: nil

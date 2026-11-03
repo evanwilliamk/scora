@@ -900,3 +900,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: still 401, but `error` is "Strava needs to be connected again." when Strava answered 401 or 403 after the token refresh, and "Strava is not answering right now." for a timeout, network error, 5xx or a bad body. Applies to read, weekly, chat, race prediction and calories. Oura failures are not surfaced by any route (they fall back), so the Oura lines exist in the helper but are unused. Token-lookup failures keep "Strava not connected or refresh failed. Please reconnect Strava." Alternative: a 503 for the outage case (the app would show the same sentence; status left as is).
 - Why: the athlete learns whether a retry will help; both lines pass `APIErrorText.isForAthlete` with no Swift change.
 - To reverse: `vendorFailureLine` in apps/api/src/vendor-error.ts for the wording; restore the old string in the index.ts catches.
+
+### 2026-11-03: Onboarding names when the first read really lands (Q33 A)
+- Status: DECIDED (Evan silent 3 days, reversible, copy for Evan to review)
+- Branch: claude/onboarding-first-read-time
+- Context: the done screen always said "Your first read lands tomorrow morning.", wrong for a time still ahead today or an evening time.
+- Choice: "Your first read lands today at 6:30 AM." before the chosen time, "tomorrow at 6:30 AM." after the scheduler's 120 minute send window, and "Your first read lands shortly." inside the window (the next scheduler pass sends it, including a late window running past midnight). Time format follows the phone's locale. Alternative: Q33 B, no timing ("lands at 6:30").
+- Why: always true, same tone; the "shortly" case exists because the server sends a read up to two hours after the chosen time.
+- To reverse: `OnboardingState.firstReadTitle` in apps/ios/Scora/OnboardingView.swift; restore the fixed title in the `.done` case.
