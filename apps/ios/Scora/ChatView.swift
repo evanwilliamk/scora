@@ -107,21 +107,51 @@ enum JSONValue: Codable, Equatable {
   }
 }
 
-// Builds the WebView page for a CDV chart. The spec comes from an LLM, so it
-// must carry its data inline: any `url` or `href` key (external data, image
-// marks, link channels) rejects the whole chart rather than fetching anything.
+// Builds the WebView page for a CDV chart. The spec must carry its data
+// inline: any key that fetches, links or runs an expression (url, href,
+// usermeta, params, transform, signal...), an image mark, an expression other
+// than a plain label format, or an oversized spec rejects the whole chart
+// rather than drawing it.
 enum CDVChart {
-  static let blockedKeys: Set<String> = ["url", "href"]
+  static let blockedKeys: Set<String> = ["url", "href", "usermeta", "signals", "signal", "params",
+                                         "transform", "calculate", "filter", "test", "expr"]
+  static let maxSpecBytes = 32 * 1024
+  // Names a label expression may use (the API's pace axis needs these).
+  static let exprNames: Set<String> = ["datum", "value", "floor", "round", "slice", "abs"]
 
   static func isSafe(_ spec: JSONValue) -> Bool {
     switch spec {
     case .object(let o):
-      return o.allSatisfy { !blockedKeys.contains($0.key.lowercased()) && isSafe($0.value) }
+      return o.allSatisfy { key, value in
+        let k = key.lowercased()
+        if blockedKeys.contains(k) { return false }
+        if k.hasSuffix("expr") {
+          guard case .string(let e) = value else { return false }
+          return isSimpleExpression(e)
+        }
+        if k == "mark" {
+          if value == .string("image") { return false }
+          if case .object(let m) = value, m["type"] == .string("image") { return false }
+        }
+        return isSafe(value)
+      }
     case .array(let a):
       return a.allSatisfy(isSafe)
     default:
       return true
     }
+  }
+
+  // Arithmetic and string joins over datum.value only: no brackets, braces,
+  // semicolons or escapes, and only names from `exprNames`.
+  static func isSimpleExpression(_ e: String) -> Bool {
+    guard e.count <= 200, e.range(of: #"[\[\]{};`\\]"#, options: .regularExpression) == nil else { return false }
+    // Quoted literals become 0; a quote left over is an unterminated string.
+    let unquoted = e.replacingOccurrences(of: #"'[^']*'|"[^"]*""#, with: " 0 ", options: .regularExpression)
+    guard !unquoted.contains("'"), !unquoted.contains("\"") else { return false }
+    let names = unquoted.components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_$")).inverted)
+      .filter { $0.first.map { !$0.isNumber } ?? false }
+    return names.allSatisfy(exprNames.contains)
   }
 
   // Spec JSON safe to inline inside a <script> tag.
@@ -177,19 +207,37 @@ enum CDVChart {
     }
   }
 
+  // Page policy: scripts only from the pinned CDN files plus the one inline
+  // script carrying `nonce`; no eval (Vega runs expressions through its
+  // interpreter), no fetches, frames, forms or remote images.
+  static func contentSecurityPolicy(nonce: String) -> String {
+    "default-src 'none'; script-src https://cdn.jsdelivr.net/npm/ 'nonce-\(nonce)'; "
+      + "style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; "
+      + "media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; "
+      + "form-action 'none'; base-uri 'none'"
+  }
+
+  // A fresh nonce per page.
   static func html(for spec: JSONValue) -> String? {
-    guard case .object = spec, isSafe(spec), let json = scriptJSON(spec) else { return nil }
+    html(for: spec, nonce: UUID().uuidString.replacingOccurrences(of: "-", with: ""))
+  }
+
+  static func html(for spec: JSONValue, nonce: String) -> String? {
+    guard case .object = spec, isSafe(spec), let json = scriptJSON(spec),
+          json.utf8.count <= maxSpecBytes else { return nil }
     return """
     <!doctype html>
     <html><head>
     <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy(nonce: nonce))">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>html,body{margin:0;background:transparent;}#chart{width:100%;}</style>
     <script src="https://cdn.jsdelivr.net/npm/vega@5.30.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@5.21.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-interpreter@1.0.5"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.26.0"></script>
     </head><body><div id="chart"></div>
-    <script>
+    <script nonce="\(nonce)">
     var spec = \(json);
     spec.width = "container";
     spec.background = "transparent";
@@ -201,7 +249,7 @@ enum CDVChart {
       mark: {color: "#FF9500"},
       range: {category: ["#FF9500", "#8E8E93", "#FFFFFF"]}
     }, spec.config || {});
-    vegaEmbed("#chart", spec, {actions: false, renderer: "svg"}).then(function () {
+    vegaEmbed("#chart", spec, {actions: false, renderer: "svg", ast: true, expr: vega.expressionInterpreter}).then(function () {
       // Tells the app the chart is drawn, so it can snapshot it for sharing.
       setTimeout(function () {
         try { window.webkit.messageHandlers.rendered.postMessage(1); } catch (e) {}
@@ -224,6 +272,7 @@ struct CDVChartView: UIViewRepresentable {
 
   func makeUIView(context: Context) -> WKWebView {
     let config = WKWebViewConfiguration()
+    config.websiteDataStore = .nonPersistent() // no cookies or storage kept between charts
     config.userContentController.add(context.coordinator, name: "rendered")
     let web = WKWebView(frame: .zero, configuration: config)
     web.isOpaque = false
@@ -246,9 +295,20 @@ struct CDVChartView: UIViewRepresentable {
 
     init(onRendered: ((UIImage) -> Void)?) { self.onRendered = onRendered }
 
+    private var loaded = false
+
+    // Only the page itself loads: the first main-frame navigation to the
+    // HTML string (about:blank). Script redirects, links and frames are cancelled.
+    static func allows(url: URL?, isMainFrame: Bool, alreadyLoaded: Bool) -> Bool {
+      !alreadyLoaded && isMainFrame && url?.absoluteString == "about:blank"
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-      decisionHandler(action.navigationType == .other ? .allow : .cancel)
+      let ok = Self.allows(url: action.request.url, isMainFrame: action.targetFrame?.isMainFrame ?? false,
+                           alreadyLoaded: loaded)
+      if ok { loaded = true }
+      decisionHandler(ok ? .allow : .cancel)
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {

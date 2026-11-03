@@ -6,7 +6,7 @@ import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRece
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion, checkCardPosture, cardErrorFallback } from './card-expand';
-import { CHART_MENU, parseChartKind, buildChartSpec, localRunDay, sixWeekRuns, weekdayRunDates } from './cdv-chart';
+import { CHART_MENU, parseChartKind, buildChartSpec, isSafeChartSpec, localRunDay, sixWeekRuns, weekdayRunDates } from './cdv-chart';
 import { knowledgeForRead, knowledgeDepsFromEnv, recordCitations, citedChunks, libraryClaimHits } from './knowledge-retrieval';
 import {
   buildOuraAuthorizeUrl,
@@ -530,7 +530,9 @@ Answer THIS question specifically using the data above. If the data can't answer
     }
     // The model picks a chart kind; the spec and its data come from the activities.
     const chartKind = parseChartKind(final.raw);
-    const chart = chartKind ? buildChartSpec(chartKind, activities, now, todayLocal) : null;
+    const built = chartKind ? buildChartSpec(chartKind, activities, now, todayLocal) : null;
+    const chart = built && isSafeChartSpec(built) ? built : null;
+    if (built && !chart) fastify.log.warn(`CDV chart ${chartKind} failed the spec safety check, dropped`);
 
     return reply.send({
       voice: checked.voice,

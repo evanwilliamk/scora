@@ -932,3 +932,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Options: (A) drop opens reported while signed out; (B) keep (counts opens made before sign-in, as the code intends).
 - Why parked: changes the open-rate metric (doc 10 1.1.2). Recommendation: A, since a signed-out tap cannot be told apart from a different athlete's.
 - To reverse: n/a.
+
+### 2026-11-03: CDV chart scripts still load from jsdelivr without SRI
+- Status: NEEDS EVAN
+- Branch: claude/cdv-spec-security
+- Context: the chart WebView loads vega 5.30.0, vega-lite 5.21.0, vega-interpreter 1.0.5 and vega-embed 6.26.0 from cdn.jsdelivr.net (exact versions, CSP restricts scripts to that CDN, no eval, no network), but a CDN compromise would still run code in the page.
+- Options: (A) bundle the four files in the app and load with a file baseURL (no network, works offline); (B) add `integrity` SRI hashes to the CDN tags; (C) keep as is. Also consider vega 5.33+ (expression sandbox fixes; less relevant now that expressions go through the interpreter).
+- Why: both A and B need the files fetched and reviewed once, which was out of scope for an unattended run.
+- To reverse: n/a

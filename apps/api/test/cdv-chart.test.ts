@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChartKind, stripChartLine, buildChartSpec, hasBlockedKey, CHART_KINDS, sixWeekRuns, weekdayRunDates } from '../src/cdv-chart';
+import { parseChartKind, stripChartLine, buildChartSpec, hasBlockedKey, isSafeChartSpec, CHART_KINDS, sixWeekRuns, weekdayRunDates } from '../src/cdv-chart';
 
 const now = Date.UTC(2026, 9, 17, 12); // Saturday
 const day = 86400000;
@@ -172,4 +172,31 @@ test('weekday_runs counts weeks with a run, matching the voice line (two runs on
   assert.equal(voiceWeeks, 4);
   assert.equal(spec.data.values.find((x: any) => x.day === 'Thu').weeks, voiceWeeks);
   assert.equal(spec.encoding.y.title, 'Weeks with a run');
+});
+
+test('every built spec passes the spec safety check', () => {
+  for (const k of CHART_KINDS) assert.equal(isSafeChartSpec(buildChartSpec(k, acts, now)), true, k);
+});
+
+test('spec safety check rejects fetches, links, images, foreign expressions and size', () => {
+  const ok = { data: { values: [{ a: 1 }] }, mark: 'bar' };
+  assert.equal(isSafeChartSpec(ok), true);
+  const bad: unknown[] = [
+    { data: { url: 'https://x.test/d.json' } },
+    { ...ok, layer: [{ data: { URL: 'x' } }] },
+    { ...ok, encoding: { href: { field: 'a' } } },
+    { ...ok, usermeta: { embedOptions: {} } },
+    { ...ok, mark: 'image' },
+    { ...ok, mark: { type: 'image' } },
+    { ...ok, params: [{ name: 'p', expr: '1' }] },
+    { ...ok, transform: [{ calculate: 'datum.a', as: 'b' }] },
+    { ...ok, encoding: { y: { axis: { labelExpr: "'x' + datum.value" } } } },
+    { ...ok, encoding: { color: { condition: { test: 'datum.a > 0' } } } },
+    { ...ok, title: { text: { signal: 'width' } } },
+    { data: { values: Array.from({ length: 4000 }, (_, i) => ({ i, v: 'xxxx' })) }, mark: 'bar' },
+    { mark: 'bar' },
+    [ok],
+    null,
+  ];
+  for (const s of bad) assert.equal(isSafeChartSpec(s), false, JSON.stringify(s)?.slice(0, 80));
 });
