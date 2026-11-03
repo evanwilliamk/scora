@@ -235,6 +235,24 @@ final class ScoraTests: XCTestCase {
         }
     }
 
+    func testPlanBuildFailureLineFiltersServerText() {
+        let fallback = NetworkText.planBuild.other
+        func body(_ raw: String) -> Data { try! JSONSerialization.data(withJSONObject: ["error": raw]) }
+        // A refusal sentence for the athlete shows as sent.
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: body("No plan template fits that race and volume yet."), failure: nil),
+                       "No plan template fits that race and volume yet.")
+        // Developer validation lines and raw bodies fall back.
+        for raw in ["experience_level must be one of beginner, intermediate, advanced",
+                    "goal_race_date must be YYYY-MM-DD", "Missing body"] {
+            XCTAssertEqual(PlanSetup.buildFailureLine(body: body(raw), failure: nil), fallback, raw)
+        }
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: Data("<html>502</html>".utf8), failure: nil), fallback)
+        // No answer: the network line; nothing at all: the fixed line.
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: nil, failure: URLError(.notConnectedToInternet)),
+                       NetworkText.planBuild.offline)
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: nil, failure: nil), fallback)
+    }
+
     func testPlanChangeDayIsTheLocalDay() {
         let la = TimeZone(identifier: "America/Los_Angeles")!
         // 03:00 UTC on the 29th is 8 pm on the 28th in Los Angeles.

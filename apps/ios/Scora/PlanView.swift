@@ -410,6 +410,16 @@ struct PlanOptionsResponse: Decodable {
 }
 
 enum PlanSetup {
+  // What a failed build says: the server's own sentence on a refusal (no
+  // template yet, race too soon) when it passes the same filter as every
+  // other screen, so a developer line ("experience_level must be one of ...")
+  // never shows. No answer at all says why in plain words.
+  static func buildFailureLine(body: Data?, failure: Error?) -> String {
+    if let body { return APIErrorText.message(from: body, fallback: NetworkText.planBuild.other) }
+    if let failure { return NetworkText.planBuild.line(for: failure) }
+    return NetworkText.planBuild.other
+  }
+
   // Doc 09 §2.3: a race at least 4 weeks out, and never closer than the
   // shortest plan for that level (generation refuses a plan that would have
   // started before this week).
@@ -566,17 +576,13 @@ struct PlanSetupView: View {
     var failure: Error?
     do { result = try await API.slowSession.data(for: req) } catch { failure = error }
     let status = (result?.1 as? HTTPURLResponse)?.statusCode ?? 0
-    // The server's own sentence on a refusal (no template yet, race too soon);
-    // no answer at all says why in plain words.
-    let error = result.flatMap { try? JSONDecoder().decode(CDVError.self, from: $0.0) }?.error
-      ?? failure.map { NetworkText.planBuild.line(for: $0) }
     await MainActor.run {
       isBuilding = false
       if status == 200 {
         onBuilt()
         dismiss()
       } else {
-        message = error ?? "Building the plan failed. Try again in a moment."
+        message = PlanSetup.buildFailureLine(body: result?.0, failure: failure)
       }
     }
   }
