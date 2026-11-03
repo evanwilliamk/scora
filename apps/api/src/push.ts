@@ -136,11 +136,15 @@ function getSupabase(): SupabaseClient {
   return _supabase;
 }
 
+// APNs tokens are hex, and case does not change the device: stored lowercase
+// (how the app sends them) so one phone is one row, one push.
+const tokenKey = (token: string) => token.toLowerCase();
+
 export async function registerDeviceToken(athleteId: string, token: string): Promise<void> {
   const { error } = await getSupabase()
     .from('device_tokens')
     .upsert(
-      { athlete_id: String(athleteId), token, platform: 'ios', updated_at: new Date().toISOString() },
+      { athlete_id: String(athleteId), token: tokenKey(token), platform: 'ios', updated_at: new Date().toISOString() },
       { onConflict: 'token' }
     );
   if (error) throw new Error(`Failed to store device token: ${error.message}`);
@@ -153,7 +157,7 @@ export async function unregisterDeviceToken(athleteId: string, token: string): P
     .from('device_tokens')
     .delete()
     .eq('athlete_id', String(athleteId))
-    .eq('token', token);
+    .eq('token', tokenKey(token));
   if (error) throw new Error(`Failed to remove device token: ${error.message}`);
 }
 
