@@ -32,7 +32,7 @@ export function vendorErrorKind(e: unknown): string {
 // Full sentences ending in a full stop, so the app shows them as they are.
 export type VendorName = 'Strava' | 'Oura';
 
-export function vendorNeedsReconnect(e: unknown): boolean {
+function vendorNeedsReconnect(e: unknown): boolean {
   return e instanceof VendorHttpError && (e.status === 401 || e.status === 403);
 }
 
