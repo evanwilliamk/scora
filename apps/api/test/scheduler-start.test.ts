@@ -1,6 +1,6 @@
 // startScheduler with APNs unconfigured (the default in every test run):
 // it logs once that it is idle and schedules nothing. The active path
-// registers a real node-cron job, so it is left to the scheduler sims.
+// is tested with a fake timer in scheduler-start-active.test.ts.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
