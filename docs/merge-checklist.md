@@ -2,6 +2,8 @@
 
 What the code on this branch needs in production. Nothing here was run against Supabase or Railway.
 
+Reviewing the bundle first? Start with `docs/review-guide.md` (areas, risk, files to read first).
+
 ## 0. Order
 
 1. Apply the migrations (section 1) before merging. They only add tables, columns, functions and RLS, so the code on `main` today keeps working on the new schema.
