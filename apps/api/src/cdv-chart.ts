@@ -191,3 +191,34 @@ export function hasBlockedKey(v: unknown): boolean {
   }
   return false;
 }
+
+// Keys that would fetch, link, run an expression or carry free-form metadata.
+// The specs built above use none of them.
+const UNSAFE_KEYS = new Set(['url', 'href', 'usermeta', 'signals', 'signal', 'params', 'transform', 'calculate', 'filter', 'test', 'expr']);
+// The only expressions a built spec may carry (the pace axis labels).
+const SAFE_EXPRS = new Set(["floor(round(datum.value * 60) / 60) + ':' + slice('0' + (round(datum.value * 60) % 60), -2)"]);
+export const MAX_CHART_SPEC_BYTES = 16 * 1024;
+
+function specNodeSafe(v: unknown): boolean {
+  if (Array.isArray(v)) return v.every(specNodeSafe);
+  if (!v || typeof v !== 'object') return true;
+  return Object.entries(v).every(([k, x]) => {
+    const key = k.toLowerCase();
+    if (UNSAFE_KEYS.has(key)) return false;
+    if (key.endsWith('expr')) return typeof x === 'string' && SAFE_EXPRS.has(x);
+    if (key === 'mark' && (x === 'image' || (x && typeof x === 'object' && (x as any).type === 'image'))) return false;
+    return specNodeSafe(x);
+  });
+}
+
+// Last check before a spec leaves the API (defense in depth for the iOS
+// WebView): inline data only, no links, no images, no expressions other than
+// our own, and a size cap.
+export function isSafeChartSpec(spec: unknown): boolean {
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) return false;
+  const json = JSON.stringify(spec);
+  if (Buffer.byteLength(json, 'utf8') > MAX_CHART_SPEC_BYTES) return false;
+  const data = (spec as any).data;
+  if (!data || typeof data !== 'object' || !Array.isArray(data.values)) return false;
+  return specNodeSafe(spec);
+}
