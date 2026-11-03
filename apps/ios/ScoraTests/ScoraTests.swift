@@ -1935,7 +1935,7 @@ final class WatchReconcileBranchTests: XCTestCase {
         defer { UserDefaults.standard.removeObject(forKey: "watchLedger.\(id)") }
         let watch = ScoraTests.FakeWatch()
         watch.scheduled = [WatchCopy(name: "tempo · 45 min", at: at6(6))]
-        let out = await WatchReconcile.reconcile([session("2026-11-04", "easy", 30, row: "a")], athleteId: id, scheduler: watch, today: today)
+        let out = await WatchReconcile.reconcile([session("2026-11-04", "easy", 30, row: "a")], athleteId: id, scheduler: watch, today: today, signedIn: { id })
         XCTAssertTrue(watch.scheduled.isEmpty)
         XCTAssertEqual(out.notes.map(\.text), [WatchReconcile.gone("2026-11-06")])
         XCTAssertEqual(WatchLedger.load(athleteId: id), out, "saved per athlete")
@@ -2085,5 +2085,90 @@ final class ChatDriverInitTests: XCTestCase {
         let decoded = try JSONDecoder().decode([Driver].self, from: json)
         XCTAssertEqual(decoded.map(\.value), ["7.5", "412", ""])
         XCTAssertEqual(decoded.map(\.trend), [nil, "+3%", nil])
+    }
+}
+
+// Local writes that land after sign-out (persistence review, 2026-11-03).
+final class LateWriteAfterSignOutTests: XCTestCase {
+    private let keys = ["scora.token", "scora.athleteId", "scora.athleteName", "scora.deviceToken",
+                        "scora.sentTimezone", "scora.pendingPushOpens", OnboardingState.key, OnboardingSync.pendingKey,
+                        "watchLedger.late-a", "watchLedger.late-b"]
+    private var savedDefaults: [String: Any] = [:]
+    private var savedTransport: OnboardingSync.Transport!
+
+    override func setUp() {
+        super.setUp()
+        for k in keys { if let v = UserDefaults.standard.object(forKey: k) { savedDefaults[k] = v } }
+        savedTransport = OnboardingSync.transport
+        OnboardingSync.transport = { _ in nil } // never the network
+    }
+
+    override func tearDown() {
+        for k in keys { UserDefaults.standard.removeObject(forKey: k) }
+        for (k, v) in savedDefaults { UserDefaults.standard.set(v, forKey: k) }
+        OnboardingSync.transport = savedTransport
+        super.tearDown()
+    }
+
+    // A skipped onboarding choice is resent; its 200 lands after the athlete
+    // signed out. Sign-out forgot the zone, so the late reply must not record
+    // it as sent, or the next athlete in that zone never sends theirs.
+    func testAPendingOnboardingReplyAfterSignOutDoesNotRecordTheZone() async {
+        let d = UserDefaults.standard
+        d.set("late-a", forKey: "scora.athleteId")
+        TimeZoneSync.forget()
+        OnboardingSync.pending = PendingOnboarding(athleteId: "late-a", timezone: "Asia/Tokyo", deliveryMinute: 390)
+        OnboardingSync.transport = { _ in
+            // Sign-out while the request is out.
+            d.removeObject(forKey: "scora.athleteId")
+            TimeZoneSync.forget()
+            return (200, Data("{}".utf8))
+        }
+        let done = await OnboardingSync.flush(athleteId: "late-a")
+        XCTAssertTrue(done)
+        XCTAssertTrue(TimeZoneSync.needsSync(current: "Asia/Tokyo"), "the next athlete sends their own zone")
+
+        // Still signed in: the zone is recorded as before.
+        d.set("late-a", forKey: "scora.athleteId")
+        OnboardingSync.pending = PendingOnboarding(athleteId: "late-a", timezone: "Asia/Tokyo", deliveryMinute: 390)
+        OnboardingSync.transport = { _ in (200, Data("{}".utf8)) }
+        await OnboardingSync.flush(athleteId: "late-a")
+        XCTAssertFalse(TimeZoneSync.needsSync(current: "Asia/Tokyo"))
+    }
+
+    // A plan fetched for athlete A lands after A signed out and B signed in.
+    // The Watch is the phone's, so A's plan must not remove B's copies.
+    @MainActor
+    func testAWatchPassForASignedOutAthleteLeavesTheWatchAlone() async {
+        let watch = ScoraTests.FakeWatch()
+        let copy = WatchCopy(name: "Tempo · 45 min", at: DateComponents(year: 2026, month: 11, day: 5),
+                             id: WatchPlanId.forSession(rowId: "b-row"))
+        watch.scheduled = [copy]
+        UserDefaults.standard.set("late-b", forKey: "scora.athleteId")
+        await WatchReconcile.reconcile([], athleteId: "late-a", scheduler: watch, today: "2026-11-03")
+        XCTAssertEqual(watch.scheduled.count, 1, "B's Watch copy stays")
+        XCTAssertNil(UserDefaults.standard.data(forKey: "watchLedger.late-a"), "nothing saved for A after sign-out")
+
+        // The same pass for whoever is signed in does run.
+        await WatchReconcile.reconcile([], athleteId: "late-b", scheduler: watch, today: "2026-11-03")
+        XCTAssertEqual(watch.scheduled.count, 0)
+    }
+
+    // The Watch ledger holds the athlete's session names, days and steps. It
+    // goes at sign-out with the rest of their data.
+    func testSignOutRemovesTheWatchLedger() {
+        let d = UserDefaults.standard
+        d.set("tok", forKey: "scora.token")
+        d.set("late-a", forKey: "scora.athleteId")
+        d.removeObject(forKey: "scora.deviceToken") // unregister sends nothing
+        OnboardingState.needsOnboarding = false
+        OnboardingSync.pending = nil
+        var ledger = WatchLedger()
+        ledger.note("day:2026-11-05", day: "2026-11-05", "A session on Thu Nov 5 changed.")
+        ledger.save(athleteId: "late-a")
+        XCTAssertNotNil(d.data(forKey: "watchLedger.late-a"))
+
+        TokenManager().logout()
+        XCTAssertNil(d.data(forKey: "watchLedger.late-a"))
     }
 }

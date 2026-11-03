@@ -447,7 +447,10 @@ enum OnboardingSync {
     guard let (status, _) = await transport(req) else { return false }
     // Only clear the copy that was sent; a newer one saved meanwhile stays.
     if status == 200 {
-      TimeZoneSync.remember(p.timezone)
+      // A reply that outlived a sign-out records nothing (see keepsRecord).
+      if TimeZoneSync.keepsRecord(sentFor: p.athleteId, signedIn: UserDefaults.standard.string(forKey: "scora.athleteId")) {
+        TimeZoneSync.remember(p.timezone)
+      }
       if pending == p { pending = nil }
       return true
     }
