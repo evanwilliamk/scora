@@ -85,6 +85,10 @@ struct WatchLedger: Codable, Equatable {
   func save(athleteId: String, defaults: UserDefaults = .standard) {
     if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.storageKey(athleteId)) }
   }
+  // Sign-out: the session names, days and steps go with the athlete.
+  static func clear(athleteId: String, defaults: UserDefaults = .standard) {
+    defaults.removeObject(forKey: storageKey(athleteId))
+  }
 }
 
 extension PlanWorkout {
@@ -303,15 +307,20 @@ enum WatchReconcile {
   // Runs the pass on a freshly loaded plan and saves the ledger.
   @MainActor
   @discardableResult
+  // `signedIn`: who is signed in as the plan lands. The Watch belongs to the
+  // phone, so a plan fetched for an athlete who has since signed out (or been
+  // replaced) never removes or sends copies, and nothing is saved for them.
   static func reconcile(_ workouts: [PlanWorkout], athleteId: String, scheduler: WatchScheduling = AppleWatchScheduler(),
-                        today: String = PlanDay.today()) async -> WatchLedger {
+                        today: String = PlanDay.today(),
+                        signedIn: @escaping () -> String? = { UserDefaults.standard.string(forKey: "scora.athleteId") }) async -> WatchLedger {
     let ledger = WatchLedger.load(athleteId: athleteId)
     // One pass at a time (Your Plan and the foreground can both start one).
-    guard !inFlight else { return ledger }
+    guard !inFlight, !athleteId.isEmpty, signedIn() == athleteId else { return ledger }
     inFlight = true
     defer { inFlight = false }
     let updated = await run(workouts: workouts, coveredThrough: coveredThrough(workouts), ledger: ledger, scheduler: scheduler, today: today)
-    updated.save(athleteId: athleteId)
+    // Signed out during the pass: sign-out already removed their ledger.
+    if signedIn() == athleteId { updated.save(athleteId: athleteId) }
     return updated
   }
 

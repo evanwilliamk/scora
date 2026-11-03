@@ -1935,7 +1935,7 @@ final class WatchReconcileBranchTests: XCTestCase {
         defer { UserDefaults.standard.removeObject(forKey: "watchLedger.\(id)") }
         let watch = ScoraTests.FakeWatch()
         watch.scheduled = [WatchCopy(name: "tempo · 45 min", at: at6(6))]
-        let out = await WatchReconcile.reconcile([session("2026-11-04", "easy", 30, row: "a")], athleteId: id, scheduler: watch, today: today)
+        let out = await WatchReconcile.reconcile([session("2026-11-04", "easy", 30, row: "a")], athleteId: id, scheduler: watch, today: today, signedIn: { id })
         XCTAssertTrue(watch.scheduled.isEmpty)
         XCTAssertEqual(out.notes.map(\.text), [WatchReconcile.gone("2026-11-06")])
         XCTAssertEqual(WatchLedger.load(athleteId: id), out, "saved per athlete")
