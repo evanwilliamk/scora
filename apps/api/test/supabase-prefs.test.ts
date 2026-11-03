@@ -56,13 +56,15 @@ test('getMany fills defaults for athletes with no row; update keeps onboarded_at
   assert.deepEqual(sb.queries[0].calls[1], ['in', 'athlete_id', ['a1', 'a2']]);
 
   const sb2 = fakeSupabase([
-    { data: { athlete_id: 'a1', timezone: 'UTC', delivery_minute: 360, onboarded_at: '2026-10-01T00:00:00Z' } },
+    {},
     {},
     { data: { athlete_id: 'a1', timezone: 'UTC', delivery_minute: 300, onboarded_at: '2026-10-01T00:00:00Z' } },
   ]);
   await supabasePrefsStore(sb2).update('a1', { delivery_minute: 300, onboarded: true });
-  const row = sb2.queries[1].calls[0][1] as any;
+  const row = sb2.queries[0].calls[0][1] as any;
   assert.equal(row.delivery_minute, 300);
-  assert.equal(row.timezone, 'UTC');
-  assert.equal('onboarded_at' in row, false, 'an existing onboarded_at is not overwritten');
+  assert.equal('timezone' in row, false, 'only the fields this call changes are written');
+  assert.equal('onboarded_at' in row, false, 'onboarded_at is not in the upsert');
+  assert.deepEqual(sb2.queries[1].calls.map((c) => c[0]), ['update', 'eq', 'is']);
+  assert.deepEqual(sb2.queries[1].calls[2], ['is', 'onboarded_at', null], 'an existing onboarded_at is not overwritten');
 });

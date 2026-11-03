@@ -7,8 +7,9 @@ function fakeDb(row: { cdv_count: number | null; cdv_count_date: string | null }
   const chain: any = {
     select: () => chain, eq: () => chain,
     single: async () => ({ data: { ...row }, error: null }),
-    update: (v: any) => { Object.assign(row, v); return chain; },
+    update: (v: any) => { Object.assign(row, v); return written; },
   };
+  const written: any = { eq: () => written, is: () => written, select: async () => ({ data: [{}], error: null }) };
   return { db: { from: () => chain } as any, row };
 }
 

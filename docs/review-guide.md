@@ -107,7 +107,7 @@ All API paths are under `apps/api/src/` unless written in full.
 - Flag: none.
 
 **Migrations**
-- 12 new files, exactly the 12 in the checklist. Only add tables, columns, functions and RLS; old plans are marked `replaced`, never deleted.
+- 13 new files, exactly the 13 in the checklist (13 added 2026-11-03 by the data-writes review). Only add tables, columns, functions and RLS; old plans are marked `replaced`, never deleted.
 - Read first: `20261018020000_create_scora_plan.sql` with its redefinitions `20261030010000` and `20261101000000`; `20261022000000_ical_plans.sql`; `20261028000000_rls_all_tables.sql`.
 - Risk HIGH: they touch production schema and are not applied anywhere yet; the plan functions are redefined twice.
 - Flag: none (applied by hand).

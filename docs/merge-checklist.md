@@ -62,8 +62,9 @@ All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrati
 
 13. `20261103000000_ical_refresh_keeps_past.sql`: a calendar refresh keeps the plan's sessions from before yesterday (the importer leaves them out) with their done/missed marks and Watch sends; adds a three-argument `refresh_ical_plan()` beside the two-argument one. Needed before `ICAL_IMPORT=on`: the API calls the three-argument version.
 14. `20261103010000_plan_marks_locked.sql`: `mark_scheduled_workout()` and `mark_workout_watch_sent()`, so a done/missed mark or Watch send runs under the per-athlete plan lock and never lands on a plan a refresh or paste just replaced. Needed at merge: `POST /api/plan/workouts/:id/status` and `/watch-sent` call them (they are unflagged).
+15. `20261103020000_knowledge_source_unique.sql` (data-writes review): a unique index on `knowledge_sources (title, author) nulls not distinct`, so two ingest runs of a source with no author keep one row. Index only. Apply with or after migration 1, before the first ingest run; not needed before merge (the library is idle until `KNOWLEDGE_RETRIEVAL=on` and an ingest). If an ingest already ran, the duplicate check in the file's header must return no rows first.
 
-No migrations were added on 2026-11-02; the list above is complete. Later ones, if any, follow in filename order.
+The list above is complete as of 2026-11-03. Later ones, if any, follow in filename order.
 
 9 redefines a function 7 creates (13 adds a second version that calls it); 10 and 11 redefine the one 6 creates. If you re-run any earlier migration, re-run every later one after it, in order.
 
