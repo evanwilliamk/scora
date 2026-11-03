@@ -241,7 +241,7 @@ final class ScoraUITests: XCTestCase {
         app.buttons["Continue"].tap()
 
         XCTAssertTrue(step(5, in: app).waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Your first read lands tomorrow morning."].exists)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Your first read lands'")).firstMatch.exists)
         assertTarget(app.buttons["Go to today"], "Go to today", in: app)
         app.buttons["Go to today"].tap()
 
@@ -288,12 +288,12 @@ final class ScoraUITests: XCTestCase {
             ("health", "Apple Health", "Allow Apple Health"),
             ("plan", "Have a training plan?", "Paste a plan"),
             ("delivery", "Morning read", "Continue"),
-            ("done", "Your first read lands tomorrow morning.", "Go to today"),
+            ("done", "Your first read lands", "Go to today"),
         ]
         for (i, (name, title, button)) in expected.enumerated() {
             let app = launchAtAX5(["-demo-onboarding-step", name])
             XCTAssertTrue(step(i + 1, in: app).waitForExistence(timeout: 10), "\(name) is step \(i + 1)")
-            XCTAssertTrue(app.staticTexts[title].exists, "\(name) title")
+            XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch.exists, "\(name) title")
             assertTarget(app.buttons[button], "\(name): \(button)", in: app)
             app.terminate()
         }

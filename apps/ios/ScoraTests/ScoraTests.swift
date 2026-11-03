@@ -1463,3 +1463,43 @@ final class ChartAccessibilitySummaryTests: XCTestCase {
         XCTAssertEqual(msg.chartSummary, "Runs by d. 2 values, from Mon to Tue. First 3, last 5.5. Low 3, high 5.5.")
     }
 }
+
+final class FirstReadTitleTests: XCTestCase {
+    private let ny = TimeZone(identifier: "America/New_York")!
+    private func at(_ h: Int, _ m: Int) -> Date {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = ny
+        return cal.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: h, minute: m))!
+    }
+    private func title(_ minute: Int, _ h: Int, _ m: Int) -> String {
+        OnboardingState.firstReadTitle(deliveryMinute: minute, now: at(h, m), zone: ny)
+    }
+    private func label(_ minute: Int) -> String { OnboardingState.timeLabel(minute: minute) }
+
+    func testBeforeTheTimeSaysToday() {
+        XCTAssertEqual(title(390, 5, 0), "Your first read lands today at \(label(390)).")
+    }
+
+    func testInsideTheSendWindowSaysShortly() {
+        XCTAssertEqual(title(360, 6, 0), "Your first read lands shortly.")
+        XCTAssertEqual(title(360, 7, 59), "Your first read lands shortly.")
+    }
+
+    func testAfterTheWindowSaysTomorrow() {
+        XCTAssertEqual(title(360, 8, 0), "Your first read lands tomorrow at \(label(360)).")
+        XCTAssertEqual(title(360, 21, 0), "Your first read lands tomorrow at \(label(360)).")
+    }
+
+    func testEveningTimePickedInTheMorningSaysToday() {
+        XCTAssertEqual(title(19 * 60, 9, 0), "Your first read lands today at \(label(19 * 60)).")
+    }
+
+    func testLateWindowRunningPastMidnightSaysShortly() {
+        XCTAssertEqual(title(23 * 60 + 30, 0, 30), "Your first read lands shortly.")
+        XCTAssertEqual(title(23 * 60 + 30, 1, 30), "Your first read lands today at \(label(23 * 60 + 30)).")
+    }
+
+    func testTimeLabelFollowsLocale() {
+        XCTAssertEqual(OnboardingState.timeLabel(minute: 390, locale: Locale(identifier: "en_GB")), "06:30")
+    }
+}
