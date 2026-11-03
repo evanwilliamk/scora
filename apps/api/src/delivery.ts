@@ -109,7 +109,7 @@ export function dueDeliveries(prefs: DeliveryPrefs, now: Date): DueResult {
 // `localDate`: the first of the two on a fall-back day, and the first minute
 // after the gap when spring-forward skips it (02:30 -> 03:00), which is when
 // dueDeliveries first sends it.
-export function setTimeInstant(prefs: Pick<DeliveryPrefs, 'timezone' | 'delivery_minute'>, localDate: string): number {
+function setTimeInstant(prefs: Pick<DeliveryPrefs, 'timezone' | 'delivery_minute'>, localDate: string): number {
   const tz = isValidTimezone(prefs.timezone) ? prefs.timezone : DEFAULT_TIMEZONE;
   const wall = Date.parse(`${localDate}T00:00:00Z`) + prefs.delivery_minute * 60_000;
   const offset = (t: number) => {

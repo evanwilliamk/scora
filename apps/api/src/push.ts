@@ -174,7 +174,7 @@ export async function removeDeviceToken(token: string): Promise<void> {
 // Distinct athlete ids that have at least one registered device — the audience
 // for scheduled pushes. Paged: Supabase answers at most 1000 rows a request
 // (the project's max-rows setting), and a short page would drop athletes.
-export const DEVICE_PAGE = 1000;
+const DEVICE_PAGE = 1000;
 export async function getAthletesWithDevices(): Promise<string[]> {
   const ids = new Set<string>();
   for (let from = 0; ; from += DEVICE_PAGE) {
@@ -217,7 +217,7 @@ export function isMissingFunction(error: { code?: string; message?: string }): b
   return /function (?:public\.)?scora_due_deliveries\b[^]* does not exist/i.test(message);
 }
 
-export const DUE_PAGE = 1000;
+const DUE_PAGE = 1000;
 export async function getDueDeliveries(now: Date, windowMinutes: number): Promise<DueRow[]> {
   const out: DueRow[] = [];
   let after: string | null = null;
