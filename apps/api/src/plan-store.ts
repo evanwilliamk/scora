@@ -25,8 +25,10 @@ export interface PlanStore {
   // plan; the calendar text itself is not stored, only the kept rows.
   saveIcalPlan(athleteId: string, rows: ParsedRow[]): Promise<{ planId: string }>;
   // Re-import from the phone: replaces the plan only if it is still the
-  // calendar import. Null when it is not (a paste replaced it).
-  refreshIcalPlan(athleteId: string, rows: ParsedRow[]): Promise<{ planId: string } | null>;
+  // calendar import. Null when it is not (a paste replaced it). Sessions of
+  // the old plan dated before `keepBefore` (the importer's cut: it leaves out
+  // sessions before yesterday) stay on the plan with their marks.
+  refreshIcalPlan(athleteId: string, rows: ParsedRow[], keepBefore?: string): Promise<{ planId: string } | null>;
   // Active-plan workouts from `from` to `to` inclusive, oldest first.
   workoutsBetween(athleteId: string, from: string, to: string): Promise<StoredWorkout[]>;
   // The athlete marks a session on or before `today` done or missed
@@ -52,9 +54,11 @@ export function sqlPlanStore(db: Db): PlanStore {
       const r = await db.query(`select replace_external_plan($1, 'ical', null, $2::jsonb) as id`, [athleteId, JSON.stringify(rows)]);
       return { planId: r.rows[0].id as string };
     },
-    async refreshIcalPlan(athleteId, rows) {
+    async refreshIcalPlan(athleteId, rows, keepBefore) {
       if (rows.length === 0) throw new Error('No workouts to save');
-      const r = await db.query('select refresh_ical_plan($1, $2::jsonb) as id', [athleteId, JSON.stringify(rows)]);
+      const r = keepBefore
+        ? await db.query('select refresh_ical_plan($1, $2::jsonb, $3::date) as id', [athleteId, JSON.stringify(rows), keepBefore])
+        : await db.query('select refresh_ical_plan($1, $2::jsonb) as id', [athleteId, JSON.stringify(rows)]);
       return r.rows[0].id ? { planId: r.rows[0].id as string } : null;
     },
     async workoutsBetween(athleteId, from, to) {
@@ -114,9 +118,12 @@ export function supabasePlanStore(sb: { from: (t: string) => any; rpc: (fn: stri
       check(r, 'Save calendar plan');
       return { planId: r.data as string };
     },
-    async refreshIcalPlan(athleteId, rows) {
+    async refreshIcalPlan(athleteId, rows, keepBefore) {
       if (rows.length === 0) throw new Error('No workouts to save');
-      const r = await sb.rpc('refresh_ical_plan', { p_athlete_id: athleteId, p_rows: rows });
+      // keepBefore: the three-argument version (migration 20261103000000).
+      const r = keepBefore
+        ? await sb.rpc('refresh_ical_plan', { p_athlete_id: athleteId, p_rows: rows, p_keep_before: keepBefore })
+        : await sb.rpc('refresh_ical_plan', { p_athlete_id: athleteId, p_rows: rows });
       check(r, 'Refresh calendar plan');
       return r.data ? { planId: r.data as string } : null;
     },
