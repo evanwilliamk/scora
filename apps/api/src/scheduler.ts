@@ -179,6 +179,11 @@ export async function runTick(now: Date, deps: TickDeps): Promise<{ daily: numbe
       deps.log.error(`scheduler: release retry for ${r.athleteId} ${r.kind} failed: ${e instanceof Error ? e.message : e}`);
     }
   }
+  // A mark past the retry wait holds nothing back: drop it, or a read that
+  // fails every day leaves one mark per athlete per day for the process's life.
+  for (const [key, at] of deps.failedAt ?? []) {
+    if (now.getTime() - at >= RETRY_AFTER_MS) deps.failedAt!.delete(key);
+  }
   let loaded = await loadDueFromSql(now, deps);
   if (!loaded) {
     try {
