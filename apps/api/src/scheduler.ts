@@ -269,14 +269,27 @@ export function schedulerDeps(baseUrl: string, log: Logger, prefs: TickDeps['pre
   };
 }
 
+// What startScheduler uses, each defaulting to production: tests pass a fake
+// timer (to fire ticks by hand), a simulated clock and fake dependencies.
+export interface StartOptions {
+  apnsConfigured?: () => boolean;
+  // Registers `task` to run on the cron expression. The task's promise never
+  // rejects and settles when the tick (or the skip) is done.
+  schedule?: (expression: string, task: () => Promise<void> | void) => unknown;
+  now?: () => Date;
+  deps?: TickDeps;
+}
+
 // Start the scheduler. Idle (no-op) until APNs is configured, so it's safe to
 // run in every environment; it activates once APNS_* env is present.
-export function startScheduler(port: number, log: Logger, prefs: PrefsStore): void {
-  if (!apnsConfigured()) {
+export function startScheduler(port: number, log: Logger, prefs: PrefsStore, opts: StartOptions = {}): void {
+  if (!(opts.apnsConfigured ?? apnsConfigured)()) {
     log.info('scheduler: APNs not configured, push scheduler idle');
     return;
   }
-  const deps = schedulerDeps(`http://localhost:${port}`, log, prefs);
+  const deps = opts.deps ?? schedulerDeps(`http://localhost:${port}`, log, prefs);
+  const now = opts.now ?? (() => new Date());
+  const schedule = opts.schedule ?? ((expression, task) => cron.schedule(expression, task));
   // Skip a tick while the last one is still running; never let a rejection
   // escape the cron callback (an unhandled rejection kills the process).
   let running = false;
@@ -284,10 +297,11 @@ export function startScheduler(port: number, log: Logger, prefs: PrefsStore): vo
   // 5-minute bar. A tick with nothing due is one request (scora_due_deliveries);
   // until that migration is applied, one device page per 1000 tokens and one
   // preferences request per 500 athletes (both read every athlete).
-  cron.schedule('* * * * *', () => {
+  schedule('* * * * *', () => {
     if (running) return;
     running = true;
-    runTick(new Date(), deps)
+    return runTick(now(), deps)
+      .then(() => undefined)
       .catch((e) => log.error(`scheduler: tick failed: ${e instanceof Error ? e.message : e}`))
       .finally(() => { running = false; });
   });
