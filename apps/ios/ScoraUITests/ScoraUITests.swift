@@ -196,8 +196,9 @@ final class ScoraUITests: XCTestCase {
     private func assertTarget(_ e: XCUIElement, _ what: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(e.waitForExistence(timeout: 10), "\(what) exists", file: file, line: line)
         XCTAssertTrue(scrollTo(e, in: app), "\(what) can be reached and tapped", file: file, line: line)
-        XCTAssertGreaterThanOrEqual(e.frame.height, 44, "\(what) is at least 44 pt tall", file: file, line: line)
-        XCTAssertGreaterThanOrEqual(e.frame.width, 44, "\(what) is at least 44 pt wide", file: file, line: line)
+        // A frame of exactly 44 pt can come back as 43.99999.
+        XCTAssertGreaterThanOrEqual(e.frame.height, 43.99, "\(what) is at least 44 pt tall", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(e.frame.width, 43.99, "\(what) is at least 44 pt wide", file: file, line: line)
     }
 
     func testSignInScreen() throws {
@@ -297,6 +298,187 @@ final class ScoraUITests: XCTestCase {
             assertTarget(app.buttons[button], "\(name): \(button)", in: app)
             app.terminate()
         }
+    }
+
+    // Screens and sheets not covered above, each at the default text size and
+    // at AX5, on the DEBUG demo data (DemoMode.swift). Nothing tapped calls
+    // the API: the demo answers every request on the phone.
+
+    private func launch(_ args: [String], ax5: Bool) -> XCUIApplication {
+        if ax5 { return launchAtAX5(args) }
+        let app = XCUIApplication()
+        app.launchArguments = args
+        app.launch()
+        return app
+    }
+
+    private func any(_ label: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)[label]
+    }
+
+    private func checkCardExpansion(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-cards"], ax5: ax5)
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Sleep, 7:12 hrs'")).firstMatch
+        _ = scrollTo(card, in: app) // below the fold at AX5
+        assertTarget(card, "Sleep card", in: app)
+        card.tap()
+        let open = NSPredicate(format: "value == %@", "Slept 7:12 last night, Oura score 84.")
+        expectation(for: open, evaluatedWith: card)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(app.staticTexts["Slept 7:12 last night, Oura score 84."].exists, "the explanation shows on the card")
+        card.tap()
+        expectation(for: NSPredicate(format: "value == ''"), evaluatedWith: card)
+        waitForExpectations(timeout: 5)
+    }
+
+    func testCardExpansion() throws { checkCardExpansion(ax5: false) }
+    func testCardExpansionAtAccessibilityTextSize() throws { checkCardExpansion(ax5: true) }
+
+    private func checkOuraConnectCard(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-cards", "-demo-oura-missing"], ax5: ax5)
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Sleep, Connect Oura to see sleep and recovery.'")).firstMatch
+        _ = scrollTo(card, in: app) // below the fold at AX5
+        assertTarget(card, "Connect Oura card", in: app)
+        XCTAssertTrue(app.staticTexts["Connect Oura to see sleep and recovery."].exists || card.label.contains("Connect Oura"))
+    }
+
+    func testOuraConnectCard() throws { checkOuraConnectCard(ax5: false) }
+    func testOuraConnectCardAtAccessibilityTextSize() throws { checkOuraConnectCard(ax5: true) }
+
+    private func checkOuraBanner(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-oura-banner"], ax5: ax5)
+        let banner = any("Oura connected. Sleep and recovery now read from your ring.", in: app)
+        assertTarget(banner, "Oura banner", in: app)
+        banner.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: banner)
+        waitForExpectations(timeout: 5)
+        XCTAssertTrue(app.buttons["This week"].exists, "the dashboard stays")
+    }
+
+    func testOuraConnectedBanner() throws { checkOuraBanner(ax5: false) }
+    func testOuraConnectedBannerAtAccessibilityTextSize() throws { checkOuraBanner(ax5: true) }
+
+    private func checkReadError(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-read-fails"], ax5: ax5)
+        XCTAssertTrue(app.staticTexts["TODAY'S READ"].waitForExistence(timeout: 10) || app.staticTexts["Today's Read"].exists, "title")
+        let line = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'read'")).element(boundBy: 1)
+        XCTAssertTrue(line.waitForExistence(timeout: 5), "the error line shows")
+        XCTAssertFalse(app.staticTexts["Pull to refresh your read."].exists, "no second prompt under the error")
+        for name in ["Your plan", "This week", "Ask about your training"] {
+            assertTarget(app.buttons[name], name, in: app)
+        }
+    }
+
+    func testReadErrorState() throws { checkReadError(ax5: false) }
+    func testReadErrorStateAtAccessibilityTextSize() throws { checkReadError(ax5: true) }
+
+    func testDriverChart() throws {
+        let app = launch(["-demo-read", "-demo-chart"], ax5: false)
+        let chart = any("Chart of HRV, nightly average", in: app)
+        XCTAssertTrue(chart.waitForExistence(timeout: 10))
+        XCTAssertTrue((chart.value as? String ?? "").contains("Low 41 ms, high 52 ms"))
+        assertTarget(app.buttons["Done"], "Done", in: app)
+    }
+
+    func testWeekSoFarAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read"])
+        let line = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'since Monday'")).firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 10))
+        let monday = any("Monday, 40 minutes, plan 40 minutes", in: app)
+        XCTAssertTrue(scrollTo(monday, in: app) || monday.exists, "the week bars have spoken labels")
+        XCTAssertTrue(any("Friday, still ahead", in: app).exists)
+    }
+
+    func testChat() throws {
+        let app = launch(["-demo-read", "-demo-chat"], ax5: false)
+        let chart = any("Chart for this answer", in: app)
+        XCTAssertTrue(chart.waitForExistence(timeout: 10))
+        XCTAssertEqual(chart.value as? String, "HRV (ms) by Week. 8 values, from 1 to 8. First 41, last 52. Low 41, high 52.")
+        assertTarget(app.buttons["Send"], "Send", in: app)
+        assertTarget(app.buttons["Share this answer and chart"], "Share answer", in: app)
+    }
+
+    func testChatShareAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-chat"])
+        XCTAssertTrue(any("Chart for this answer", in: app).waitForExistence(timeout: 10))
+        assertTarget(app.buttons["Share this answer and chart"], "Share answer", in: app)
+    }
+
+    private func checkThisWeek(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-weekly"], ax5: ax5)
+        XCTAssertTrue(app.staticTexts["SUNDAY REVIEW"].waitForExistence(timeout: 10))
+        assertTarget(app.buttons["Share this week's review"], "Share", in: app)
+    }
+
+    func testThisWeekTargets() throws { checkThisWeek(ax5: false) }
+
+    private func checkPlanChanges(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-plan", "-demo-plan-sessions", "-demo-plan-changes"], ax5: ax5)
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 10))
+        let reason = app.staticTexts["Tuesday's tempo moved to Wednesday because you slept 5.5 hours Monday."]
+        XCTAssertTrue(reason.waitForExistence(timeout: 5), "a change shows its reason")
+        let dismiss = app.buttons.matching(identifier: "Dismiss this plan change").firstMatch
+        assertTarget(dismiss, "Dismiss this plan change", in: app)
+        dismiss.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: reason)
+        waitForExpectations(timeout: 5)
+
+        let all = app.buttons["All plan changes"]
+        assertTarget(all, "All plan changes", in: app)
+        all.tap()
+        XCTAssertTrue(app.navigationBars["Plan changes"].waitForExistence(timeout: 5) || app.staticTexts["Plan changes"].exists, "history title")
+        XCTAssertTrue(app.staticTexts["Dismissed"].waitForExistence(timeout: 5), "history keeps dismissed changes")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Thursday'")).firstMatch.exists)
+        let done = app.navigationBars.buttons["Done"]
+        assertTarget(done, "History Done", in: app)
+        done.tap()
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 5), "back on Your Plan")
+    }
+
+    func testPlanChangesAndHistory() throws { checkPlanChanges(ax5: false) }
+    func testPlanChangesAndHistoryAtAccessibilityTextSize() throws { checkPlanChanges(ax5: true) }
+
+    private func checkPlanLoadFails(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-plan", "-demo-plan-fails"], ax5: ax5)
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Your plan did not load. Try again in a moment."].waitForExistence(timeout: 5))
+        assertTarget(app.buttons["Try again"], "Try again", in: app)
+        assertTarget(app.buttons["Done"], "Done", in: app)
+    }
+
+    func testPlanLoadFailure() throws { checkPlanLoadFails(ax5: false) }
+    func testPlanLoadFailureAtAccessibilityTextSize() throws { checkPlanLoadFails(ax5: true) }
+
+    private func checkPlanChangesFail(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-plan", "-demo-plan-sessions", "-demo-plan-fails"], ax5: ax5)
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 10))
+        let line = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Plan changes did not load'")).firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 5))
+        assertTarget(app.buttons["Try again"], "Try again", in: app)
+    }
+
+    func testPlanChangesLoadFailure() throws { checkPlanChangesFail(ax5: false) }
+    func testPlanChangesLoadFailureAtAccessibilityTextSize() throws { checkPlanChangesFail(ax5: true) }
+
+    private func checkPasteAPlan(ax5: Bool) {
+        let app = launch(["-demo-read", "-demo-plan"], ax5: ax5)
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Have a training plan?"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Your plan did not load. Try again in a moment."].exists)
+        assertTarget(app.buttons["Done"], "Done", in: app)
+        assertTarget(app.buttons["Save plan"], "Save plan", in: app)
+        assertTarget(app.buttons["Import"], "Import", in: app)
+    }
+
+    func testPasteAPlan() throws { checkPasteAPlan(ax5: false) }
+    func testPasteAPlanAtAccessibilityTextSize() throws { checkPasteAPlan(ax5: true) }
+
+    func testYourPlanTargets() throws {
+        let app = launch(["-demo-read", "-demo-plan", "-demo-plan-sessions"], ax5: false)
+        XCTAssertTrue(app.staticTexts["Your Plan"].waitForExistence(timeout: 10))
+        assertTarget(app.buttons["Done"], "Done", in: app)
+        assertTarget(app.buttons.matching(identifier: "Send to Watch").firstMatch, "Send to Watch", in: app)
+        assertTarget(app.buttons["Missed"], "Missed", in: app)
     }
 
     func testLaunchPerformance() throws {
