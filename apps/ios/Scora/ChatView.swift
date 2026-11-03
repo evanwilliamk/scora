@@ -231,7 +231,7 @@ enum CDVChart {
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy(nonce: nonce))">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>html,body{margin:0;background:transparent;}#chart{width:100%;}</style>
+    <style>html,body{margin:0;height:100%;background:transparent;}#chart{width:100%;height:100%;}</style>
     <script src="https://cdn.jsdelivr.net/npm/vega@5.30.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@5.21.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-interpreter@1.0.5"></script>
@@ -240,6 +240,10 @@ enum CDVChart {
     <script nonce="\(nonce)">
     var spec = \(json);
     spec.width = "container";
+    // Fill the card and count axis labels, titles and the chart title inside
+    // it; the default "pad" grows past the card's fixed height and clips them.
+    spec.height = "container";
+    spec.autosize = {type: "fit", contains: "padding"};
     spec.background = "transparent";
     spec.config = Object.assign({
       axis: {labelColor: "#999", titleColor: "#999", gridColor: "#333", domainColor: "#555"},

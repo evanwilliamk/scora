@@ -532,6 +532,16 @@ final class ScoraTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(CDVChart.html(for: spec)).contains("messageHandlers.rendered"))
     }
 
+    // The chart fits the card's fixed height with its axes inside it, so the
+    // x-axis labels and title are not cut off at the bottom.
+    func testCDVChartFitsItsCardWithAxes() throws {
+        let spec = JSONValue.object(["mark": .string("line"), "data": .object(["values": .array([])])])
+        let html = try XCTUnwrap(CDVChart.html(for: spec))
+        XCTAssertTrue(html.contains(#"spec.autosize = {type: "fit", contains: "padding"}"#))
+        XCTAssertTrue(html.contains(#"spec.height = "container""#))
+        XCTAssertTrue(html.contains("#chart{width:100%;height:100%;}"))
+    }
+
     func testPlanHistoryKeepsEveryRowNewestFirst() throws {
         let json = """
         {"adaptations":[
