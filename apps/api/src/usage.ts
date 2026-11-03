@@ -87,7 +87,9 @@ async function swapCount(
   seen: { cdv_count: number | null; cdv_count_date: string | null },
   values: { cdv_count: number; cdv_count_date?: string },
 ): Promise<boolean> {
-  let q = supabase.from('athletes').update(values).eq('strava_id', String(athleteId));
+  // A refund keeps the day it read (the filter below pins it anyway).
+  const patch = { cdv_count: values.cdv_count, cdv_count_date: values.cdv_count_date ?? seen.cdv_count_date };
+  let q = supabase.from('athletes').update(patch).eq('strava_id', String(athleteId));
   q = seen.cdv_count == null ? q.is('cdv_count', null) : q.eq('cdv_count', seen.cdv_count);
   q = seen.cdv_count_date == null ? q.is('cdv_count_date', null) : q.eq('cdv_count_date', seen.cdv_count_date);
   const { data, error } = await q.select('strava_id');

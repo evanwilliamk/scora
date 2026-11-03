@@ -284,17 +284,17 @@ export function openAiEmbedder(apiKey: string, fetchImpl: typeof fetch = fetch):
 export function sqlStore(db: { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> }): KnowledgeStore {
   return {
     async upsertSource(s) {
-      // Look up first: a null author never conflicts on unique (title, author).
-      const found = await db.query(
-        'select id from knowledge_sources where title = $1 and author is not distinct from $2 limit 1',
+      // Look up, insert unless another run just did (migration 20261103000000
+      // makes a null author one value), then read the row either way.
+      const sel = 'select id from knowledge_sources where title = $1 and author is not distinct from $2 limit 1';
+      const before = await db.query(sel, [s.title, s.author]);
+      if (before.rows[0]) return before.rows[0].id;
+      await db.query(
+        'insert into knowledge_sources (title, author) values ($1, $2) on conflict do nothing',
         [s.title, s.author]
       );
-      if (found.rows[0]) return found.rows[0].id;
-      const r = await db.query(
-        'insert into knowledge_sources (title, author) values ($1, $2) returning id',
-        [s.title, s.author]
-      );
-      return r.rows[0].id;
+      const found = await db.query(sel, [s.title, s.author]);
+      return found.rows[0].id;
     },
     async upsertChunk(sourceId, c, embedding) {
       await db.query(
@@ -340,6 +340,14 @@ export function supabaseStore(sb: SupabaseLike): KnowledgeStore {
       if (found.error) throw new IngestError(`Source lookup failed: ${found.error.message}`);
       if (found.data?.[0]) return found.data[0].id;
       const ins = await sb.from('knowledge_sources').insert({ title: s.title, author: s.author }).select('id').single();
+      if (ins.error?.code === '23505') {
+        // Another run inserted it since the lookup: use that row.
+        let again = sb.from('knowledge_sources').select('id').eq('title', s.title);
+        again = s.author === null ? again.is('author', null) : again.eq('author', s.author);
+        const row = await again.limit(1);
+        if (row.error || !row.data?.[0]) throw new IngestError(`Source lookup failed: ${row.error?.message ?? 'no row'}`);
+        return row.data[0].id;
+      }
       if (ins.error) throw new IngestError(`Source insert failed: ${ins.error.message}`);
       return ins.data.id;
     },
