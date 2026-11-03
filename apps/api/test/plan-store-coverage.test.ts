@@ -69,12 +69,8 @@ test('supabase store: storage errors name what failed', async () => {
   await assert.rejects(s().saveIcalPlan('a1', [row]), /^Error: Save calendar plan: denied$/);
   await assert.rejects(s().refreshIcalPlan('a1', [row]), /^Error: Refresh calendar plan: denied$/);
   await assert.rejects(s().workoutsBetween('a1', '2026-11-01', '2026-11-07'), /^Error: Load workouts: denied$/);
-  await assert.rejects(s().markCompleted('a1', 'w1', true, '2026-11-03'), /^Error: Load workout: denied$/);
-  await assert.rejects(s().markWatchSent('a1', 'w1'), /^Error: Load workout: denied$/);
-  const markFails = supabasePlanStore(fakeSupabase([{ data: { id: 'w1', training_plan_id: 'p1' } }, err]));
-  await assert.rejects(markFails.markCompleted('a1', 'w1', true, '2026-11-03'), /^Error: Mark workout: denied$/);
-  const watchFails = supabasePlanStore(fakeSupabase([{ data: { id: 'w1', training_plan_id: 'p1' } }, err]));
-  await assert.rejects(watchFails.markWatchSent('a1', 'w1'), /^Error: Record Watch send: denied$/);
+  await assert.rejects(s().markCompleted('a1', 'w1', true, '2026-11-03'), /^Error: Mark workout: denied$/);
+  await assert.rejects(s().markWatchSent('a1', 'w1'), /^Error: Record Watch send: denied$/);
 });
 
 test('supabase store: workoutsBetween drops the join, coerces numeric distance, keeps null', async () => {
@@ -93,8 +89,6 @@ test('supabase store: workoutsBetween drops the join, coerces numeric distance, 
 });
 
 test('supabase store: a mark that updates no row reports false', async () => {
-  const sb = fakeSupabase([{ data: { id: 'w1', training_plan_id: 'p1' } }, { data: null }]);
-  assert.equal(await supabasePlanStore(sb).markCompleted('a1', 'w1', true, '2026-11-03'), false);
-  const sb2 = fakeSupabase([{ data: { id: 'w1', training_plan_id: 'p1' } }, { data: [] }]);
-  assert.equal(await supabasePlanStore(sb2).markWatchSent('a1', 'w1'), false);
+  assert.equal(await supabasePlanStore(fakeSupabase([{ data: false }])).markCompleted('a1', 'w1', true, '2026-11-03'), false);
+  assert.equal(await supabasePlanStore(fakeSupabase([{ data: null }])).markWatchSent('a1', 'w1'), false);
 });

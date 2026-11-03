@@ -247,7 +247,7 @@ test('free scope: the read never queries a SCORA plan or runs adaptations with f
 
 test('free scope (gap): WorkoutKit watch-sent has no flag, so any athlete can record a Watch push', async () => {
   const ID = '0b7c1d2e-1111-2222-3333-444455556666';
-  rest.answer('scheduled_workouts', { body: [{ id: ID, training_plan_id: 'p1' }] }, { body: [{ id: ID }] });
+  rest.answer('rpc/mark_workout_watch_sent', { body: true });
   const r = await post(`/api/plan/workouts/${ID}/watch-sent`, { athleteId: 'free-1' });
   assert.equal(r.statusCode, 200, r.body);
 });

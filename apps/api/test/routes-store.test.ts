@@ -90,40 +90,38 @@ test('GET /api/plan: a storage error is a 500 with a plain message, no detail', 
   assert.deepEqual(r.json(), { error: 'Loading the plan failed.' });
 });
 
-test('status: done marks the session; the app date is used only within a day of the server', async () => {
-  rest.answer('scheduled_workouts', { body: [{ id: ID, training_plan_id: 'p1', training_plans: { current_status: 'active' } }] }, { body: [{ id: ID }] });
+test('status: done marks the session in one locked call; the app date is used only within a day of the server', async () => {
+  rest.answer('rpc/mark_scheduled_workout', { body: true });
   const ok = await post(`/api/plan/workouts/${ID}/status`, { athleteId: 'a1', status: 'done', today: addDays(serverDay(), 1) });
   assert.equal(ok.statusCode, 200);
   assert.deepEqual(ok.json(), { id: ID, status: 'done' });
-  const [find, update] = rest.requests;
-  assert.equal(find.params.get('scheduled_date'), `lte.${addDays(serverDay(), 1)}`);
-  assert.equal(update.method, 'PATCH');
-  assert.equal(update.body.athlete_completed, true);
+  assert.equal(rest.requests.length, 1);
+  assert.deepEqual(rest.requests[0].body, { p_athlete_id: 'a1', p_workout_id: ID, p_completed: true, p_today: addDays(serverDay(), 1) });
 
   // A far-future "today" cannot mark sessions still ahead: the server's day is used.
   rest.reset();
+  rest.answer('rpc/mark_scheduled_workout', { body: false });
   const far = await post(`/api/plan/workouts/${ID}/status`, { athleteId: 'a1', status: 'missed', today: addDays(serverDay(), 30) });
   assert.equal(far.statusCode, 404);
-  assert.equal(rest.requests[0].params.get('scheduled_date'), `lte.${serverDay()}`);
-  assert.equal(rest.requests.length, 1, 'nothing is written when the session is not found');
+  assert.equal(rest.requests[0].body.p_today, serverDay());
 });
 
 test('status: missed records false, never moves anything', async () => {
-  rest.answer('scheduled_workouts', { body: [{ id: ID, training_plan_id: 'p1' }] }, { body: [{ id: ID }] });
+  rest.answer('rpc/mark_scheduled_workout', { body: true });
   const r = await post(`/api/plan/workouts/${ID}/status`, { athleteId: 'a1', status: 'missed' });
   assert.equal(r.statusCode, 200);
-  const writes = rest.requests.filter((q) => q.method !== 'GET');
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].body.athlete_completed, false);
-  assert.ok(!('scheduled_date' in writes[0].body), 'a miss never reschedules');
+  assert.equal(rest.requests.length, 1);
+  assert.equal(rest.requests[0].body.p_completed, false);
+  assert.ok(!('scheduled_date' in rest.requests[0].body), 'a miss never reschedules');
 });
 
 test('watch-sent stamps the session; someone else\'s session is a 404', async () => {
-  rest.answer('scheduled_workouts', { body: [{ id: ID, training_plan_id: 'p1' }] }, { body: [{ id: ID }] });
+  rest.answer('rpc/mark_workout_watch_sent', { body: true });
   const r = await post(`/api/plan/workouts/${ID}/watch-sent`, { athleteId: 'a1' });
   assert.equal(r.statusCode, 200);
-  assert.ok(typeof rest.requests[1].body.workout_kit_pushed_at === 'string');
+  assert.deepEqual(rest.requests[0].body, { p_athlete_id: 'a1', p_workout_id: ID });
   rest.reset();
+  rest.answer('rpc/mark_workout_watch_sent', { body: false });
   const none = await post(`/api/plan/workouts/${ID}/watch-sent`, { athleteId: 'someone-else' });
   assert.equal(none.statusCode, 404);
   assert.equal(rest.requests.length, 1);
