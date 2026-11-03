@@ -2,6 +2,8 @@
 
 What the code on this branch needs in production. Nothing here was run against Supabase or Railway.
 
+Reviewing the bundle first? Start with `docs/review-guide.md` (areas, risk, files to read first).
+
 ## 0. Order
 
 1. Apply the migrations (section 1) before merging. They only add tables, columns, functions and RLS, so the code on `main` today keeps working on the new schema.
@@ -25,6 +27,7 @@ On without a flag once merged and deployed (with a new app build where it is iOS
 - The voice validator is stricter (typography folded, paraphrased advice, unit and direction of driver numbers): watch the `voice` log lines' fallback rate for a few days after deploy.
 - Oura "last night" counts only a night dated today; before the ring syncs, the Sleep card shows its no-data line.
 - Treadmill and Zwift runs count toward load and volume (not race predictions).
+- `POST /api/plan/manual` (plan paste, added 2026-10-17) has no flag: it calls gpt-4o-mini once per paste and saves the parsed plan. Watch OpenAI spend after deploy.
 - New route `POST /api/unregister-device` (sign-out); a new app build sends it, and resends the time zone after travel.
 - From 2026-10-31: a read that names a posture the rules did not decide is a validator catch (one retry, then the fallback), and numbers inside driver names ("Load (7d)") no longer back a value: watch the `voice` fallback rate again after deploy.
 - Strava activity pages give up after 15 s and the Oura pull after 20 s, so one hung call no longer holds the morning push.
