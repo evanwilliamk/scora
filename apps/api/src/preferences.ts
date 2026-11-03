@@ -133,15 +133,20 @@ export function supabasePrefsStore(sb: { from: (t: string) => any }): PrefsStore
       return out;
     },
     async update(id, u) {
-      const current = await store.get(id);
-      const row: Record<string, unknown> = {
-        athlete_id: id,
-        timezone: u.timezone ?? current.timezone,
-        delivery_minute: u.delivery_minute ?? current.delivery_minute,
-        updated_at: new Date().toISOString(),
-      };
-      if (u.onboarded && !current.onboarded_at) row.onboarded_at = new Date().toISOString();
+      // Only the fields this call changes: an upsert of the whole row from a
+      // prior read would put back a field another request just saved (a time
+      // zone sync racing a delivery time change). A new row takes the column
+      // defaults for the rest.
+      const row: Record<string, unknown> = { athlete_id: id, updated_at: new Date().toISOString() };
+      if (u.timezone !== undefined) row.timezone = u.timezone;
+      if (u.delivery_minute !== undefined) row.delivery_minute = u.delivery_minute;
       check(await sb.from('athlete_preferences').upsert(row, { onConflict: 'athlete_id' }), 'Save preferences');
+      // Set once: only a row with no onboarded_at takes one, so a second
+      // onboarding save never moves it.
+      if (u.onboarded) {
+        check(await sb.from('athlete_preferences').update({ onboarded_at: new Date().toISOString() })
+          .eq('athlete_id', id).is('onboarded_at', null), 'Save preferences');
+      }
       return store.get(id);
     },
     async markSent(id, kind, date) {
