@@ -916,3 +916,19 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: 12 workable items (pure code or `COACH_PLATFORM=on`, hand-seeded tests) and 11 ASK items, with one gate (coach accounts and roles) that unblocks the coach-side routes. Two planning calls: the adaptation engine never auto-adapts a coach's plan (only `coach_manual` changes), and coach notes are shown as the coach's words outside the voice, never sent to the LLM. Alternative: run the same deterministic rules on coach plans with named reasons.
 - Why: CLAUDE.md §5.3 says the coach's plan overrides SCORA's; adapting it would put SCORA between athlete and coach. Keeping coach text out of the voice keeps §1 intact.
 - To reverse: edit the two Phase 3 items in PLAN.md before they are built.
+
+### 2026-11-03: A second sign-in without signing out keeps the first athlete's state
+- Status: NEEDS EVAN
+- Branch: claude/ios-persistence-review (found, not fixed)
+- Context: a `scora://auth/success` link for athlete B while A is signed in calls `saveToken` with `isAuthenticated` already true, so the dashboard stays mounted on A's read and cards, A's sent time zone stays recorded (B's is never sent if the zones match), and B is not sent through onboarding.
+- Options: (A) in `saveToken`, when the stored athlete id differs, run the sign-out cleanup first and treat it as a first sign-in; (B) ignore an auth link while signed in; (C) leave it.
+- Why parked: it is the sign-in path, which waits on the deep-link token question. Recommendation: A, once auth is settled.
+- To reverse: n/a.
+
+### 2026-11-03: Push-open reports tapped while signed out count for the next athlete
+- Status: NEEDS EVAN
+- Branch: claude/ios-persistence-review (found, not fixed)
+- Context: `PushOpen` carries no athlete id. A push for A still in Notification Center, tapped after A signs out, is queued and sent under whoever signs in next.
+- Options: (A) drop opens reported while signed out; (B) keep (counts opens made before sign-in, as the code intends).
+- Why parked: changes the open-rate metric (doc 10 1.1.2). Recommendation: A, since a signed-out tap cannot be told apart from a different athlete's.
+- To reverse: n/a.
