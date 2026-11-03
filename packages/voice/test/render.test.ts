@@ -76,3 +76,14 @@ test('every shipped pattern with a direction word renders sign-consistent text',
     }
   }
 });
+
+test('a capitalized direction word follows the sign and keeps its case', () => {
+  assert.equal(fillTemplate('Down {{hrv_pct_change}}% this week.', { hrv_pct_change: 6 }).text, 'Up 6% this week.');
+  assert.equal(fillTemplate('Up {{hrv_pct_change}}% this week.', { hrv_pct_change: -6 }).text, 'Down 6% this week.');
+  assert.equal(fillTemplate('{{hrv_pct_change}}% Below baseline.', { hrv_pct_change: 3 }).text, '3% Above baseline.');
+});
+
+test('a string value keeps its own digits when its sign is dropped', () => {
+  assert.equal(fillTemplate('HRV down {{hrv_pct_change}}%.', { hrv_pct_change: '-8.0' }).text, 'HRV down 8.0%.');
+  assert.equal(fillTemplate('HRV down {{hrv_pct_change}}%.', { hrv_pct_change: '+8.0' }).text, 'HRV up 8.0%.');
+});

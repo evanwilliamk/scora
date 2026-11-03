@@ -30,8 +30,10 @@ const DIRECTION: Record<string, { opposite: string; positive: boolean }> = {
 };
 const DIR_WORD = Object.keys(DIRECTION).join('|');
 const SLOT_SRC = '\\{\\{\\s*([A-Za-z0-9_.]+)\\s*\\}\\}';
-const WORD_BEFORE = new RegExp(`\\b(${DIR_WORD})(\\s+)${SLOT_SRC}`, 'g');
-const WORD_AFTER = new RegExp(`${SLOT_SRC}(%?\\s+)(${DIR_WORD})\\b`, 'g');
+// Case-insensitive, so a sentence that opens on the word ("Down {{x}}%") is
+// covered too; the replacement keeps the template's capitalization.
+const WORD_BEFORE = new RegExp(`\\b(${DIR_WORD})(\\s+)${SLOT_SRC}`, 'gi');
+const WORD_AFTER = new RegExp(`${SLOT_SRC}(%?\\s+)(${DIR_WORD})\\b`, 'gi');
 
 function signedNumber(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -42,12 +44,18 @@ function signedNumber(v: unknown): number | null {
 // Word that agrees with n's sign. Zero has no direction, so the template's
 // word stands.
 function agreeingWord(word: string, n: number): string {
-  const d = DIRECTION[word];
+  const d = DIRECTION[word.toLowerCase()];
   if (n === 0 || n > 0 === d.positive) return word;
-  return d.opposite;
+  const o = d.opposite;
+  if (word === word.toUpperCase()) return o.toUpperCase();
+  if (word[0] === word[0].toUpperCase()) return o[0].toUpperCase() + o.slice(1);
+  return o;
 }
 
-function unsigned(n: number): string {
+// The value without its sign. A string keeps its own digits ("-8.0" reads
+// "8.0", not "8"), as the plain slot fill would print it.
+function unsigned(v: string | number, n: number): string {
+  if (typeof v === 'string') return v.trim().replace(/^[-+]/, '');
   return String(Math.abs(n));
 }
 
@@ -59,11 +67,11 @@ export function fillTemplate(
   const directed = template
     .replace(WORD_BEFORE, (whole, word: string, gap: string, key: string) => {
       const n = signedNumber(values[key]);
-      return n === null ? whole : `${agreeingWord(word, n)}${gap}${unsigned(n)}`;
+      return n === null ? whole : `${agreeingWord(word, n)}${gap}${unsigned(values[key], n)}`;
     })
     .replace(WORD_AFTER, (whole, key: string, gap: string, word: string) => {
       const n = signedNumber(values[key]);
-      return n === null ? whole : `${unsigned(n)}${gap}${agreeingWord(word, n)}`;
+      return n === null ? whole : `${unsigned(values[key], n)}${gap}${agreeingWord(word, n)}`;
     });
   const text = directed.replace(SLOT, (_, key: string) => {
     const v = values[key];
