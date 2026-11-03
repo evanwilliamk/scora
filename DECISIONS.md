@@ -916,3 +916,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: 12 workable items (pure code or `COACH_PLATFORM=on`, hand-seeded tests) and 11 ASK items, with one gate (coach accounts and roles) that unblocks the coach-side routes. Two planning calls: the adaptation engine never auto-adapts a coach's plan (only `coach_manual` changes), and coach notes are shown as the coach's words outside the voice, never sent to the LLM. Alternative: run the same deterministic rules on coach plans with named reasons.
 - Why: CLAUDE.md §5.3 says the coach's plan overrides SCORA's; adapting it would put SCORA between athlete and coach. Keeping coach text out of the voice keeps §1 intact.
 - To reverse: edit the two Phase 3 items in PLAN.md before they are built.
+
+### 2026-11-03: CDV chart scripts still load from jsdelivr without SRI
+- Status: NEEDS EVAN
+- Branch: claude/cdv-spec-security
+- Context: the chart WebView loads vega 5.30.0, vega-lite 5.21.0, vega-interpreter 1.0.5 and vega-embed 6.26.0 from cdn.jsdelivr.net (exact versions, CSP restricts scripts to that CDN, no eval, no network), but a CDN compromise would still run code in the page.
+- Options: (A) bundle the four files in the app and load with a file baseURL (no network, works offline); (B) add `integrity` SRI hashes to the CDN tags; (C) keep as is. Also consider vega 5.33+ (expression sandbox fixes; less relevant now that expressions go through the interpreter).
+- Why: both A and B need the files fetched and reviewed once, which was out of scope for an unattended run.
+- To reverse: n/a
