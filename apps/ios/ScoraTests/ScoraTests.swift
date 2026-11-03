@@ -2087,3 +2087,82 @@ final class ChatDriverInitTests: XCTestCase {
         XCTAssertEqual(decoded.map(\.trend), [nil, "+3%", nil])
     }
 }
+
+// CDV chart WebView hardening: the spec allow-list, the page CSP and the
+// navigation policy.
+final class CDVChartSecurityTests: XCTestCase {
+    private func spec(_ json: String) throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+    }
+
+    private let paceExpr = "floor(round(datum.value * 60) / 60) + ':' + slice('0' + (round(datum.value * 60) % 60), -2)"
+
+    func testAPIPaceSpecStillRenders() throws {
+        let s = JSONValue.object([
+            "data": .object(["values": .array([.object(["date": .string("Oct 1"), "value": .number(8.5)])])]),
+            "mark": .object(["type": .string("line"), "point": .bool(true)]),
+            "encoding": .object(["y": .object(["field": .string("value"),
+                                               "axis": .object(["labelExpr": .string(paceExpr)])])]),
+        ])
+        XCTAssertNotNil(CDVChart.html(for: s))
+    }
+
+    func testUnsafeSpecsAreRejected() throws {
+        let bad = [
+            #"{"mark":"image","data":{"values":[{"a":1}]}}"#,
+            #"{"mark":{"type":"image"},"data":{"values":[]}}"#,
+            #"{"mark":"bar","usermeta":{"embedOptions":{"loader":{}}}}"#,
+            #"{"mark":"bar","params":[{"name":"p","expr":"1"}]}"#,
+            #"{"mark":"bar","transform":[{"calculate":"datum.a","as":"b"}]}"#,
+            #"{"mark":"bar","encoding":{"color":{"condition":{"test":"datum.a > 0"}}}}"#,
+            #"{"mark":"bar","title":{"text":{"signal":"width"}}}"#,
+            #"{"mark":"bar","encoding":{"y":{"axis":{"labelExpr":"datum.constructor"}}}}"#,
+            #"{"mark":"bar","encoding":{"y":{"axis":{"labelExpr":"datum['constructor']"}}}}"#,
+            #"{"mark":"bar","encoding":{"y":{"axis":{"labelExpr":"'a"}}}}"#,
+            #"{"mark":"bar","encoding":{"y":{"axis":{"labelExpr":5}}}}"#,
+        ]
+        for json in bad { XCTAssertNil(CDVChart.html(for: try spec(json)), json) }
+    }
+
+    func testSimpleExpressionAllowList() {
+        XCTAssertTrue(CDVChart.isSimpleExpression(paceExpr))
+        XCTAssertTrue(CDVChart.isSimpleExpression("round(datum.value) + ' mi'"))
+        XCTAssertFalse(CDVChart.isSimpleExpression("window.location"))
+        XCTAssertFalse(CDVChart.isSimpleExpression("'x'constructor"))
+        XCTAssertFalse(CDVChart.isSimpleExpression("datum.value; 1"))
+    }
+
+    func testOversizedSpecIsRejected() {
+        let rows = (0..<3000).map { JSONValue.object(["i": .number(Double($0)), "v": .string("xxxx")]) }
+        let s = JSONValue.object(["mark": .string("bar"), "data": .object(["values": .array(rows)])])
+        XCTAssertNil(CDVChart.html(for: s))
+    }
+
+    func testPageCarriesStrictCSPAndNonce() throws {
+        let s = JSONValue.object(["mark": .string("bar"), "data": .object(["values": .array([])])])
+        let html = try XCTUnwrap(CDVChart.html(for: s, nonce: "n0nce"))
+        XCTAssertTrue(html.contains("http-equiv=\"Content-Security-Policy\""))
+        for d in ["default-src 'none'", "connect-src 'none'", "img-src data:", "frame-src 'none'",
+                  "form-action 'none'", "base-uri 'none'", "'nonce-n0nce'"] {
+            XCTAssertTrue(html.contains(d), d)
+        }
+        XCTAssertFalse(html.contains("unsafe-eval"))
+        XCTAssertTrue(html.contains("<script nonce=\"n0nce\">"))
+        XCTAssertFalse(html.contains("<script>"), "every inline script needs the nonce")
+        XCTAssertTrue(html.contains("expr: vega.expressionInterpreter"))
+        XCTAssertTrue(html.contains("vega-interpreter@1.0.5"))
+        // Every remote script is an exact pinned version on the one CDN.
+        let srcs = html.components(separatedBy: "<script src=\"").dropFirst().map { $0.prefix { $0 != "\"" } }
+        XCTAssertEqual(srcs.count, 4)
+        for src in srcs { XCTAssertNotNil(src.range(of: #"^https://cdn\.jsdelivr\.net/npm/[a-z-]+@\d+\.\d+\.\d+$"#, options: .regularExpression), String(src)) }
+    }
+
+    func testNavigationOnlyAllowsTheInitialLoad() {
+        let blank = URL(string: "about:blank")
+        XCTAssertTrue(CDVChartView.Coordinator.allows(url: blank, isMainFrame: true, alreadyLoaded: false))
+        XCTAssertFalse(CDVChartView.Coordinator.allows(url: blank, isMainFrame: true, alreadyLoaded: true))
+        XCTAssertFalse(CDVChartView.Coordinator.allows(url: blank, isMainFrame: false, alreadyLoaded: false))
+        XCTAssertFalse(CDVChartView.Coordinator.allows(url: URL(string: "https://evil.test/?hrv=52"), isMainFrame: true, alreadyLoaded: false))
+        XCTAssertFalse(CDVChartView.Coordinator.allows(url: nil, isMainFrame: true, alreadyLoaded: false))
+    }
+}
