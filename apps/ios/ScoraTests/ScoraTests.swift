@@ -1596,3 +1596,494 @@ final class FirstReadTitleTests: XCTestCase {
         XCTAssertEqual(OnboardingState.timeLabel(minute: 390, locale: Locale(identifier: "en_GB")), "06:30")
     }
 }
+
+// MARK: - Coverage pass 2026-11-03 (iOS): logic files with the most uncovered lines
+
+// Catches every request URLSession.shared makes while registered, so the
+// PushManager and TokenManager tests below never reach the API. Records what
+// was asked and answers with `status`.
+final class InterceptURLProtocol: URLProtocol {
+    struct Seen { let url: URL; let method: String; let body: [String: Any] }
+    private static let lock = NSLock()
+    private static var _seen: [Seen] = []
+    static var status = 200
+    static var seen: [Seen] { lock.lock(); defer { lock.unlock() }; return _seen }
+    static func reset() { lock.lock(); _seen = []; lock.unlock(); status = 200 }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        var data = request.httpBody ?? Data()
+        if data.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            var buf = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let n = stream.read(&buf, maxLength: buf.count)
+                if n <= 0 { break }
+                data.append(buf, count: n)
+            }
+            stream.close()
+        }
+        let body = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        Self.lock.lock()
+        Self._seen.append(Seen(url: request.url!, method: request.httpMethod ?? "GET", body: body))
+        Self.lock.unlock()
+        let resp = HTTPURLResponse(url: request.url!, statusCode: Self.status, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("{}".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+// Runs the main run loop until `done` or the deadline.
+private func waitUntil(_ seconds: TimeInterval = 3, _ done: () -> Bool) {
+    let deadline = Date().addingTimeInterval(seconds)
+    while !done() && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
+}
+
+final class PushManagerFlowTests: XCTestCase {
+    private let keys = ["scora.deviceToken", "scora.athleteId", "scora.pendingPushOpens"]
+    private var saved: [String: Any] = [:]
+    private let d = UserDefaults.standard
+
+    override func setUp() {
+        super.setUp()
+        for k in keys { if let v = d.object(forKey: k) { saved[k] = v } }
+        for k in keys { d.removeObject(forKey: k) }
+        InterceptURLProtocol.reset()
+        URLProtocol.registerClass(InterceptURLProtocol.self)
+    }
+
+    override func tearDown() {
+        // Let queued work finish before the stub goes, so nothing leaks to the network.
+        waitUntil(0.3) { false }
+        URLProtocol.unregisterClass(InterceptURLProtocol.self)
+        for k in keys { d.removeObject(forKey: k) }
+        for (k, v) in saved { d.set(v, forKey: k) }
+        super.tearDown()
+    }
+
+    private func pending() -> [PushOpen] {
+        guard let data = d.data(forKey: "scora.pendingPushOpens") else { return [] }
+        return (try? JSONDecoder().decode([PushOpen].self, from: data)) ?? []
+    }
+    private func open(_ date: String, ago: Int = 60) -> PushOpen {
+        PushOpen(userInfo: ["scora": ["kind": "daily", "date": date, "sent_at": NSNumber(value: Int(Date().timeIntervalSince1970) - ago)]])!
+    }
+    private func requests(_ path: String) -> [InterceptURLProtocol.Seen] {
+        InterceptURLProtocol.seen.filter { $0.url.path == path }
+    }
+
+    func testDeviceTokenRegistersOnceAnAthleteIsSignedIn() {
+        d.set("ath-push", forKey: "scora.athleteId")
+        PushManager.shared.setDeviceToken("abc123")
+        waitUntil { !self.requests("/api/register-device").isEmpty }
+        let reg = requests("/api/register-device")
+        XCTAssertEqual(reg.count, 1)
+        XCTAssertEqual(reg.first?.method, "POST")
+        XCTAssertEqual(reg.first?.body["athleteId"] as? String, "ath-push")
+        XCTAssertEqual(reg.first?.body["deviceToken"] as? String, "abc123")
+        XCTAssertEqual(d.string(forKey: "scora.deviceToken"), "abc123")
+    }
+
+    func testDeviceTokenBeforeSignInWaitsForTheAthleteId() {
+        PushManager.shared.setDeviceToken("early")
+        waitUntil(0.4) { false }
+        XCTAssertTrue(requests("/api/register-device").isEmpty, "no athlete id yet: nothing sent")
+        d.set("ath-later", forKey: "scora.athleteId")
+        PushManager.shared.onAuthenticated()
+        waitUntil { !self.requests("/api/register-device").isEmpty }
+        XCTAssertEqual(requests("/api/register-device").first?.body["deviceToken"] as? String, "early")
+    }
+
+    func testAppDelegateTurnsTheTokenBytesIntoHex() {
+        d.set("ath-hex", forKey: "scora.athleteId")
+        AppDelegate().application(UIApplication.shared, didRegisterForRemoteNotificationsWithDeviceToken: Data([0xab, 0x01, 0xff]))
+        XCTAssertEqual(d.string(forKey: "scora.deviceToken"), "ab01ff")
+        waitUntil { !self.requests("/api/register-device").isEmpty }
+        XCTAssertEqual(requests("/api/register-device").first?.body["deviceToken"] as? String, "ab01ff")
+        // A failed registration only logs.
+        AppDelegate().application(UIApplication.shared, didFailToRegisterForRemoteNotificationsWithError: URLError(.notConnectedToInternet))
+    }
+
+    func testUnregisterSendsTheTokenAndSkipsWithoutOne() {
+        PushManager.shared.unregister(athleteId: "ath-out")
+        PushManager.shared.unregister(athleteId: "")
+        waitUntil(0.4) { false }
+        XCTAssertTrue(requests("/api/unregister-device").isEmpty, "no device token: nothing to unregister")
+        d.set("tok-out", forKey: "scora.deviceToken")
+        PushManager.shared.unregister(athleteId: "")
+        PushManager.shared.unregister(athleteId: "ath-out")
+        waitUntil { !self.requests("/api/unregister-device").isEmpty }
+        let sent = requests("/api/unregister-device")
+        XCTAssertEqual(sent.count, 1, "an empty athlete id sends nothing")
+        XCTAssertEqual(sent.first?.body["athleteId"] as? String, "ath-out")
+        XCTAssertEqual(sent.first?.body["deviceToken"] as? String, "tok-out")
+    }
+
+    func testAnOpenIsReportedAndLeavesTheListOnceDelivered() {
+        d.set("ath-open", forKey: "scora.athleteId")
+        let o = open("2026-11-03")
+        PushManager.shared.reportOpen(o)
+        waitUntil { !self.requests("/api/events/push-open").isEmpty && self.pending().isEmpty }
+        let sent = requests("/api/events/push-open")
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent.first?.body["athleteId"] as? String, "ath-open")
+        XCTAssertEqual(sent.first?.body["kind"] as? String, "daily")
+        XCTAssertEqual(sent.first?.body["date"] as? String, "2026-11-03")
+        XCTAssertEqual(sent.first?.body["sentAt"] as? Int, o.sentAt)
+        XCTAssertTrue(pending().isEmpty)
+    }
+
+    func testARefusedOpenIsDroppedButAServerErrorIsKept() {
+        d.set("ath-open", forKey: "scora.athleteId")
+        InterceptURLProtocol.status = 400
+        PushManager.shared.reportOpen(open("2026-11-02"))
+        waitUntil { !self.requests("/api/events/push-open").isEmpty && self.pending().isEmpty }
+        XCTAssertTrue(pending().isEmpty, "a 400 is final: it leaves the list")
+
+        InterceptURLProtocol.reset()
+        InterceptURLProtocol.status = 503
+        let kept = open("2026-11-01")
+        PushManager.shared.reportOpen(kept)
+        waitUntil { !self.requests("/api/events/push-open").isEmpty }
+        waitUntil(0.4) { false }
+        XCTAssertEqual(pending(), [kept], "a 503 may pass next time: it stays")
+    }
+
+    func testOpensBeforeSignInWaitOnThePhone() {
+        let o = open("2026-11-03")
+        PushManager.shared.reportOpen(o)
+        waitUntil { self.pending() == [o] }
+        waitUntil(0.3) { false }
+        XCTAssertEqual(pending(), [o])
+        XCTAssertTrue(requests("/api/events/push-open").isEmpty, "no athlete id: nothing sent")
+        // An open over a week old is dropped on the next flush.
+        let stale = open("2026-10-20", ago: 8 * 86_400)
+        d.set(try! JSONEncoder().encode([stale, o]), forKey: "scora.pendingPushOpens")
+        PushManager.shared.flushOpens()
+        waitUntil { self.pending() == [o] }
+        XCTAssertEqual(pending(), [o])
+    }
+
+    func testForegroundPushesAreStillShown() {
+        XCTAssertEqual(PushPresentation.foreground, [.banner, .list, .sound])
+        XCTAssertEqual(PushRoute(kind: "weekly"), .weekly)
+        XCTAssertEqual(PushRoute(kind: "daily"), .todaysRead)
+        PushRoute.pending = .weekly
+        XCTAssertEqual(PushRoute.take(), .weekly)
+        XCTAssertNil(PushRoute.take(), "taken once")
+    }
+}
+
+final class TokenSaveTests: XCTestCase {
+    private let keys = ["scora.token", "scora.athleteId", "scora.athleteName", "scora.deviceToken",
+                        "scora.pendingPushOpens", OnboardingState.key, OnboardingSync.pendingKey]
+    private var saved: [String: Any] = [:]
+    private var savedTransport: OnboardingSync.Transport!
+    private let d = UserDefaults.standard
+    private static let lock = NSLock()
+    private static var asked: [URLRequest] = []
+
+    override func setUp() {
+        super.setUp()
+        for k in keys { if let v = d.object(forKey: k) { saved[k] = v } }
+        for k in keys { d.removeObject(forKey: k) }
+        savedTransport = OnboardingSync.transport
+        Self.asked = []
+        InterceptURLProtocol.reset()
+        URLProtocol.registerClass(InterceptURLProtocol.self) // PushManager.onAuthenticated
+    }
+
+    override func tearDown() {
+        waitUntil(0.3) { false }
+        URLProtocol.unregisterClass(InterceptURLProtocol.self)
+        OnboardingSync.transport = savedTransport
+        for k in keys { d.removeObject(forKey: k) }
+        for (k, v) in saved { d.set(v, forKey: k) }
+        super.tearDown()
+    }
+
+    private func stub(onboarded: Bool?) {
+        OnboardingSync.transport = { req in
+            Self.lock.lock(); Self.asked.append(req); Self.lock.unlock()
+            guard let onboarded else { return nil }
+            return (200, Data(#"{"onboarded":\#(onboarded)}"#.utf8))
+        }
+    }
+
+    func testFirstSignInStoresTheAthleteAndSkipsOnboardingTheServerHasOnRecord() {
+        stub(onboarded: true)
+        let tm = TokenManager()
+        XCTAssertFalse(tm.isAuthenticated)
+        tm.saveToken("tok-1", athleteId: "ath-save", athleteName: "Sam")
+        XCTAssertEqual(d.string(forKey: "scora.token"), "tok-1")
+        XCTAssertEqual(tm.athleteId, "ath-save")
+        XCTAssertEqual(tm.stravaToken, "tok-1")
+        XCTAssertEqual(d.string(forKey: "scora.athleteName"), "Sam")
+        waitUntil { tm.isAuthenticated && !tm.checkingOnboarding && !tm.needsOnboarding }
+        XCTAssertTrue(tm.isAuthenticated)
+        XCTAssertEqual(tm.athleteName, "Sam")
+        XCTAssertFalse(tm.needsOnboarding, "the server has this athlete's onboarding on record")
+        XCTAssertFalse(tm.checkingOnboarding)
+        XCTAssertFalse(OnboardingState.needsOnboarding)
+        Self.lock.lock(); let urls = Self.asked.compactMap(\.url); Self.lock.unlock()
+        XCTAssertTrue(urls.contains { $0.path == "/api/preferences" && ($0.query ?? "").contains("athleteId=ath-save") })
+    }
+
+    func testFirstSignInWithNoAnswerStillRunsOnboarding() {
+        stub(onboarded: nil)
+        let tm = TokenManager()
+        tm.saveToken("tok-2", athleteId: "ath-new", athleteName: "Ana")
+        XCTAssertTrue(OnboardingState.needsOnboarding, "a fresh sign-in goes through onboarding once")
+        waitUntil { tm.isAuthenticated && !tm.checkingOnboarding }
+        waitUntil(0.2) { false }
+        XCTAssertTrue(tm.needsOnboarding, "no answer: onboarding runs")
+        XCTAssertFalse(tm.checkingOnboarding)
+        XCTAssertTrue(OnboardingState.needsOnboarding)
+    }
+
+    func testSigningInAgainWhileSignedInLeavesOnboardingAlone() {
+        stub(onboarded: false)
+        d.set("tok-old", forKey: "scora.token")
+        d.set("ath-again", forKey: "scora.athleteId")
+        OnboardingState.needsOnboarding = false
+        let tm = TokenManager()
+        XCTAssertTrue(tm.isAuthenticated)
+        tm.saveToken("tok-new", athleteId: "ath-again", athleteName: "Lee")
+        XCTAssertFalse(OnboardingState.needsOnboarding, "not a first sign-in")
+        waitUntil { tm.athleteName == "Lee" }
+        waitUntil(0.3) { false }
+        XCTAssertEqual(tm.athleteName, "Lee")
+        XCTAssertFalse(tm.needsOnboarding)
+        XCTAssertEqual(tm.stravaToken, "tok-new")
+    }
+}
+
+final class WatchReconcileBranchTests: XCTestCase {
+    private let today = "2026-11-03"
+    private var now: Date { Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
+    private func at6(_ day: Int) -> DateComponents { DateComponents(year: 2026, month: 11, day: day, hour: 6, minute: 0) }
+    private func session(_ date: String, _ intensity: String, _ min: Int, row: String?) -> PlanWorkout {
+        var w = PlanWorkout(date: date, type: "run", intensity: intensity, durationMin: min, distanceKm: nil, description: nil)
+        w.rowId = row
+        w.steps = [PlanStep(type: "steady", durationMin: Double(min), intensity: intensity, reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        return w
+    }
+
+    // An older build's copy on a day that now holds two other sessions, with
+    // no record of which it was: the day gets the "a session changed" note.
+    func testAnOlderCopyOnABusyDayWithNoRecordSaysASessionChanged() {
+        let a = session("2026-11-05", "easy", 30, row: "a")
+        let b = session("2026-11-05", "tempo", 40, row: "b")
+        let pass = WatchReconcile.plan(scheduled: [WatchCopy(name: "steady · 60 min", at: at6(5))],
+                                       workouts: [a, b], coveredThrough: nil, ledger: WatchLedger(), today: today)
+        XCTAssertEqual(pass.actions, [.remove(day: "2026-11-05", name: "steady · 60 min", id: nil)])
+        XCTAssertEqual(pass.ledger.notes, [WatchNote(key: "day:2026-11-05", day: "2026-11-05", text: WatchReconcile.changedOnDay("2026-11-05"))])
+        XCTAssertTrue(WatchReconcile.changedOnDay("2026-11-05").hasPrefix("A session on Thu Nov 5 changed"))
+    }
+
+    // Recorded as row r9, which is no longer on the plan, on a day that still
+    // has another session: one of the day's sessions is gone.
+    func testAnOlderCopyWhoseRowLeftThePlanSaysOneSessionIsGone() {
+        let other = session("2026-11-05", "easy", 30, row: "a")
+        let ledger = WatchLedger(sends: [WatchSendRecord(date: "2026-11-05", name: "tempo · 45 min", rowId: "r9", steps: nil)])
+        let pass = WatchReconcile.plan(scheduled: [WatchCopy(name: "tempo · 45 min", at: at6(5))],
+                                       workouts: [other], coveredThrough: nil, ledger: ledger, today: today)
+        XCTAssertEqual(pass.actions, [.remove(day: "2026-11-05", name: "tempo · 45 min", id: nil)])
+        XCTAssertTrue(pass.ledger.sends.isEmpty, "the record goes with the copy")
+        XCTAssertEqual(pass.ledger.notes.map(\.text), [WatchReconcile.goneOnDay("2026-11-05")])
+    }
+
+    func testAnOlderCopyOnADayWithNoSessionLeftSaysItIsGone() {
+        let pass = WatchReconcile.plan(scheduled: [WatchCopy(name: "tempo · 45 min", at: at6(6))],
+                                       workouts: [session("2026-11-04", "easy", 30, row: "a")], coveredThrough: nil,
+                                       ledger: WatchLedger(), today: today)
+        XCTAssertEqual(pass.ledger.notes, [WatchNote(key: "day:2026-11-06", day: "2026-11-06", text: WatchReconcile.gone("2026-11-06"))])
+    }
+
+    // Moved to an earlier day: never resent backwards, the moved session gets a note.
+    func testAnOlderCopyMovedEarlierIsRemovedAndNotedNotResent() {
+        let moved = session("2026-11-04", "tempo", 45, row: "r1")
+        let ledger = WatchLedger(sends: [WatchSendRecord(date: "2026-11-05", name: moved.detail, rowId: "r1", steps: moved.steps)])
+        let pass = WatchReconcile.plan(scheduled: [WatchCopy(name: moved.detail, at: at6(5))],
+                                       workouts: [moved], coveredThrough: nil, ledger: ledger, today: today)
+        XCTAssertEqual(pass.actions, [.remove(day: "2026-11-05", name: moved.detail, id: nil)])
+        XCTAssertEqual(pass.ledger.note(for: moved), WatchReconcile.movedNotSent(from: "2026-11-05"))
+    }
+
+    // The resend is tried, but the Watch is full: the note says it was not sent.
+    @MainActor
+    func testAResendTheWatchRefusesIsNotedAsNotSent() async {
+        let before = session("2026-11-04", "tempo", 45, row: "r1")
+        let watch = ScoraTests.FakeWatch()
+        let workout = try! WorkoutExport.customWorkout(steps: before.steps!, plannedType: "run", displayName: before.detail)
+        watch.scheduled = [WatchCopy(name: before.detail, at: at6(4), id: WatchPlanId.forSession(rowId: "r1"), workout: workout)]
+        var ledger = WatchLedger()
+        ledger.recordSend(before)
+        watch.maxScheduled = 0
+        let moved = session("2026-11-05", "tempo", 45, row: "r1")
+        let out = await WatchReconcile.run(workouts: [moved], coveredThrough: nil, ledger: ledger, scheduler: watch, today: today, now: now)
+        XCTAssertTrue(watch.scheduled.isEmpty, "the stale copy went; the new one did not fit")
+        XCTAssertEqual(out.note(for: moved), WatchReconcile.movedNotSent(from: "2026-11-04"))
+    }
+
+    @MainActor
+    func testReconcileSavesTheLedgerForTheAthlete() async {
+        let id = "reconcile-test-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: "watchLedger.\(id)") }
+        let watch = ScoraTests.FakeWatch()
+        watch.scheduled = [WatchCopy(name: "tempo · 45 min", at: at6(6))]
+        let out = await WatchReconcile.reconcile([session("2026-11-04", "easy", 30, row: "a")], athleteId: id, scheduler: watch, today: today)
+        XCTAssertTrue(watch.scheduled.isEmpty)
+        XCTAssertEqual(out.notes.map(\.text), [WatchReconcile.gone("2026-11-06")])
+        XCTAssertEqual(WatchLedger.load(athleteId: id), out, "saved per athlete")
+        XCTAssertEqual(WatchLedger.load(athleteId: "nobody-\(UUID().uuidString)"), WatchLedger())
+    }
+
+    func testCoveredThroughOnlyForAFullPage() {
+        let few = (1...3).map { session(String(format: "2026-11-%02d", $0), "easy", 30, row: "r\($0)") }
+        XCTAssertNil(WatchReconcile.coveredThrough(few))
+        let full = (1...14).map { session(String(format: "2026-11-%02d", $0), "easy", 30, row: "r\($0)") }
+        XCTAssertEqual(WatchReconcile.coveredThrough(full.shuffled()), "2026-11-14")
+    }
+
+    // Foreground refresh is quiet: no athlete, no Watch, no permission, or no
+    // answer all leave the Watch as it is. The base URL is a scheme no
+    // session can load, so nothing reaches the network.
+    @MainActor
+    func testForegroundRefreshStaysQuietWithoutAWatchOrAnAnswer() async {
+        let stale = WatchCopy(name: "tempo · 45 min", at: at6(6))
+        let watch = ScoraTests.FakeWatch()
+        watch.scheduled = [stale]
+        await WatchReconcile.refresh(athleteId: "", apiBase: "scora-test://none", scheduler: watch)
+        watch.isSupported = false
+        await WatchReconcile.refresh(athleteId: "ath", apiBase: "scora-test://none", scheduler: watch)
+        watch.isSupported = true
+        watch.allow = false
+        await WatchReconcile.refresh(athleteId: "ath", apiBase: "scora-test://none", scheduler: watch)
+        watch.allow = true
+        await WatchReconcile.refresh(athleteId: "ath", apiBase: "scora-test://none", scheduler: watch)
+        XCTAssertEqual(watch.scheduled.map(\.name), ["tempo · 45 min"], "nothing removed without the plan")
+    }
+}
+
+final class DemoModeTests: XCTestCase {
+    // A normal test launch passes no -demo flags: every sample stays off.
+    func testWithoutFlagsNothingDemoIsOn() {
+        XCTAssertFalse(DemoMode.isOn)
+        XCTAssertFalse(DemoMode.showsSignIn)
+        XCTAssertNil(DemoMode.onboardingStep)
+        XCTAssertFalse(DemoMode.deliveryFails)
+        XCTAssertFalse(DemoMode.opensChart)
+        XCTAssertFalse(DemoMode.opensPlan)
+        XCTAssertFalse(DemoMode.opensWeekly)
+        XCTAssertFalse(DemoMode.opensChat)
+        XCTAssertNil(DemoMode.planSessions)
+        XCTAssertNil(DemoMode.weekly)
+        XCTAssertNil(DemoMode.chat)
+        XCTAssertNil(DemoMode.cards)
+        XCTAssertNil(DemoMode.planGoals)
+        XCTAssertNil(DemoMode.planBlock)
+    }
+
+    // Every linked driver in the sample read points at its own words, and
+    // each has a 14-day series ending on the sample day (CLAUDE.md §3.4).
+    func testSampleReadLinksEveryDriverToItsSeries() throws {
+        let read = DemoMode.read
+        let ns = read.voice as NSString
+        let links = try XCTUnwrap(read.links)
+        XCTAssertEqual(links.map(\.key), ["sleep", "hrv", "load"])
+        XCTAssertEqual(links.map { ns.substring(with: NSRange(location: $0.start, length: $0.end - $0.start)) }, ["7:12", "52ms", "412 min"])
+        let series = try XCTUnwrap(read.series)
+        XCTAssertEqual(Set(series.keys), ["sleep", "hrv", "load"])
+        for (_, s) in series {
+            XCTAssertEqual(s.points.count, 14)
+            XCTAssertEqual(s.points.first?.date, "2026-10-05")
+            XCTAssertEqual(s.points.last?.date, "2026-10-18")
+        }
+        XCTAssertEqual(series["hrv"]?.latest?.value, 52)
+        XCTAssertEqual(series["hrv"]?.baseline ?? 0, 46.0, accuracy: 0.001, "mean of the 13 days before")
+        XCTAssertEqual(series["sleep"]?.baseline ?? 0, 6.9, accuracy: 0.001)
+        XCTAssertEqual(series["load"]?.baseline ?? 0, 376.7, accuracy: 0.001)
+        XCTAssertTrue(series["load"]?.isDailyTotal ?? false)
+        XCTAssertFalse(series["hrv"]?.isDailyTotal ?? true)
+        XCTAssertEqual(read.numbers, "Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412")
+    }
+
+    func testSampleWeekRunsMondayToSunday() {
+        let w = DemoMode.week
+        XCTAssertEqual(w.days.map(\.weekday), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        XCTAssertEqual(w.days.map(\.date), (19...25).map { "2026-10-\($0)" })
+        XCTAssertEqual(w.days.map(\.runMin), [40, 0, 80, 0, nil, nil, nil])
+        XCTAssertEqual(w.days.map(\.plannedMin), [40, 0, 50, 45, 0, 100, 0])
+        XCTAssertTrue(w.line.hasPrefix("3 runs, 120 min since Monday"))
+    }
+}
+
+final class NetworkStatusTests: XCTestCase {
+    func testMonitorStartsAndOnlyOfflineToOnlineCountsAsBack() {
+        NetworkStatus.start()
+        // The monitor reports the first path on its own queue, then on main.
+        waitUntil(0.5) { false }
+        XCTAssertNotNil(NetworkStatus.shared)
+        XCTAssertTrue(NetworkStatus.didComeBack(wasOnline: false, isOnline: true))
+        XCTAssertFalse(NetworkStatus.didComeBack(wasOnline: true, isOnline: true))
+        XCTAssertFalse(NetworkStatus.didComeBack(wasOnline: true, isOnline: false))
+        XCTAssertFalse(NetworkStatus.didComeBack(wasOnline: false, isOnline: false))
+    }
+
+    func testFailuresMapToTheThreeKinds() {
+        XCTAssertEqual(NetworkFailure.of(URLError(.dataNotAllowed)), .offline)
+        XCTAssertEqual(NetworkFailure.of(URLError(.internationalRoamingOff)), .offline)
+        XCTAssertEqual(NetworkFailure.of(URLError(.networkConnectionLost)), .offline)
+        XCTAssertEqual(NetworkFailure.of(URLError(.timedOut)), .timedOut)
+        XCTAssertEqual(NetworkFailure.of(URLError(.badServerResponse)), .other)
+        XCTAssertEqual(NetworkFailure.of(NSError(domain: "x", code: 1)), .other)
+        XCTAssertEqual(NetworkText.every.count, 6)
+        for lines in NetworkText.every {
+            XCTAssertEqual(lines.line(for: URLError(.timedOut)), lines.timedOut)
+            XCTAssertEqual(lines.line(for: URLError(.cannotFindHost)), lines.other)
+            XCTAssertEqual(lines.all.count, 3)
+        }
+    }
+}
+
+final class WorkoutExportStepTests: XCTestCase {
+    private func step(_ type: String, _ min: Double? = nil, reps: Int? = nil, work: Double? = nil, rest: Double? = nil) -> PlanStep {
+        PlanStep(type: type, durationMin: min, intensity: nil, reps: reps, workDurationMin: work, workIntensity: nil, restDurationMin: rest, restIntensity: nil)
+    }
+
+    // Reps with no recovery between them: one block run `reps` times.
+    func testIntervalsWithoutRecoveryAreOneRepeatedBlock() throws {
+        let w = try WorkoutExport.customWorkout(steps: [step("interval", reps: 4, work: 2)], plannedType: "run", displayName: "strides")
+        XCTAssertEqual(w.blocks.count, 1)
+        XCTAssertEqual(w.blocks.first?.iterations, 4)
+        XCTAssertEqual(w.blocks.first?.steps.count, 1)
+        // A zero rest counts as none.
+        let z = try WorkoutExport.customWorkout(steps: [step("interval", reps: 3, work: 1, rest: 0)], plannedType: "run", displayName: "strides")
+        XCTAssertEqual(z.blocks.map(\.iterations), [3])
+    }
+
+    func testAnUnknownStepTypeIsRefusedAtItsPlanIndex() {
+        XCTAssertThrowsError(try WorkoutExport.customWorkout(steps: [step("steady", 10), step("fartlek", 20)], plannedType: "run", displayName: "x")) {
+            XCTAssertEqual($0 as? WorkoutExportError, .badStep(1))
+        }
+        // After a warmup the index still counts the warmup.
+        XCTAssertThrowsError(try WorkoutExport.customWorkout(steps: [step("warmup", 10), step("fartlek", 20), step("cooldown", 5)], plannedType: "run", displayName: "x")) {
+            XCTAssertEqual($0 as? WorkoutExportError, .badStep(1))
+        }
+    }
+}
+
+final class ChatDriverInitTests: XCTestCase {
+    func testDriversBuiltInCodeAndDecodedFromNumbers() throws {
+        let d = Driver(metric: "HRV", value: "52ms", trend: "+8% wk")
+        XCTAssertEqual([d.metric, d.value, d.trend], ["HRV", "52ms", "+8% wk"])
+        let json = Data(#"[{"metric":"Sleep","value":7.5},{"metric":"Load","value":412,"trend":"+3%"},{"metric":"Odd","value":true}]"#.utf8)
+        let decoded = try JSONDecoder().decode([Driver].self, from: json)
+        XCTAssertEqual(decoded.map(\.value), ["7.5", "412", ""])
+        XCTAssertEqual(decoded.map(\.trend), [nil, "+3%", nil])
+    }
+}
