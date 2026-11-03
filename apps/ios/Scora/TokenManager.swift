@@ -98,6 +98,7 @@ class TokenManager: ObservableObject {
     TimeZoneSync.forget()
     ReadCache.clear() // the last read is this athlete's health data
     CalendarFeed.save(nil, for: athleteId) // the next athlete on this phone never refreshes this calendar
+    WatchLedger.clear(athleteId: athleteId) // their sessions as sent to the Watch
     UserDefaults.standard.removeObject(forKey: tokenKey)
     UserDefaults.standard.removeObject(forKey: athleteIdKey)
     UserDefaults.standard.removeObject(forKey: athleteNameKey)
