@@ -235,6 +235,24 @@ final class ScoraTests: XCTestCase {
         }
     }
 
+    func testPlanBuildFailureLineFiltersServerText() {
+        let fallback = NetworkText.planBuild.other
+        func body(_ raw: String) -> Data { try! JSONSerialization.data(withJSONObject: ["error": raw]) }
+        // A refusal sentence for the athlete shows as sent.
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: body("No plan template fits that race and volume yet."), failure: nil),
+                       "No plan template fits that race and volume yet.")
+        // Developer validation lines and raw bodies fall back.
+        for raw in ["experience_level must be one of beginner, intermediate, advanced",
+                    "goal_race_date must be YYYY-MM-DD", "Missing body"] {
+            XCTAssertEqual(PlanSetup.buildFailureLine(body: body(raw), failure: nil), fallback, raw)
+        }
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: Data("<html>502</html>".utf8), failure: nil), fallback)
+        // No answer: the network line; nothing at all: the fixed line.
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: nil, failure: URLError(.notConnectedToInternet)),
+                       NetworkText.planBuild.offline)
+        XCTAssertEqual(PlanSetup.buildFailureLine(body: nil, failure: nil), fallback)
+    }
+
     func testPlanChangeDayIsTheLocalDay() {
         let la = TimeZone(identifier: "America/Los_Angeles")!
         // 03:00 UTC on the 29th is 8 pm on the 28th in Los Angeles.
@@ -942,6 +960,29 @@ final class ScoraTests: XCTestCase {
         let moved = distanceSession("2026-11-04", km: 8, row: "r1")
         _ = await WatchReconcile.run(workouts: [r2, moved], coveredThrough: nil, ledger: WatchLedger(), scheduler: watch, today: "2026-11-03", now: reconcileNow)
         XCTAssertFalse(watch.scheduled.contains { WatchReconcile.day($0.at) == "2026-11-03" }, "found by id, not kept for r2's name")
+    }
+
+    @MainActor
+    func testAnIdCopyNamedInKmByAnOlderBuildIsStillTheSameSession() async {
+        // Builds from 2026-11-01 sent under the plan id but still named distances in km.
+        let w = distanceSession("2026-11-03", km: 8, row: "r1")
+        let kmName = "tempo · 45 min · 8 km"
+        let workout = try! WorkoutExport.customWorkout(steps: w.steps!, plannedType: w.type, displayName: kmName)
+        let record = WatchLedger(sends: [WatchSendRecord(date: w.date, name: kmName, rowId: "r1", steps: w.steps)])
+        for ledger in [record, WatchLedger()] {
+            let watch = FakeWatch()
+            watch.scheduled = [WatchCopy(name: kmName, at: at6(3), id: WatchPlanId.forSession(rowId: "r1"), workout: workout)]
+            let out = await WatchReconcile.run(workouts: [w], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+            XCTAssertEqual(watch.scheduled.map(\.name), [kmName], "the same session, written in km: left alone")
+            XCTAssertNil(out.note(for: w), "no false changed note")
+        }
+        // A really changed distance still goes.
+        let changed = distanceSession("2026-11-03", km: 10, row: "r1")
+        let watch = FakeWatch()
+        watch.scheduled = [WatchCopy(name: kmName, at: at6(3), id: WatchPlanId.forSession(rowId: "r1"), workout: workout)]
+        let out = await WatchReconcile.run(workouts: [changed], coveredThrough: nil, ledger: WatchLedger(), scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(watch.scheduled.isEmpty)
+        XCTAssertEqual(out.note(for: changed), WatchReconcile.changed)
     }
 
     func testWatchPlanIdIsAStableUUIDv5() {
