@@ -962,6 +962,29 @@ final class ScoraTests: XCTestCase {
         XCTAssertFalse(watch.scheduled.contains { WatchReconcile.day($0.at) == "2026-11-03" }, "found by id, not kept for r2's name")
     }
 
+    @MainActor
+    func testAnIdCopyNamedInKmByAnOlderBuildIsStillTheSameSession() async {
+        // Builds from 2026-11-01 sent under the plan id but still named distances in km.
+        let w = distanceSession("2026-11-03", km: 8, row: "r1")
+        let kmName = "tempo · 45 min · 8 km"
+        let workout = try! WorkoutExport.customWorkout(steps: w.steps!, plannedType: w.type, displayName: kmName)
+        let record = WatchLedger(sends: [WatchSendRecord(date: w.date, name: kmName, rowId: "r1", steps: w.steps)])
+        for ledger in [record, WatchLedger()] {
+            let watch = FakeWatch()
+            watch.scheduled = [WatchCopy(name: kmName, at: at6(3), id: WatchPlanId.forSession(rowId: "r1"), workout: workout)]
+            let out = await WatchReconcile.run(workouts: [w], coveredThrough: nil, ledger: ledger, scheduler: watch, today: "2026-11-03", now: reconcileNow)
+            XCTAssertEqual(watch.scheduled.map(\.name), [kmName], "the same session, written in km: left alone")
+            XCTAssertNil(out.note(for: w), "no false changed note")
+        }
+        // A really changed distance still goes.
+        let changed = distanceSession("2026-11-03", km: 10, row: "r1")
+        let watch = FakeWatch()
+        watch.scheduled = [WatchCopy(name: kmName, at: at6(3), id: WatchPlanId.forSession(rowId: "r1"), workout: workout)]
+        let out = await WatchReconcile.run(workouts: [changed], coveredThrough: nil, ledger: WatchLedger(), scheduler: watch, today: "2026-11-03", now: reconcileNow)
+        XCTAssertTrue(watch.scheduled.isEmpty)
+        XCTAssertEqual(out.note(for: changed), WatchReconcile.changed)
+    }
+
     func testWatchPlanIdIsAStableUUIDv5() {
         // RFC 4122 v5 of "www.example.com" in the DNS namespace.
         let dns = UUID(uuidString: "6ba7b810-9dad-11d1-80b4-00c04fd430c8")!

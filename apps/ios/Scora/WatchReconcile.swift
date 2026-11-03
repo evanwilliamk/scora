@@ -174,7 +174,7 @@ enum WatchReconcile {
       let sessions = workouts.filter { $0.date == d && $0.intensity != "rest" }
       let session = workouts.first { $0.rowId.map(WatchPlanId.forSession) == c.id }
       let record = ledger.sends.first { $0.date == d && $0.rowId.map(WatchPlanId.forSession) == c.id }
-      if let w = session, w.date == d, w.intensity != "rest", w.steps != nil, w.detail == c.name,
+      if let w = session, w.date == d, w.intensity != "rest", w.steps != nil, w.watchNames.contains(c.name),
          record?.steps == nil || record?.steps == w.steps { continue } // still the plan's session
       actions.append(.remove(day: d, name: c.name, id: c.id))
       if let record { ledger.sends.removeAll { $0 == record } }
