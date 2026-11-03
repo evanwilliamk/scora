@@ -730,6 +730,9 @@ struct DashboardView: View {
   // own translation on screen.
   private func loadExpansion(_ cardId: String) async {
     guard let url = URL(string: "\(apiBase)/api/card-expand") else { return }
+    #if DEBUG
+    if DemoMode.isOn { return } // the card keeps its own translation
+    #endif
     let generation = await MainActor.run { () -> Int in
       expanding.insert(cardId)
       return readGeneration
@@ -776,6 +779,8 @@ struct DashboardView: View {
     #if DEBUG
     if DemoMode.isOn {
       await MainActor.run {
+        ouraBanner = DemoMode.ouraBanner
+        if DemoMode.readFails { errorText = ReadFetch.failureLine; return }
         read = DemoMode.read
         // With sample SCORA sessions, the read carries today's line as the API would.
         if DemoMode.planSessions != nil { read?.today = "Today: 40-minute easy run." }

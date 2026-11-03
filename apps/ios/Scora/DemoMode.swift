@@ -87,7 +87,9 @@ enum DemoMode {
   static var cards: [DashboardCard]? {
     guard ProcessInfo.processInfo.arguments.contains("-demo-cards") else { return nil }
     return [
-      DashboardCard(id: "sleep", title: "Sleep", available: true, value: "7:12", unit: "hrs", translation: "Slept 7:12 last night, Oura score 84.", trend: "Oura 84", source: "Oura", cta: nil),
+      ouraMissing
+        ? DashboardCard(id: "sleep", title: "Sleep", available: false, value: nil, unit: nil, translation: nil, trend: nil, source: "Oura", cta: "Connect Oura to see sleep and recovery.")
+        : DashboardCard(id: "sleep", title: "Sleep", available: true, value: "7:12", unit: "hrs", translation: "Slept 7:12 last night, Oura score 84.", trend: "Oura 84", source: "Oura", cta: nil),
       DashboardCard(id: "training_load", title: "Training Load", available: true, value: "412", unit: "min", translation: "412 min over 7 days, up 3% on the week before.", trend: "+3% wk", source: "Strava", cta: nil),
       DashboardCard(id: "plan_today", title: "Plan today", available: true, value: "45", unit: "min", translation: "On your plan today: tempo, 45 min.", trend: "tempo", source: "Your plan", cta: nil),
     ]
@@ -107,6 +109,31 @@ enum DemoMode {
     let json = #"{"goal":"Half marathon","week":4,"weeks":12,"race_date":"2026-12-27","phases":[{"name":"Base","first_week":1,"last_week":4,"focus":"aerobic development","current":true},{"name":"Build","first_week":5,"last_week":9,"focus":"threshold work","current":false},{"name":"Sharpen","first_week":10,"last_week":12,"focus":"race pace and taper","current":false}]}"#
     return try? JSONDecoder().decode(PlanBlock.self, from: Data(json.utf8))
   }
+
+  // -demo-plan-changes (with -demo-plan-sessions): Your Plan lists two named
+  // plan changes, and All plan changes opens their history. Sample data only.
+  static var planChanges: [PlanAdaptation]? {
+    guard planSessions != nil, args.contains("-demo-plan-changes") else { return nil }
+    let json = #"{"adaptations":[{"id":"demo-a1","adaptation_type":"moved","reason_text":"Tuesday's tempo moved to Wednesday because you slept 5.5 hours Monday.","triggered_at":"2026-10-28T06:00:00.000Z"},{"id":"demo-a2","adaptation_type":"downgraded","reason_text":"Thursday's intervals became a steady run at the same duration because HRV was down 12% on the week.","triggered_at":"2026-10-23T06:00:00.000Z","dismissed":true}]}"#
+    return try? JSONDecoder().decode(PlanAdaptationsResponse.self, from: Data(json.utf8)).adaptations
+  }
+  // -demo-plan-fails: Your Plan's load fails, so its error line and Try again
+  // show. With -demo-plan-sessions, only the plan changes fail to load.
+  static var planFails: Bool { args.contains("-demo-plan-fails") }
+
+  // -demo-read-fails: the first read fails, so the dashboard shows its error line.
+  static var readFails: Bool { args.contains("-demo-read-fails") }
+
+  // -demo-oura-banner: the dashboard shows the notice for a just-linked Oura
+  // ring, as the scora://oura/success link would. It stays until tapped.
+  static var ouraBanner: OuraLinkResult? {
+    guard args.contains("-demo-oura-banner") else { return nil }
+    return OuraLinkResult(url: URL(string: "scora://oura/success")!)
+  }
+
+  // -demo-oura-missing (with -demo-cards): the Sleep card asks to connect
+  // Oura, as the API sends it before a ring is linked.
+  static var ouraMissing: Bool { args.contains("-demo-oura-missing") }
 
   static let week = WeekSoFar(
     days: zip(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], zip([40, 0, 80, 0, nil, nil, nil] as [Int?], [40, 0, 50, 45, 0, 100, 0])).enumerated().map { i, p in

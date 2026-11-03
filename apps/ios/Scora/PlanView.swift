@@ -237,7 +237,7 @@ struct PlanHistoryView: View {
       .background(Color.black)
       .navigationTitle("Plan changes")
       .navigationBarTitleDisplayMode(.inline)
-      .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+      .toolbar { ToolbarItem(placement: .confirmationAction) { Button { dismiss() } label: { Text("Done").minTapTarget() } } }
     }
     .preferredColorScheme(.dark)
   }
@@ -800,7 +800,7 @@ struct PlanView: View {
           if loadFailed {
             VStack(alignment: .leading, spacing: 6) {
               Text(PlanSheet.loadFailed).font(.footnote).foregroundColor(.gray)
-              Button("Try again") { Task { await loadPlan() } }
+              Button { Task { await loadPlan() } } label: { Text("Try again").minTapTarget() }
                 .font(.footnote).foregroundColor(.orange)
             }
           }
@@ -905,6 +905,7 @@ struct PlanView: View {
             Text("Save plan").bold()
           }
           .padding(.horizontal, 18).padding(.vertical, 10)
+          .frame(minHeight: 44)
           .background(Color.orange).foregroundColor(.black).cornerRadius(8)
         }
         .disabled(isSaving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -934,6 +935,7 @@ struct PlanView: View {
             Text("Import").bold()
           }
           .padding(.horizontal, 14).padding(.vertical, 10)
+          .frame(minHeight: 44)
           .background(Color.orange).foregroundColor(.black).cornerRadius(8)
         }
         .disabled(isImporting || CalendarFeed.normalizedURL(feedLink) == nil)
@@ -974,19 +976,19 @@ struct PlanView: View {
       if extras.changesFailed {
         VStack(alignment: .leading, spacing: 6) {
           Text(PlanSheet.changesFailed).font(.footnote).foregroundColor(.gray)
-          Button("Try again") { Task { await loadChanges() } }
+          Button { Task { await loadChanges() } } label: { Text("Try again").minTapTarget() }
             .font(.footnote).foregroundColor(.orange)
         }
       }
       if extras.changesOn {
-        Button("All plan changes") {
+        Button {
           Task {
             let loaded = await loadHistory()
             await MainActor.run {
               if loaded { showHistory = true } else { note = "Plan changes did not load. Try again in a moment." }
             }
           }
-        }
+        } label: { Text("All plan changes").minTapTarget() }
           .font(.footnote).foregroundColor(.orange)
           .sheet(isPresented: $showHistory) { PlanHistoryView(rows: history) }
       }
@@ -1160,7 +1162,15 @@ struct PlanView: View {
     if let demo = DemoMode.planSessions {
       var past = PlanWorkout(date: PlanDay.today(Date().addingTimeInterval(-2 * 86_400)), type: "run", intensity: "tempo", durationMin: 45, distanceKm: nil, description: nil)
       past.rowId = "demo-past"
-      await MainActor.run { workouts = demo; extras.unmarked = [past]; planLoaded = true; loadFailed = false }
+      await MainActor.run {
+        workouts = demo; extras.unmarked = [past]; planLoaded = true; loadFailed = false
+        if let changes = DemoMode.planChanges { extras.changes = PlanChanges.visible(changes); extras.changesOn = true }
+        extras.changesFailed = DemoMode.planFails
+      }
+      return
+    }
+    if DemoMode.isOn {
+      await MainActor.run { planLoaded = !DemoMode.planFails; loadFailed = DemoMode.planFails }
       return
     }
     #endif
@@ -1194,6 +1204,9 @@ struct PlanView: View {
   // Named plan changes. The endpoint is off (404) until plan adaptations are
   // switched on; then the list simply stays empty.
   private func loadChanges() async {
+    #if DEBUG
+    if DemoMode.isOn { return }
+    #endif
     var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
     guard let url = comps?.url else { return }
@@ -1213,6 +1226,10 @@ struct PlanView: View {
 
   // True once the history arrived; a failed load must not read as "no changes".
   private func loadHistory() async -> Bool {
+    #if DEBUG
+    if let demo = DemoMode.planChanges { await MainActor.run { history = PlanChanges.history(demo) }; return true }
+    if DemoMode.isOn { return false }
+    #endif
     var comps = URLComponents(string: "\(apiBase)/api/plan/adaptations/history")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId)]
     guard let url = comps?.url,
@@ -1227,6 +1244,12 @@ struct PlanView: View {
   private func dismissChange(_ c: PlanAdaptation) async {
     guard let url = URL(string: "\(apiBase)/api/plan/adaptations/\(c.id)/dismiss") else { return }
     guard await MainActor.run(body: { dismissals.begin(c.id) }) else { return }
+    #if DEBUG
+    if DemoMode.isOn {
+      await MainActor.run { dismissals.finish(c.id, error: nil); extras.changes = PlanChanges.dismissing(c.id, from: extras.changes) }
+      return
+    }
+    #endif
     var req = URLRequest(url: url)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1248,6 +1271,9 @@ struct PlanView: View {
 
   // Off (404) until predictions are switched on; then shown above the plan.
   private func loadPrediction() async {
+    #if DEBUG
+    if DemoMode.isOn { return }
+    #endif
     var comps = URLComponents(string: "\(apiBase)/api/plan/prediction")
     comps?.queryItems = [URLQueryItem(name: "athleteId", value: tokenManager.athleteId), URLQueryItem(name: "today", value: PlanDay.today())]
     guard let url = comps?.url,
