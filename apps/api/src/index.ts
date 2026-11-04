@@ -16,7 +16,7 @@ import {
   fetchOuraSummary,
   OURA_CLIENT_ID,
 } from './oura';
-import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from './usage';
+import { athleteQuotaDay, cdvQuotaSpent, consumeCdvQuota, pingDatabase, refundCdvQuota, type CdvQuota } from './usage';
 import { generateValidatedVoice, OPENAI_TIMEOUT_MS } from './voice';
 import { checkCdvWithRetry, cdvEmission, cdvTextOk } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
@@ -268,6 +268,12 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
 // What chat says when OpenAI is down: no number, no advice, checked like any
 // other chat reply before it is sent.
 const CDV_OUTAGE_REPLY = 'No answer could be reached just now, so nothing is shown for this question.';
+const cdvLimitReply = (quota: CdvQuota) => ({
+  error: `You've used your ${quota.limit} chats for today. Resets tomorrow.`,
+  used: quota.used,
+  limit: quota.limit,
+  remaining: 0,
+});
 
 fastify.post('/api/cdv', async (request, reply) => {
   try {
@@ -281,6 +287,17 @@ fastify.post('/api/cdv', async (request, reply) => {
     }
     if (message.length > 1000) {
       return reply.code(400).send({ error: 'Message is too long (1000 characters at most).' });
+    }
+
+    // Already at the limit: refuse before any Strava call. The count itself is
+    // taken below, once the data is in hand. Fail-open like that count.
+    let cdvDay: string | null = null;
+    try {
+      cdvDay = await athleteQuotaDay(String(athleteId), body.today);
+      const spent = await cdvQuotaSpent(athleteId, undefined, undefined, cdvDay);
+      if (spent) return reply.code(429).send(cdvLimitReply(spent));
+    } catch (e) {
+      fastify.log.error({ err: e }, 'CDV quota peek failed: going on (fail-open)');
     }
 
     // Resolve a valid token from storage, auto-refreshing if expired.
@@ -446,17 +463,12 @@ Answer THIS question specifically using the data above. If the data can't answer
     // breaking the chat. A soft cap must never take down core functionality.
     let quota = null;
     try {
-      quota = await consumeCdvQuota(athleteId, undefined, undefined, await athleteQuotaDay(String(athleteId), (request.body as any)?.today));
+      quota = await consumeCdvQuota(athleteId, undefined, undefined, cdvDay ?? await athleteQuotaDay(String(athleteId), body.today));
     } catch (e) {
       fastify.log.error({ err: e }, 'CDV quota check failed: allowing query (fail-open)');
     }
     if (quota && !quota.allowed) {
-      return reply.code(429).send({
-        error: `You've used your ${quota.limit} chats for today. Resets tomorrow.`,
-        used: quota.used,
-        limit: quota.limit,
-        remaining: 0,
-      });
+      return reply.code(429).send(cdvLimitReply(quota));
     }
 
     const askModel = async (user: string): Promise<string> => {
@@ -550,6 +562,10 @@ Answer THIS question specifically using the data above. If the data can't answer
   }
 });
 
+// Fixed labels only: a failed Oura route leaves its values empty, and without
+// this line a rate limit would look like a ring with no data.
+const ouraRouteFailed = (route: string, kind: string) => fastify.log.warn({ route, kind }, 'Oura route failed');
+
 // Daily read — the free-tier core. Returns Today's Read (the voice) plus the
 // six dashboard cards, all computed from the athlete's real Strava data.
 fastify.post('/api/read', async (request, reply) => {
@@ -582,7 +598,7 @@ fastify.post('/api/read', async (request, reply) => {
       // must not ask the athlete to connect a ring that is connected.
       if (!token.ok) return { connected: vendorIsTransient(token.error), summary: null, error: token.error };
       try {
-        return { connected: true, summary: await fetchOuraSummary(token.value, { localToday: day }), error: null };
+        return { connected: true, summary: await fetchOuraSummary(token.value, { localToday: day, onFailure: ouraRouteFailed }), error: null };
       } catch (e) {
         return { connected: true, summary: null, error: e as unknown };
       }
@@ -1365,7 +1381,7 @@ fastify.post('/api/weekly', async (request, reply) => {
     let ouraSummary = null;
     try {
       const ouraToken = await getValidOuraToken(athleteId);
-      ouraSummary = await fetchOuraSummary(ouraToken, { localToday: today });
+      ouraSummary = await fetchOuraSummary(ouraToken, { localToday: today, onFailure: ouraRouteFailed });
     } catch {
       // Oura optional — weekly read works on Strava alone.
     }

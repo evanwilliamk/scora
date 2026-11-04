@@ -107,6 +107,22 @@ async function readCount(supabase: Pick<SupabaseClient, 'from'>, athleteId: stri
   return data as { cdv_count: number | null; cdv_count_date: string | null };
 }
 
+// Read-only: the refusal when today's queries are already spent, else null.
+// The route asks this before pulling from Strava, so a capped athlete tapping
+// send again spends no call of the application's shared Strava limit.
+export async function cdvQuotaSpent(
+  athleteId: string,
+  limit: number = FREE_CDV_DAILY_LIMIT,
+  supabase: Pick<SupabaseClient, 'from'> = getSupabase(),
+  today: string = todayStr()
+): Promise<CdvQuota | null> {
+  const athlete = await readCount(supabase, athleteId);
+  if (!athlete) return null;
+  const day = athlete.cdv_count_date && athlete.cdv_count_date > today ? athlete.cdv_count_date : today;
+  const used = athlete.cdv_count_date === day ? athlete.cdv_count ?? 0 : 0;
+  return used >= limit ? { allowed: false, used, remaining: 0, limit, day } : null;
+}
+
 // Check the athlete's CDV usage for today and, if under the limit, count this
 // query. Returns whether the call is allowed plus usage numbers for the UI.
 //

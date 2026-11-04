@@ -149,6 +149,8 @@ test('chat quota: a spent day is a 429 and the model is never asked', async () =
 
 test('chat: a clean answer counts one query and draws the chart from the activities', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
+  // Read first by the limit check, before any Strava call.
+  connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
   guard.stravaActivities(twoWeeks());
@@ -170,6 +172,8 @@ test('chat: a clean answer counts one query and draws the chart from the activit
 test('chat: a failed model call is a plain sentence, one logged fallback, and gives the query back', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
   // Token lookup, quota, its count, then the refund's own read of the counted row.
+  // Read first by the limit check, before any Strava call.
+  connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
   rest.answer('athletes', { body: [{ strava_id: '42' }] });
@@ -190,6 +194,8 @@ test('chat: a failed model call is a plain sentence, one logged fallback, and gi
 
 test('chat: a refund the count no longer allows is not reported as one (review 11-02 late)', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
+  // Read first by the limit check, before any Strava call.
+  connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
   connected({ cdv_count: 1, cdv_count_date: today });
   rest.answer('athletes', { body: [{ strava_id: '42' }] });
@@ -206,6 +212,8 @@ test('chat: a refund the count no longer allows is not reported as one (review 1
 
 test('chat: a model reply with no text is an outage, logged once and refunded (review 11-02 late)', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
+  // Read first by the limit check, before any Strava call.
+  connected({ cdv_count: 0, cdv_count_date: today });
   connected({ cdv_count: 0, cdv_count_date: today });
   connected({ cdv_count: 0, cdv_count_date: today });
   rest.answer('athletes', { body: [{ strava_id: '42' }] });
