@@ -195,7 +195,7 @@ struct AppleWatchScheduler: WatchScheduling {
     }
   }
   func schedule(_ workout: CustomWorkout, id: UUID?, at date: DateComponents) async {
-    await WorkoutScheduler.shared.schedule(WorkoutPlan(.custom(workout), id: id ?? UUID()), at: date)
+    await WorkoutScheduler.shared.schedule(WorkoutPlan(.custom(workout), id: id ?? UUID()), at: WatchSend.labeled(date))
   }
 }
 
@@ -227,8 +227,10 @@ enum WatchSend {
 
   // 06:00 on the plan's date (the default read time). For today once 06:00
   // has passed, a minute from now, so the session is never set in the past;
-  // in the day's last minute, 23:59:59, so it stays on its day.
+  // in the day's last minute, 23:59:59, so it stays on its day. The plan's
+  // date is Gregorian, so only the zone comes from `calendar`.
   static func scheduleTime(for date: String, now: Date = Date(), calendar: Calendar = .current) -> DateComponents? {
+    let calendar = PlanDay.gregorian(zone: calendar.timeZone)
     let parts = date.split(separator: "-").compactMap { Int($0) }
     guard parts.count == 3 else { return nil }
     let six = DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 6, minute: 0)
@@ -241,23 +243,34 @@ enum WatchSend {
     return DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 23, minute: 59, second: 59)
   }
 
+  // The times above are Gregorian. A phone on another calendar would read bare
+  // components as its own year, so they say which calendar they are in. A
+  // Gregorian phone sends them as they are.
+  static func labeled(_ c: DateComponents, phone: Calendar = .current) -> DateComponents {
+    guard phone.identifier != .gregorian else { return c }
+    var out = c
+    out.calendar = PlanDay.gregorian(zone: phone.timeZone)
+    return out
+  }
+
   // `rowId`: the session's plan row; its copy is sent under that row's
   // WatchPlanId. `replacing`: the name this session was last sent under
   // (WatchLedger keeps it per session), for a copy an older build sent.
   static func send(
     steps: [PlanStep], type: String, date: String, displayName: String, dayLabel: String,
-    rowId: String? = nil, replacing: String? = nil, scheduler: WatchScheduling, now: Date = Date()
+    rowId: String? = nil, replacing: String? = nil, scheduler: WatchScheduling, now: Date = Date(),
+    calendar: Calendar = .current
   ) async -> Outcome {
     guard scheduler.isSupported else { return .unsupported }
     guard let workout = try? WorkoutExport.customWorkout(steps: steps, plannedType: type, displayName: displayName)
     else { return .cannotCopy }
-    guard let when = scheduleTime(for: date, now: now) else {
+    guard let when = scheduleTime(for: date, now: now, calendar: calendar) else {
       // A screen left open overnight still shows yesterday's session.
       return day(date) != nil ? .dayPassed(dayLabel) : .cannotCopy
     }
     guard await scheduler.authorize() else { return .notAuthorized }
     let id = rowId.map(WatchPlanId.forSession)
-    let today = WatchReconcile.day(Calendar.current.dateComponents([.year, .month, .day], from: now)) ?? date
+    let today = PlanDay.today(now, zone: calendar.timeZone)
     // Sending again replaces this session's earlier copy: by its id on any
     // day from today (it may have moved), or, for a copy an older build sent
     // (no derived id), by that day and its name or the older name it was
@@ -267,7 +280,7 @@ enum WatchSend {
     await scheduler.removeScheduled { c in
       if let id, c.id == id { return (WatchReconcile.day(c.at) ?? "") >= today }
       guard !WatchPlanId.isDerived(c.id) else { return false }
-      return c.at.year == when.year && c.at.month == when.month && c.at.day == when.day
+      return WatchReconcile.day(c.at) == WatchReconcile.day(when)
         && (c.name == displayName || c.name == replacing)
     }
     guard await scheduler.scheduledCount() < scheduler.maxScheduled else { return .full }

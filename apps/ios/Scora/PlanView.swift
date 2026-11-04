@@ -65,6 +65,7 @@ struct PlanWorkout: Decodable, Identifiable, Equatable {
     parse.dateFormat = "yyyy-MM-dd"
     guard let d = parse.date(from: date) else { return date }
     let out = DateFormatter()
+    out.locale = Locale(identifier: "en_US_POSIX") // the app's other day labels do the same
     out.timeZone = TimeZone(identifier: "UTC")
     out.dateFormat = "EEE MMM d"
     return out.string(from: d)
@@ -292,13 +293,28 @@ struct PredictionResponse: Decodable {
 }
 
 enum PlanDay {
-  // Today in the athlete's own zone, so "Tue" resolves to their Tuesday.
-  static func today(_ now: Date = Date(), zone: TimeZone = .current) -> String {
+  // Plan, API and HealthKit days are Gregorian whatever the phone's calendar
+  // (Buddhist 2569, Japanese Reiwa 8). Only the zone comes from the phone.
+  static func gregorian(zone: TimeZone = .current) -> Calendar {
+    var c = Calendar(identifier: .gregorian)
+    c.timeZone = zone
+    return c
+  }
+
+  // yyyy-MM-dd for the wire and for day keys. The calendar is set after the
+  // locale, since setting a locale replaces the formatter's calendar.
+  static func dayFormatter(zone: TimeZone = .current) -> DateFormatter {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
+    f.calendar = gregorian(zone: zone)
     f.timeZone = zone
     f.dateFormat = "yyyy-MM-dd"
-    return f.string(from: now)
+    return f
+  }
+
+  // Today in the athlete's own zone, so "Tue" resolves to their Tuesday.
+  static func today(_ now: Date = Date(), zone: TimeZone = .current) -> String {
+    dayFormatter(zone: zone).string(from: now)
   }
 
   // Sessions from today on, first 14, for the list after a save.
@@ -433,7 +449,8 @@ enum PlanSetup {
   // earliestRace, so the picker's range stays valid.
   static func raceRange(from now: Date = Date(), minWeeks: Int = 0, calendar: Calendar = .current) -> ClosedRange<Date> {
     let earliest = earliestRace(from: now, minWeeks: minWeeks, calendar: calendar)
-    let latest = calendar.date(byAdding: .year, value: 1, to: calendar.startOfDay(for: now))!
+    // A Gregorian year, as the API counts it: a Hebrew leap year runs about 385 days.
+    let latest = PlanDay.gregorian(zone: calendar.timeZone).date(byAdding: .year, value: 1, to: calendar.startOfDay(for: now))!
     return earliest...max(earliest, latest)
   }
 

@@ -980,3 +980,10 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: one in-process cooldown to the next quarter hour, or midnight UTC if the daily count is spent. Reads answer "Strava is not answering right now." meanwhile and the scheduler retries inside its late window. Alternative: serve the last pull, which needs a store that does not exist yet.
 - Why: small, no new service, and it saves the daily count for when the window turns. Athletes past the 120-minute late window lose that day's push either way.
 - To reverse: remove the check at the top of `stravaFetch` in apps/api/src/strava.ts.
+### 2026-11-04: Plan day labels read in English on every phone
+- Status: DECIDED
+- Branch: claude/ios-locale-1104
+- Context: `PlanWorkout.dayLabel` was the one day label using the phone's locale and calendar, so an Islamic calendar phone saw a different month and day than the plan's date, next to English labels everywhere else.
+- Choice: fixed Gregorian English ("Tue Oct 20"), like the other labels. Alternative: Gregorian but in the phone's language.
+- Why: the app has no translations yet, and one translated label in an English screen reads as a bug. A US phone sees no change.
+- To reverse: in `dayLabel`, set `out.calendar` to Gregorian and drop the `en_US_POSIX` locale.

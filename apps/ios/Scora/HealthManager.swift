@@ -128,12 +128,9 @@ enum HealthNights {
   }
 
   private static func dayFormatter(_ calendar: Calendar) -> DateFormatter {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = calendar.timeZone
-    f.calendar = calendar
-    f.dateFormat = "yyyy-MM-dd"
-    return f
+    // Only the zone: night keys go to the API and match localToday, so they
+    // stay Gregorian on a Buddhist or Japanese calendar phone.
+    PlanDay.dayFormatter(zone: calendar.timeZone)
   }
 
   // Last night is the night whose wake day is today, from the grouped nights,
@@ -185,11 +182,7 @@ enum HealthNights {
   }
 
   static func localToday(_ calendar: Calendar = .current, now: Date = Date()) -> String {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = calendar.timeZone
-    f.dateFormat = "yyyy-MM-dd"
-    return f.string(from: now)
+    PlanDay.today(now, zone: calendar.timeZone)
   }
 }
 

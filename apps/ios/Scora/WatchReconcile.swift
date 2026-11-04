@@ -124,7 +124,12 @@ enum WatchReconcile {
 
   static func key(_ w: PlanWorkout) -> String { w.rowId.map { "row:\($0)" } ?? "day:\(w.date)" }
 
+  // Components labeled with another calendar are converted, so a day is always
+  // the plan's Gregorian day.
   static func day(_ c: DateComponents) -> String? {
+    if let cal = c.calendar, cal.identifier != .gregorian, let at = cal.date(from: c) {
+      return PlanDay.today(at, zone: c.timeZone ?? cal.timeZone)
+    }
     guard let y = c.year, let m = c.month, let d = c.day else { return nil }
     return String(format: "%04d-%02d-%02d", y, m, d)
   }

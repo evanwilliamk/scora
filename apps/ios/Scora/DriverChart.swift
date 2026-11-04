@@ -33,10 +33,7 @@ struct DriverSeries: Decodable, Identifiable, Equatable {
   var isDailyTotal: Bool { key == "load" || key == "volume" || unit == "days" }
 
   static func localDay(_ s: String, zone: TimeZone = .current) -> Date? {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = zone
-    f.dateFormat = "yyyy-MM-dd"
+    let f = PlanDay.dayFormatter(zone: zone)
     f.isLenient = false
     return f.date(from: s)
   }
