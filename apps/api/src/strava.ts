@@ -123,7 +123,9 @@ async function stravaFetch(url: string, init: RequestInit, fetchImpl: typeof fet
   const res = await fetchImpl(url, init);
   if (res.status === 429) {
     const now = Date.now();
-    stravaCooldownUntil = stravaCooldownEnd(res.headers, now);
+    // Never shorter: answers to calls already out can arrive after a daily 429,
+    // and one without headers would read as a 15-minute limit.
+    stravaCooldownUntil = Math.max(stravaCooldownUntil, stravaCooldownEnd(res.headers, now));
     console.warn(vendorLimitLine('Strava', Math.ceil((stravaCooldownUntil - now) / 60_000)));
   }
   return res;

@@ -67,3 +67,22 @@ test('the limit is logged once, with no athlete and no token', async () => {
   assert.equal(warn.mock.callCount(), 1);
   assert.equal(warn.mock.calls[0].arguments[0], 'telemetry {"event":"vendor_limit","vendor":"Strava","wait_min":8}');
 });
+
+test('a later 429 with no headers does not shorten a daily wait', async () => {
+  let answer: (r: Response) => void = () => {};
+  const slow = (async () => new Promise<Response>((r) => { answer = r; })) as unknown as typeof fetch;
+  // Asked before the first 429 came back, so it is past the cooldown check.
+  const inFlight = fetchActivitiesSince('tok-b', 0, slow);
+  const daily = { 'X-RateLimit-Limit': '100,1000', 'X-RateLimit-Usage': '100,1000' };
+  await rejects429(fetchActivitiesSince('tok-a', 0, (async () => limited(daily)) as unknown as typeof fetch));
+  answer(limited());
+  await rejects429(inFlight);
+
+  mock.restoreAll();
+  mock.method(console, 'warn', () => {});
+  // The next quarter hour: the 15-minute window has turned, the day has not.
+  mock.method(Date, 'now', () => Date.UTC(2026, 10, 4, 6, 15));
+  let asked = 0;
+  await rejects429(fetchActivitiesSince('tok-c', 0, (async () => { asked++; return new Response('[]'); }) as unknown as typeof fetch));
+  assert.equal(asked, 0);
+});
