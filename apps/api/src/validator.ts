@@ -156,19 +156,40 @@ const WINDOW_PHRASE = /(?<![\d.:,])(\d+)(?:\s?d\b|[\s-]days?\b|\s+full\s+days?\b
 // a row"), which is a claim and must be backed.
 const VOICE_NIGHT_AVERAGE = /(?<![\d.:,])(\d+)[\s-]nights?\s+(?:average|avg|baseline|mean)\b/gi;
 
+// Cyrillic letters drawn the same as Latin ones.
+const LOOKALIKE: Record<string, string> = { \u0430: 'a', \u0435: 'e', \u043E: 'o', \u0440: 'p', \u0441: 'c', \u0443: 'y', \u0445: 'x', \u0456: 'i', \u0410: 'A', \u0415: 'E', \u041E: 'O', \u0420: 'P', \u0421: 'C', \u0422: 'T', \u0425: 'X' };
+
 // What the checks read: the model's typography folded to plain text, so a
 // curly apostrophe ("I’m your coach"), a doubled or non-breaking space
-// ("you  should"), fullwidth or Arabic-Indic digits ("９９", "٩٩") and "½"
-// match like their plain forms. The voice itself is never changed.
+// ("you  should"), fullwidth or Arabic-Indic digits ("９９", "٩٩"), "½", a
+// zero-width or soft hyphen ("you\u200Bshould"), an accent and a look-alike
+// letter match like their plain forms. The voice itself is never changed.
 export function normalizeForCheck(text: string): string {
   return text
+    .normalize('NFKD')
+    .replace(/[\p{M}\p{Cf}]/gu, '')
     .normalize('NFKC')
+    .replace(/[\u0430\u0435\u043E\u0440\u0441\u0443\u0445\u0456\u0410\u0415\u041E\u0420\u0421\u0422\u0425]/g, (c) => LOOKALIKE[c])
+    .replace(/[\u2010-\u2012]/g, '-')
     .replace(/[\u2018\u2019\u201B\u02BC\u2032]/g, "'")
     .replace(/[\u201C\u201D\u201F\u2033]/g, '"')
     .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
     .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
     .replace(/\u2044/g, '/')
     .replace(/\s+/g, ' ');
+}
+
+// What the phrase bans read, on top of that: markup and line layout gone, so a
+// clause still starts where the athlete sees one ("**Go easy.**", a bullet, a
+// line break with no period), and "A.I." reads as "AI". Numbers are read from
+// normalizeForCheck, unchanged by this.
+function textForBans(rawVoice: string): string {
+  return normalizeForCheck(rawVoice.replace(/\s*\n\s*/g, '. '))
+    .replace(/[*_`"]/g, '')
+    .replace(/\ba\.i\.(?=[\s,;:]|$)/gi, 'AI')
+    .replace(/\.{2,}\s*/g, '. ')
+    .replace(/(^|[.;!?]\s+)[-•‣]\s+/g, '$1')
+    .trim();
 }
 
 // Numbers written as words are numbers too: "fifty-two", "seven hours".
@@ -212,11 +233,12 @@ function unitPairs(text: string): [string, string, string][] {
 // Check a generated voice string against the drivers it was allowed to cite.
 export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationResult {
   const voice = normalizeForCheck(rawVoice);
+  const banText = textForBans(rawVoice);
   const bannedHits: string[] = [];
   for (const { re, label } of BANNED_PATTERNS) {
-    if (re.test(voice)) bannedHits.push(label);
+    if (re.test(banText)) bannedHits.push(label);
   }
-  if (drivers.some((d) => d.metric === PLAN_DRIVER_METRIC) && PLAN_OVERRIDE.test(voice) && !overrideIsObservation(voice, drivers)) {
+  if (drivers.some((d) => d.metric === PLAN_DRIVER_METRIC) && PLAN_OVERRIDE.test(banText) && !overrideIsObservation(banText, drivers)) {
     bannedHits.push('plan override');
   }
   if (EXCLAMATION.test(voice)) bannedHits.push('exclamation point');
