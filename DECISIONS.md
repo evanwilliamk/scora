@@ -2,6 +2,14 @@
 
 Decision log for agent work on SCORA. Product decisions from April 2026 live in `01_SCORA_90-Day_Execution_Plan_v1_4.md` §8. Newest first.
 
+### 2026-11-04: A calendar's "1h 30 easy" keeps no duration
+- Status: DECIDED
+- Branch: claude/parser-fuzz-1104
+- Context: "Ride 2 hours 40 km" kept 160 minutes and "1 hour 3 intervals" kept 63, because any number after hours was read as minutes.
+- Choice: a bare number after a space is minutes only when no word follows it. "1h30 ride", "1 hr 15 min" and "1 hr 15" still read as before; "2 hours 40 km" is 120. "1h 30 easy" keeps no duration, since the words cannot tell it from "1 hour 3 intervals". Alternative: read it as 90 and list the words that count something else.
+- Why: no number is the file's rule when one is not clear, and a wrong number is worse than a missing one.
+- To reverse: the `unclear` line in `durations` (plan-ical.ts) and the third branch of `HOURS_MINUTES` (plan-parse.ts).
+
 ### 2026-10-22: Dismissing a plan change (doc 07 v2 §5)
 - Status: DECIDED (reversible)
 - Branch: claude/dismiss-adaptation
