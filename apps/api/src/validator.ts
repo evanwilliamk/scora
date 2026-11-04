@@ -18,12 +18,18 @@ export interface ValidationResult {
 // interpretation. "coach" is only flagged in self-referential forms (§4.2
 // allows third-person "most coaches would…"), which shouldn't appear in a read.
 const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
-  { re: /\b(your|an?)\s+ai[\s-]+coach\b/i, label: 'ai coach' },
+  { re: /\b(your|an?)\s+ai[\s\-–]+(?:\w+\s+)?coach\b|\byour\s+(?:virtual|digital|robot)\s+(?:\w+\s+)?coach\b/i, label: 'ai coach' },
   // "I'm your coach", "I'm a coach", "I am an endurance coach", "SCORA is your coach".
   // The athlete's real coach as the subject stays allowed (Coach tier): "As
   // your coach planned it", "Sarah has been coaching you".
   {
     re: /\b(i'?m|i am)\s+your\s+(?:\w+\s+)?coach\b|\bas\s+your\s+(?:\w+\s+)?coach\b(?!'s|\s+(?:has|had|planned|plans|wrote|writes|set|sets|put|built|scheduled|noted|said|says|moved|added|laid|asked|called|mentioned|marked|expects|expected|intended|wants|wanted)\b)|\b(?:i'?m|i am|scora is)\s+(?:your|an?)\s+(?:\w+\s+)?coach\b|\byour coach here\b|\b(?:i'?m|i am|i'?ve been|i have been|i'?ll be|i will be|i'?ll keep|we'?re|scora is|scora'?s)\s+coaching you\b|(?:^|[.;!?]\s+)coaching you\b/i,
+    label: 'coach self-reference',
+  },
+  // The same claim in other words. The athlete's real coach as the subject stays
+  // allowed ("Sarah coaches you", "Your trainer's note").
+  {
+    re: /\b(?:i'?m|i am|scora is)\s+(?:your|an?)\s+(?:\w+\s+)?trainer\b|\bas\s+your\s+(?:\w+\s+)?trainer\b(?!'s)|\bconsider me your\b|\b(?:i|i'?ll|i will|i can|here to|scora|scora will|let me)\s+coach(?:es)?\s+you\b|(?:^|[.;!?]\s+)coach here\b|\b(?:my|our|scora'?s)\s+coaching\b/i,
     label: 'coach self-reference',
   },
   { re: /\bas an ai\b|\b(?:i'?m|i am) an ai\b/i, label: 'as an ai' },
@@ -40,9 +46,22 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /(?<!\b(?:long|short|some|more|enough|the) )\btime to (run|go|get|train|rest|back off|ease|recover|push|hit|take|cut|pull back|hold back|dial|slow|sleep)\b/i, label: 'workout imperative' },
   { re: /\bdoes that sound (?:right|fair|good|ok|okay)\b|\blet me know what you think\b|\b(?:you (?:may|might|could) be right|fair point\b(?! of)|i could be wrong|i may be wrong|i might be wrong)\b/i, label: 'authority surrender' },
   { re: /\b(let me know if that )?resonate/i, label: 'authority surrender' },
-  { re: /\bgood catch\b/i, label: 'sycophantic flip' },
-  { re: /\byou'?re right,? i\b/i, label: 'sycophantic flip' },
+  { re: /\bwhat do you think\b|\bdoes (?:that|this) (?:make sense|feel right|track|land|fit|match)\b|\bhow does (?:that|this) (?:sound|feel|land)\b|(?:^|[.;!?]\s+)(?:sounds? good|makes? sense|sounds? right)\?|\byou know your body\b/i, label: 'authority surrender' },
+  { re: /\b(?:good|great|nice) catch\b/i, label: 'sycophantic flip' },
+  // "You're right where the plan expects" and "at the top of your range" stay
+  // allowed: a flip is "you're right" alone, or about what the athlete said.
+  { re: /\byou(?:'re| are) right(?:[,.;:!?]|$| about\b| that\b| to\b)/i, label: 'sycophantic flip' },
+  {
+    re: /(?:^|[.;!?]\s+)(?:good|great|fair|valid|nice) point\b|\bthat'?s an? (?:good|great|fair|valid) point\b|\byou (?:make|made|raise|have) a (?:\w+ )?point\b|\bfair enough\b|\bpoint taken\b|\bi stand corrected\b|\bmy (?:mistake|bad|error|apologies)\b|\bi apologi[sz]e\b|\bsorry,? (?:i|about|for|that)\b|\bi (?:was|am) wrong\b|\bi'?m wrong\b|\bi got (?:that|it|this) wrong\b|\bi (?:undersold|oversold|overstated|understated|misread|misjudged|misspoke|missed that)\b|\blet me (?:revise|reconsider|rethink|correct|rephrase|walk that back)\b|\bon second thought\b|\bi take that back\b|\bnow that you mention\b|\byou(?:'ve| have)? convinced me\b/i,
+    label: 'sycophantic flip',
+  },
   { re: /\b(medical|diagnos|prescri[bp])/i, label: 'clinical claim' },
+  // Naming a condition, or reading one out of the data (§11). An illness the
+  // athlete logged may still be named: "Illness is marked on your plan".
+  {
+    re: /\b(?:overtraining|overtrained|an(?:a)?emi[ac]\w*|sleep apn(?:o)?ea|insomnia|stress fracture|tendin[io]\w*tis|arrhythmia|a-?fib|symptoms?)\b|\b(?:getting|coming down with|fighting(?: off)?|battling)\s+(?:sick\b|ill\b|something\b|an? (?:infection|illness|bug|virus|cold|flu)\b|the flu\b)|\b(?:signs?|indicat\w+|suggest\w*|points? to|means?|consistent with)\b[^.;!?]{0,20}\b(?:illness|injury|infection|sick\w*)\b/i,
+    label: 'clinical claim',
+  },
   // Advice in other words (CLAUDE.md §1.1, §3.1): "Aim for 45 minutes",
   // "Consider a rest day", "It's a good day to run long", "Make sure to sleep".
   {
@@ -112,7 +131,7 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
   { re: /\breplac(?:e|es|ed|ing) (?:your|a|the) coach\b/i, label: 'anti-coach' },
   {
-    re: /\b(crush(?:ed|ing)? it|smash(?:ed|ing)?|beast[\s-]mode|let'?s go|keep it up|great job|amazing|you'?ve got this|nail(?:ed)? it|let'?s crush)\b/i,
+    re: /\b(crush(?:ed|es|ing)?|smash(?:ed|ing)?|beast|let'?s go+|keep it up|great (?:job|work)|nice (?:job|work)|amazing|awesome|you(?:'ve| have)? got this|nail(?:ed)? it|get after it|let'?s (?:do (?:this|it)|get it)|lfg|kill(?:ing|ed)? it|you'?re on fire|no excuses|no pain,? no gain|you dominat\w+)\b|(?:^|[.;!?]\s+)(?:good job|way to go)\b/i,
     label: 'hype',
   },
 ];
