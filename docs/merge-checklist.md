@@ -43,6 +43,14 @@ From 2026-11-02 (no new migration, flag or env var):
 - Plan setup (new app build) asks weekly volume in miles and posts `current_weekly_km` converted to km at two decimals; the API contract (km, 0 to 500) is unchanged, so older builds keep working.
 - DEBUG builds only, never in release: new launch arguments `-demo-signin`, `-demo-onboarding`, `-demo-onboarding-step <oura|health|plan|delivery|done>` and `-demo-delivery-fails` (UI tests use them).
 
+From 2026-11-04 (one new migration, section 1 item 16; no new flag or env var):
+
+- The voice validator bans many more paraphrases of advice, coach self-reference, pushback flips and clinical claims. A false catch sends the fallback, so watch the `voice` fallback rate after deploy and read `apps/api/test/validator-redteam.test.ts` for what is caught.
+- After a Strava 429 the API makes no Strava calls until the next quarter hour, or midnight UTC if the daily count is spent. Reads answer "Strava is not answering right now." meanwhile and the scheduler retries inside its late window. Limits and the athlete counts they allow: `docs/vendor-budget.md`.
+- Every model call logs one `llm_call` line per athlete (`apps/api/src/llm-meter.ts`), so per-user cost can be read from the logs. It does not move gate 1.1.4.
+- `POST /api/plan/generate` (flag `PLAN_GENERATION`): a race Monday to Wednesday starts the plan a week earlier and the plan's `end_date` is race day; a race more than 12 months out answers 422 `race_too_far`. The new app build's date picker stops at the same day.
+- A calendar feed naming Runna is stored as `external_source='runna'`, checked on a synthetic feed only. No real Runna feed has been seen.
+
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
 
 All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrations.test.ts`), none applied anywhere. Filename order is the apply order. The five files already on `main` (2026-07) are not listed.

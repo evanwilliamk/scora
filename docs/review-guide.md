@@ -1,11 +1,11 @@
 # Review guide: `claude/integration-2026-10-28`
 
-A one-hour map of the bundle. Mechanics (migration order, flags, smoke tests) live in `docs/merge-checklist.md`; this file does not repeat them. Facts below were checked against the code on 2026-11-03, not taken from commit messages.
+A one-hour map of the bundle. Mechanics (migration order, flags, smoke tests) live in `docs/merge-checklist.md`; this file does not repeat them. Facts below were checked against the code on 2026-11-03, not taken from commit messages; the 2026-11-04 note below was added after that and the area table was not recounted.
 
 ## Size
 
-- 739 commits (`git log --oneline origin/main..HEAD`), 2026-10-17 to 2026-11-03.
-- 213 files, +31,487 / -1,044 (`git diff --stat origin/main...HEAD`).
+- 829 commits (`git log --oneline origin/main..HEAD`), 2026-10-17 to 2026-11-04.
+- 248 files, +37,524 / -1,111 (`git diff --stat origin/main...HEAD`), counted before the last 2026-11-04 merges.
 - About a third is tests: API tests +4,951 in 35 files, iOS tests +2,584 in 4 files (plus tests counted inside the areas below).
 
 | Area (files matched by name, tests included) | Files | Lines |
@@ -23,6 +23,8 @@ A one-hour map of the bundle. Mechanics (migration order, flags, smoke tests) li
 | Posture + driver record | 6 | +516 / -18 |
 | Gate scripts | 6 | +457 |
 | WhatsApp core | 2 | +420 |
+
+Added 2026-11-04, worth reading first: `apps/api/src/validator.ts` (largest behavior change of the night, risk HIGH), the `stravaFetch` cooldown in `apps/api/src/strava.ts`, `startDateForRace` in `packages/plan-engine/src/assembler.ts`, migration `20261104000000`.
 
 ## Flags, verified in code
 
