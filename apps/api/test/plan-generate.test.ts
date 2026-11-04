@@ -197,6 +197,23 @@ test('planBlock: week of the plan, phases with their weeks, the current one, the
 
 // Review 2026-11-01: plan generation path.
 
+test('Q36: a race more than 12 months out is refused in a plain sentence, and the current plan stays', async () => {
+  const store = sqlGenerateStore(db);
+  const first = await generatePlan('q36', req, '2026-10-21', templates, store);
+  await assert.rejects(generatePlan('q36', { ...req, goal_race_date: '2027-10-22' }, '2026-10-21', templates, store),
+    (e: any) => e instanceof GenerateError && e.code === 'race_too_far'
+      && e.message === 'That race is more than 12 months away. Plans can be built within 12 months of the race.');
+  const active = (await db.query<any>(`select id from training_plans where athlete_id = 'q36' and current_status = 'active'`)).rows;
+  assert.deepEqual(active.map((r) => r.id), [first.planId]);
+  // Exactly 12 months out is allowed.
+  const edge = await generatePlan('q36', { ...req, goal_race_date: '2027-10-21' }, '2026-10-21', templates, store);
+  assert.equal(edge.plan.goal_race_date, '2027-10-21');
+  // Feb 29 today: Feb 28 next year is in, Mar 1 is out.
+  const leap = '2028-02-29';
+  assert.equal(await code(generatePlan('q36b', { ...req, goal_race_date: '2029-03-01' }, leap, templates, store)), 'race_too_far');
+  assert.equal((await generatePlan('q36b', { ...req, goal_race_date: '2029-02-28' }, leap, templates, store)).plan.goal_race_date, '2029-02-28');
+});
+
 test('Q35: a Monday race keeps the full final week, starts a week earlier, and the plan row ends on race day', async () => {
   const store = sqlGenerateStore(db);
   const { planId, plan } = await generatePlan('q35', { ...req, goal_race_date: '2026-11-16' }, '2026-10-19', templates, store);

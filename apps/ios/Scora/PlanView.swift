@@ -429,6 +429,14 @@ enum PlanSetup {
     calendar.date(byAdding: .day, value: 7 * max(minWeeksAhead, minWeeks), to: calendar.startOfDay(for: now))!
   }
 
+  // Generation refuses a race more than 12 months out (Q36 A). Never before
+  // earliestRace, so the picker's range stays valid.
+  static func raceRange(from now: Date = Date(), minWeeks: Int = 0, calendar: Calendar = .current) -> ClosedRange<Date> {
+    let earliest = earliestRace(from: now, minWeeks: minWeeks, calendar: calendar)
+    let latest = calendar.date(byAdding: .year, value: 1, to: calendar.startOfDay(for: now))!
+    return earliest...max(earliest, latest)
+  }
+
   static func clamp(_ km: Int, to range: ClosedRange<Int>) -> Int { min(max(km, range.lowerBound), range.upperBound) }
 
   // current_weekly_km stays km on the wire (0 to 500); the form asks in the
@@ -516,7 +524,7 @@ struct PlanSetupView: View {
           Picker("Race", selection: $goalId) {
             ForEach(goals) { g in Text(g.label).tag(g.id) }
           }
-          DatePicker("Race date", selection: $raceDate, in: PlanSetup.earliestRace(minWeeks: levelInfo?.minWeeks ?? 0)..., displayedComponents: .date)
+          DatePicker("Race date", selection: $raceDate, in: PlanSetup.raceRange(minWeeks: levelInfo?.minWeeks ?? 0), displayedComponents: .date)
         }
         Section("Where you are now") {
           Picker("Experience", selection: $level) {
@@ -561,7 +569,8 @@ struct PlanSetupView: View {
   private func fitToLevel() {
     guard let info = levelInfo else { return }
     weekly = PlanSetup.clamp(weekly, to: info.range())
-    raceDate = max(raceDate, PlanSetup.earliestRace(minWeeks: info.minWeeks))
+    let range = PlanSetup.raceRange(minWeeks: info.minWeeks)
+    raceDate = min(max(raceDate, range.lowerBound), range.upperBound)
   }
 
   private func build() async {

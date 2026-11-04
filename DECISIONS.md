@@ -940,3 +940,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Options: (A) bundle the four files in the app and load with a file baseURL (no network, works offline); (B) add `integrity` SRI hashes to the CDN tags; (C) keep as is. Also consider vega 5.33+ (expression sandbox fixes; less relevant now that expressions go through the interpreter).
 - Why: both A and B need the files fetched and reviewed once, which was out of scope for an unattended run.
 - To reverse: n/a
+
+### 2026-11-04: Races more than 12 months out are refused
+- Status: DECIDED (Q36 A, Evan silent 3 days, reversible)
+- Branch: claude/race-max-months
+- Context: plan setup took any future race, so a race years away replaced the current plan now and started the new one far in the future.
+- Choice: `POST /api/plan/generate` answers 422 `race_too_far` with a plain sentence past 12 months from the athlete's local today, and the iOS date picker stops at the same day. Alternative: allow it and keep the current plan until the new one starts.
+- Why: no schema change and no second active plan state; the current plan stays untouched.
+- To reverse: remove the `race_too_far` check in `plan-generate.ts` and use `earliestRace(...)...` in the picker again.

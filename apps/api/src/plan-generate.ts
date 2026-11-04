@@ -15,7 +15,7 @@ import { formatVolumeBound } from './units';
 
 export const generationEnabled = () => process.env.PLAN_GENERATION === 'on';
 
-export type GenerateErrorCode = 'bad_request' | 'template_not_available' | 'race_too_soon' | 'coach_plan_active' | 'volume_out_of_range';
+export type GenerateErrorCode = 'bad_request' | 'template_not_available' | 'race_too_soon' | 'race_too_far' | 'coach_plan_active' | 'volume_out_of_range';
 
 export class GenerateError extends Error {
   constructor(public code: GenerateErrorCode, message: string) {
@@ -96,6 +96,12 @@ export async function generatePlan(
   }
   if (req.goal_race_date < today) {
     throw new GenerateError('race_too_soon', 'That race date has already passed.');
+  }
+  // Q36 A: a race years away would replace the current plan now and start the
+  // new one far in the future. ISO days compare as text, and a Feb 29 today
+  // reads as the last day of the next February.
+  if (req.goal_race_date > `${Number(today.slice(0, 4)) + 1}${today.slice(4)}`) {
+    throw new GenerateError('race_too_far', 'That race is more than 12 months away. Plans can be built within 12 months of the race.');
   }
   const template = matchTemplate(templates, { ...req, today });
   if (!template) {
