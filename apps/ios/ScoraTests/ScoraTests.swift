@@ -685,7 +685,7 @@ final class ScoraTests: XCTestCase {
     }
 
     func testTodaysSessionIsNeverScheduledInThePast() {
-        let cal = Calendar.current
+        let cal = PlanDay.gregorian()
         let nine = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 9, minute: 30))!
         let c = WatchSend.scheduleTime(for: "2026-10-22", now: nine)!
         XCTAssertEqual([c.year, c.month, c.day, c.hour, c.minute], [2026, 10, 22, 9, 31])
@@ -750,7 +750,7 @@ final class ScoraTests: XCTestCase {
     }
 
     func testASendJustBeforeMidnightStaysOnItsDay() {
-        let cal = Calendar.current
+        let cal = PlanDay.gregorian()
         let lateNight = cal.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 23, minute: 59, second: 30))!
         let c = WatchSend.scheduleTime(for: "2026-10-22", now: lateNight)
         XCTAssertEqual(c.map { [$0.year, $0.month, $0.day] }, [2026, 10, 22], "the day is still running")
@@ -2264,5 +2264,144 @@ final class CDVChartSecurityTests: XCTestCase {
         XCTAssertFalse(CDVChartView.Coordinator.allows(url: blank, isMainFrame: false, alreadyLoaded: false))
         XCTAssertFalse(CDVChartView.Coordinator.allows(url: URL(string: "https://evil.test/?hrv=52"), isMainFrame: true, alreadyLoaded: false))
         XCTAssertFalse(CDVChartView.Coordinator.allows(url: nil, isMainFrame: true, alreadyLoaded: false))
+    }
+}
+
+// A phone's calendar, region and zone never change what is sent to the API or
+// used as a day key. Each test sets them explicitly.
+final class LocaleAndCalendarTests: XCTestCase {
+    private func phone(_ id: Calendar.Identifier, _ zone: String = "America/Los_Angeles", firstWeekday: Int? = nil) -> Calendar {
+        var c = Calendar(identifier: id)
+        c.timeZone = TimeZone(identifier: zone)!
+        if let firstWeekday { c.firstWeekday = firstWeekday }
+        return c
+    }
+    private func at(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
+    private let otherCalendars: [Calendar.Identifier] = [.buddhist, .japanese, .islamicUmmAlQura, .hebrew, .persian]
+
+    func testHealthNightKeysAreGregorianOnAnyCalendar() {
+        let sleep = [(start: at("2026-11-03T22:00:00Z"), end: at("2026-11-04T06:00:00Z"))]
+        for id in otherCalendars {
+            let cal = phone(id, "UTC")
+            let nights = HealthNights.group(sleep: sleep, hrv: [HRVSample(date: at("2026-11-04T05:00:00Z"), value: 52)], restingHr: [(date: at("2026-11-04T07:00:00Z"), value: 48)], calendar: cal)
+            XCTAssertEqual(nights.map(\.day), ["2026-11-04"], "\(id)")
+            XCTAssertEqual(nights.first?.hrvMs, 52, "\(id)")
+            XCTAssertEqual(nights.first?.restingHr, 48, "\(id)")
+            let today = HealthNights.localToday(cal, now: at("2026-11-04T12:00:00Z"))
+            XCTAssertEqual(today, "2026-11-04", "\(id)")
+            XCTAssertEqual(HealthNights.lastNightSleep(nights, today: today), 8 * 3600, "\(id)")
+        }
+    }
+
+    func testLastNightHRVWithoutSleepDataOnAnyCalendar() {
+        let hrv = [HRVSample(date: at("2026-11-04T05:00:00Z"), value: 52)]
+        for id in otherCalendars {
+            XCTAssertEqual(HealthNights.lastNightHRV(hrv, sleep: [], now: at("2026-11-04T12:00:00Z"), calendar: phone(id, "UTC")), 52, "\(id)")
+        }
+    }
+
+    func testScheduleTimeOnAnyCalendar() throws {
+        let nine = at("2026-10-22T16:30:00Z") // 09:30 in Los Angeles
+        for id in otherCalendars {
+            let cal = phone(id)
+            let c = try XCTUnwrap(WatchSend.scheduleTime(for: "2026-10-22", now: nine, calendar: cal), "\(id)")
+            XCTAssertEqual([c.year, c.month, c.day, c.hour, c.minute], [2026, 10, 22, 9, 31], "\(id)")
+            let later = try XCTUnwrap(WatchSend.scheduleTime(for: "2026-10-23", now: nine, calendar: cal), "\(id)")
+            XCTAssertEqual([later.year, later.month, later.day, later.hour], [2026, 10, 23, 6], "\(id)")
+            XCTAssertNil(WatchSend.scheduleTime(for: "2026-10-21", now: nine, calendar: cal), "\(id)")
+        }
+    }
+
+    @MainActor
+    func testSendingAgainReplacesTheCopyOnABuddhistPhone() async {
+        let cal = phone(.buddhist)
+        let watch = ScoraTests.FakeWatch()
+        let steps = [PlanStep(type: "steady", durationMin: 30, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
+        let now = at("2026-10-22T16:30:00Z")
+        for _ in 0..<2 {
+            let outcome = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "easy", dayLabel: "Fri Oct 23", rowId: "row-1", scheduler: watch, now: now, calendar: cal)
+            XCTAssertEqual(outcome, .sent("Fri Oct 23"))
+        }
+        XCTAssertEqual(watch.scheduled.count, 1, "the second send replaced the first")
+        XCTAssertEqual(watch.scheduled.first.flatMap { WatchReconcile.day($0.at) }, "2026-10-23")
+    }
+
+    func testScheduledTimesSayTheirCalendarOnlyOffGregorian() {
+        let c = DateComponents(year: 2026, month: 10, day: 23, hour: 6, minute: 0)
+        XCTAssertEqual(WatchSend.labeled(c, phone: phone(.gregorian)), c, "a Gregorian phone sends what it always sent")
+        let labeled = WatchSend.labeled(c, phone: phone(.buddhist))
+        XCTAssertEqual(labeled.calendar?.identifier, .gregorian)
+        XCTAssertEqual(labeled.calendar?.timeZone.identifier, "America/Los_Angeles")
+        XCTAssertEqual(labeled.year, 2026)
+        XCTAssertEqual(WatchReconcile.day(labeled), "2026-10-23")
+    }
+
+    func testAWatchDayLabeledWithAnotherCalendarIsConverted() {
+        let cal = phone(.buddhist, "Asia/Bangkok")
+        var c = cal.dateComponents([.year, .month, .day, .hour], from: at("2026-10-22T23:30:00Z")) // Oct 23 in Bangkok
+        XCTAssertEqual(c.year, 2569)
+        c.calendar = cal
+        XCTAssertEqual(WatchReconcile.day(c), "2026-10-23")
+        XCTAssertEqual(WatchReconcile.day(DateComponents(year: 2026, month: 10, day: 23)), "2026-10-23", "bare components are the plan's own")
+    }
+
+    func testRaceRangeIsAGregorianYearOnAnyCalendar() {
+        let now = at("2026-11-04T12:00:00Z") // inside Hebrew leap year 5787
+        let zone = TimeZone(identifier: "UTC")!
+        for id in otherCalendars + [.gregorian] {
+            let range = PlanSetup.raceRange(from: now, calendar: phone(id, "UTC"))
+            XCTAssertEqual(PlanDay.today(range.lowerBound, zone: zone), "2026-12-02", "\(id)")
+            XCTAssertEqual(PlanDay.today(range.upperBound, zone: zone), "2027-11-04", "\(id)")
+        }
+    }
+
+    func testDayStringsInZonesWithNonHourOffsets() {
+        let instant = at("2026-11-04T18:20:00Z")
+        XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "Asia/Kathmandu")!), "2026-11-05") // +05:45
+        XCTAssertEqual(PlanDay.today(instant, zone: TimeZone(identifier: "Asia/Kolkata")!), "2026-11-04") // +05:30, 23:50
+        let edge = at("2026-11-05T03:20:00Z")
+        XCTAssertEqual(PlanDay.today(edge, zone: TimeZone(identifier: "America/St_Johns")!), "2026-11-04") // -03:30, 23:50
+        XCTAssertEqual(PlanDay.today(edge, zone: TimeZone(identifier: "Australia/Eucla")!), "2026-11-05") // +08:45
+        let start = DriverSeries.localDay("2026-11-04", zone: TimeZone(identifier: "Asia/Kathmandu")!)
+        XCTAssertEqual(start, at("2026-11-03T18:15:00Z"))
+    }
+
+    func testNightWindowAndFirstReadInZonesWithNonHourOffsets() throws {
+        let w = try XCTUnwrap(HealthNights.nightWindow(day: "2026-11-04", sessions: [], calendar: phone(.gregorian, "Asia/Kathmandu")))
+        XCTAssertEqual(w.start, at("2026-11-03T14:15:00Z"), "20:00 the evening before")
+        XCTAssertEqual(w.end, at("2026-11-04T04:15:00Z"), "10:00 that morning")
+        let kolkata = TimeZone(identifier: "Asia/Kolkata")!
+        // 05:59 in Kolkata: a 06:00 read is still ahead today, not yet in its window.
+        XCTAssertTrue(OnboardingState.firstReadTitle(deliveryMinute: 360, now: at("2026-11-04T00:29:00Z"), zone: kolkata).contains("today"))
+        XCTAssertEqual(OnboardingState.firstReadTitle(deliveryMinute: 360, now: at("2026-11-04T00:30:00Z"), zone: kolkata), "Your first read lands shortly.")
+    }
+
+    func testDeliveryMinuteKeepsToTheFullDayIn24HourRegions() {
+        var cal = OnboardingState.pickerCalendar
+        cal.locale = Locale(identifier: "de_DE")
+        for minute in [0, 1, 359, 720, 1110, 1439] {
+            XCTAssertEqual(OnboardingState.deliveryMinute(from: OnboardingState.deliveryTime(minute: minute), calendar: cal), minute)
+        }
+        XCTAssertEqual(OnboardingState.timeLabel(minute: 1110, locale: Locale(identifier: "de_DE")), "18:30")
+    }
+
+    func testDayLabelAndPlanNumbersAreFixedFormat() throws {
+        let w = PlanWorkout(date: "2026-10-20", type: "run", intensity: "tempo", durationMin: 45, distanceKm: 21.08, description: nil)
+        XCTAssertEqual(w.dayLabel, "Tue Oct 20")
+        XCTAssertEqual(w.detail, "tempo \u{00B7} 45 min \u{00B7} 13.1 mi")
+        XCTAssertEqual(DriverSeries.format(1.25, unit: "ratio"), "1.25")
+        // Numbers go up as JSON numbers, never as formatted strings.
+        let goal = PlanGoal(sport: "run", goalType: "half", label: "Half", levels: [])
+        let now = at("2026-11-04T12:00:00Z")
+        let body = PlanSetup.body(athleteId: "a", goal: goal, raceDate: at("2027-03-01T12:00:00Z"), weeklyKm: 30.5, level: "l", now: now)
+        let json = try XCTUnwrap(String(data: JSONSerialization.data(withJSONObject: body, options: .sortedKeys), encoding: .utf8))
+        XCTAssertTrue(json.contains("\"current_weekly_km\":30.5"), json)
+    }
+
+    func testWeekSoFarKeepsTheServersMondayFirstOrder() throws {
+        let json = #"{"line":"x","days":[{"date":"2026-11-02","weekday":"Mon","run_min":30},{"date":"2026-11-03","weekday":"Tue","run_min":0},{"date":"2026-11-08","weekday":"Sun","run_min":null}]}"#
+        let week = try JSONDecoder().decode(WeekSoFar.self, from: Data(json.utf8))
+        XCTAssertEqual(week.days.map(\.weekday), ["Mon", "Tue", "Sun"])
+        XCTAssertEqual(week.heights, [1, 0, nil])
     }
 }
