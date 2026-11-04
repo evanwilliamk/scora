@@ -229,6 +229,8 @@ export function openAiPlanLlm(apiKey: string, fetchImpl: typeof fetch = fetch): 
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
+      // Longer than the voice's 20 s: up to 3000 tokens of JSON.
+      signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
     const json: any = await res.json();

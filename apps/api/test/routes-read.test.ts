@@ -322,6 +322,34 @@ test('Oura connected: the read\'s date decides what counts as last night (review
   assert.ok(!stale.json().drivers.some((d: any) => d.value === '7:12'), 'no stale sleep value reaches the read');
 });
 
+test('every model call logs one llm_call line with the athlete, the attempt and the tokens, retries included', async () => {
+  const { auditLog } = await import('../src/log-audit');
+  const lines: string[] = [];
+  const realInfo = app.log.info;
+  app.log.info = function (this: unknown, m: unknown, ...rest: unknown[]) {
+    if (typeof m === 'string' && m.includes('"llm_call"')) lines.push(m);
+    return (realInfo as any).call(this, m, ...rest);
+  };
+  try {
+    connected();
+    guard.stravaActivities(steady());
+    guard.openAi(
+      { body: { choices: [{ message: { content: 'You should run 999 miles.' } }], usage: { prompt_tokens: 500, completion_tokens: 40 } } },
+      { status: 503, body: {} },
+    );
+    const r = await read();
+    assert.equal(r.statusCode, 200, r.body);
+  } finally {
+    app.log.info = realInfo;
+  }
+  const events = lines.map((l) => JSON.parse(l.replace('telemetry ', '')));
+  assert.deepEqual(events, [
+    { event: 'llm_call', surface: 'daily', athlete: '42', model: 'gpt-4o', attempt: 1, status: 200, prompt_tokens: 500, completion_tokens: 40 },
+    { event: 'llm_call', surface: 'daily', athlete: '42', model: 'gpt-4o', attempt: 2, status: 503, prompt_tokens: null, completion_tokens: null },
+  ]);
+  assert.deepEqual(auditLog(lines.join('\n')), [], 'no health value and no secret in the lines');
+});
+
 test('an Oura token refresh that hits a rate limit or outage still reads as connected; a refused one does not', async () => {
   const expired = { body: [{ oura_access_token: 'oura-tok', oura_refresh_token: 'oura-ref', oura_expires_at: 1 }] };
   for (const [status, isConnected] of [[429, true], [503, true], [401, false], [400, false]] as const) {

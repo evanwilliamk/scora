@@ -269,6 +269,8 @@ export function openAiEmbedder(apiKey: string, fetchImpl: typeof fetch = fetch):
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model: EMBEDDING_MODEL, input: texts }),
+      // The read waits on this lookup, and a scheduler slot waits on the read.
+      signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) throw await vendorHttpError(res, 'OpenAI embeddings failed:');
     const json: any = await res.json();

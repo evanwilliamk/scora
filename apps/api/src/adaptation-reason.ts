@@ -238,6 +238,7 @@ export function openAiReasonLlm(apiKey: string, fetchImpl: typeof fetch = fetch)
         max_tokens: 120,
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
+      signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
     const json: any = await res.json();

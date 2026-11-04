@@ -141,7 +141,7 @@ test('the telemetry line records whether the emitted text passed (gate 1.1.4)', 
   await generateValidatedVoice({ ...params, surface: 'daily', log });
   stubOpenAI(['Load is 412 min. HRV sits at 52ms.']);
   await generateValidatedVoice({ ...params, surface: 'daily', log });
-  const events = lines.map((l) => JSON.parse(l.slice('telemetry '.length)));
+  const events = lines.map((l) => JSON.parse(l.slice('telemetry '.length))).filter((e) => e.event === 'voice_emission');
   assert.deepEqual(events.map((e) => [e.fallback, e.final_ok]), [[true, true], [false, true]]);
 });
 

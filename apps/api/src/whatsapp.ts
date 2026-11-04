@@ -229,6 +229,7 @@ export async function expansionReply(
   posture: string,
   drivers: Driver[],
   log?: { warn: (msg: string) => void; error: (msg: string) => void; info?: (msg: string) => void },
+  athleteId?: string,
 ): Promise<string> {
   const p = kind === 'why' ? whyPrompt(read, posture, drivers) : morePrompt(read, posture, drivers);
   const r = await generateValidatedVoice({
@@ -236,6 +237,7 @@ export async function expansionReply(
     drivers,
     model: 'gpt-4o',
     surface: kind,
+    athleteId,
     leadIn: kind === 'why' ? 'Behind today\'s read' : 'The fuller read',
     log,
   });

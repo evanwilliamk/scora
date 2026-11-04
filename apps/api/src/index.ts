@@ -18,6 +18,7 @@ import {
 } from './oura';
 import { athleteQuotaDay, cdvQuotaSpent, consumeCdvQuota, pingDatabase, refundCdvQuota, type CdvQuota } from './usage';
 import { generateValidatedVoice, OPENAI_TIMEOUT_MS } from './voice';
+import { meteredFetch } from './llm-meter';
 import { checkCdvWithRetry, cdvEmission, cdvTextOk } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 import { stravaTokenFailureLine, vendorErrorKind, vendorFailureLine, vendorHttpError, vendorIsTransient } from './vendor-error';
@@ -471,8 +472,9 @@ Answer THIS question specifically using the data above. If the data can't answer
       return reply.code(429).send(cdvLimitReply(quota));
     }
 
+    const cdvFetch = meteredFetch('cdv', athleteId, fastify.log);
     const askModel = async (user: string): Promise<string> => {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await cdvFetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -710,7 +712,7 @@ fastify.post('/api/read', async (request, reply) => {
       try {
         // Optional: gpt-4o-mini words the reason from the posture drivers,
         // checked in code, fixed sentence on any failure (ADAPTATION_REASON_LLM).
-        const llm = reasonLlmEnabled() ? openAiReasonLlm(process.env.OPENAI_API_KEY || '') : null;
+        const llm = reasonLlmEnabled() ? openAiReasonLlm(process.env.OPENAI_API_KEY || '', meteredFetch('adaptation_reason', athleteId, fastify.log)) : null;
         const opts = llm
           ? {
               writeReason: async (d: Parameters<typeof writeReason>[0], fallback: string) => {
@@ -780,7 +782,7 @@ fastify.post('/api/read', async (request, reply) => {
 
     // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
     // else the curated pattern library, else nothing. Never blocks the read.
-    const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
+    const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) }, meteredFetch('retrieval', athleteId, fastify.log));
     const knowledgeLoad = settle(() => knowledgeForRead(
       {
         posture: posture.result.posture,
@@ -839,7 +841,7 @@ Write today's read using only these drivers.`;
         userPrompt,
         drivers: readDrivers,
         maxTokens: 200,
-        leadIn: "Today's numbers", surface: 'daily',
+        leadIn: "Today's numbers", surface: 'daily', athleteId,
         // Library mode: no advice relayed from a passage, no number lifted from one.
         check: (v) => [
           ...postureClaimHits(v, posture.backed ? posture.result.posture : null),
@@ -932,7 +934,7 @@ fastify.post('/api/card-expand', async (request, reply) => {
       userPrompt: plan.userPrompt,
       drivers: plan.drivers,
       maxTokens: 150,
-      leadIn: card.title, surface: 'card',
+      leadIn: card.title, surface: 'card', athleteId,
       // As on the read: a posture the read did not decide is retried, then
       // falls back (checkCardPosture below stays as the last guard).
       check: (v) => postureClaimHits(v, snapshot.posture),
@@ -1031,7 +1033,7 @@ fastify.post('/api/plan/manual', async (request, reply) => {
   // The app sends its local date so weekday names resolve in the athlete's zone.
   const today = nearToday(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
-    const parsed = await parsePlanText(text, today, openAiPlanLlm(process.env.OPENAI_API_KEY || ''));
+    const parsed = await parsePlanText(text, today, openAiPlanLlm(process.env.OPENAI_API_KEY || '', meteredFetch('plan_parse', athleteId, fastify.log)));
     if (parsed.rows.length === 0) {
       return reply.code(422).send({
         error: 'No sessions with a day or date were found. Try one session per line, like "Tue: 45 min tempo".',
@@ -1441,7 +1443,7 @@ Write this week's review using only these drivers.`;
         userPrompt,
         drivers,
         maxTokens: 320,
-        leadIn: 'This week', surface: 'weekly',
+        leadIn: 'This week', surface: 'weekly', athleteId,
         log: fastify.log,
       });
       voice = result.voice;

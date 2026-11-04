@@ -1,6 +1,7 @@
 import { validateVoice, buildFallbackVoice, Driver, ValidationResult } from './validator';
 import { catchLabel, trackVoice, type VoiceSurface } from './telemetry';
 import { vendorErrorKind, vendorHttpError } from './vendor-error';
+import { meteredFetch } from './llm-meter';
 
 // Generate a voice read and guarantee it passes the validators before it's
 // emitted (§3.2). Flow: LLM draft -> validate -> if it fails, one retry with
@@ -15,6 +16,7 @@ interface GenerateParams {
   maxTokens?: number;
   leadIn?: string; // prefix for the deterministic fallback
   surface?: VoiceSurface; // for the telemetry line
+  athleteId?: unknown; // whose use this is (the llm_call line)
   // Surface-specific checks (the daily read's posture). Each hit is treated
   // like a banned phrase: fed back for the retry, then the fallback.
   check?: (voice: string) => string[];
@@ -39,9 +41,10 @@ async function callOpenAI(
   model: string,
   systemPrompt: string,
   userPrompt: string,
-  maxTokens: number
+  maxTokens: number,
+  fetchImpl: typeof fetch,
 ): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetchImpl('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -94,9 +97,11 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     maxTokens = 320,
     leadIn = 'Where things sit',
     surface,
+    athleteId,
     log,
     check,
   } = params;
+  const metered = meteredFetch(surface ?? 'voice', athleteId, log);
   const llmFailed = (attempt: number, e: unknown) =>
     log?.error(`voice_llm_error ${JSON.stringify({ event: 'voice_llm_error', surface: surface ?? null, attempt, kind: vendorErrorKind(e) })}`);
   const validate = (text: string): ValidationResult => {
@@ -123,7 +128,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
   // fallback. Callers never log the emission themselves.
   let first: string;
   try {
-    first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens);
+    first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens, metered);
   } catch (e) {
     llmFailed(1, e);
     const voice = buildFallbackVoice(drivers, leadIn);
@@ -145,7 +150,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
 
 Your previous draft was rejected for: ${violationNote(validation)}.
 Rewrite it. Use ONLY the driver values above, reference no number that isn't a driver, no banned phrasing, no exclamation points, no emoji.`;
-    const second = await callOpenAI(model, systemPrompt, retryUser, maxTokens);
+    const second = await callOpenAI(model, systemPrompt, retryUser, maxTokens, metered);
     const secondValidation = validate(second);
     if (secondValidation.ok) {
       return done({ voice: second, validation: secondValidation, usedFallback: false, attempts: 2, llmError: false });

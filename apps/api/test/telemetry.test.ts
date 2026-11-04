@@ -26,12 +26,14 @@ test('generateValidatedVoice reports a retry and a fallback with what was caught
   } finally {
     globalThis.fetch = realFetch;
   }
-  assert.equal(lines.length, 1);
-  const e = JSON.parse(lines[0].slice('telemetry '.length));
+  assert.equal(lines.filter((l) => l.includes('"llm_call"')).length, 2, 'one line per model call, the retry too');
+  const emissions = lines.filter((l) => l.includes('"voice_emission"'));
+  assert.equal(emissions.length, 1);
+  const e = JSON.parse(emissions[0].slice('telemetry '.length));
   assert.deepEqual([e.surface, e.attempts, e.fallback, e.caught], ['daily', 2, true, true]);
   assert.ok(e.banned.includes('you should') && e.banned.includes('exclamation point'));
   assert.equal(e.unbacked, 2);
-  assert.ok(!lines[0].includes('61') && !lines[0].includes('HRV'), 'no draft text or values in the line');
+  for (const line of lines) assert.ok(!line.includes('61') && !line.includes('HRV'), 'no draft text or values in the line');
 });
 
 test('validator warnings name what was caught without the numbers (no health values in logs)', async () => {
