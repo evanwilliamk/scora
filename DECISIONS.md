@@ -989,9 +989,9 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - To reverse: in `dayLabel`, set `out.calendar` to Gregorian and drop the `en_US_POSIX` locale.
 
 ### 2026-11-04: Validator false-catch pass, lines left caught and one miss found
-- Status: NEEDS EVAN
+- Status: DECIDED
 - Branch: claude/validator-precision-1104
 - Context: the 300-plus line must-pass corpus freed 79 false catches. A few legal lines could not be freed without letting an order through, and the pass found an existing miss.
-- Choice: left caught: "All you need to know: HRV is up 8%." (literal §4.1 "you need to"), "You could hold 4:50 pace in March.", "Rest tomorrow, then a long run Saturday: that is how the plan reads.", "Long run Saturday, hit the distance at 4:50 pace.", "Take today's 52ms against the month and it sits high." Not fixed, since this pass adds no bans: "Ride 30 minutes." and "Swim 20 minutes." pass the validator, because `\d` followed by `\b` in the clause-command pattern only matches one digit ("Add 10 minutes." too). Recommendation: change those three `\d` to `\d+` in a follow-up. The list exception for "swim 40, ride 260" already allows it.
+- Choice: left caught: "All you need to know: HRV is up 8%." (literal §4.1 "you need to"), "You could hold 4:50 pace in March.", "Rest tomorrow, then a long run Saturday: that is how the plan reads.", "Long run Saturday, hit the distance at 4:50 pace.", "Take today's 52ms against the month and it sits high." Not fixed, since this pass adds no bans: "Ride 30 minutes." and "Swim 20 minutes." pass the validator, because `\d` followed by `\b` in the clause-command pattern only matches one digit ("Add 10 minutes." too). Fixed on claude/validator-ride-swim: those three `\d` are now `\d+`. The list exception for "swim 40, ride 260" already allows it.
 - Why: each left-caught line has the same words as a real order, and a missed prescription costs more than one fallback read.
 - To reverse: BANNED_PATTERNS in `apps/api/src/validator.ts`, with rows in `apps/api/test/validator-precision.test.ts`.
