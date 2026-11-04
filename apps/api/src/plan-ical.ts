@@ -167,7 +167,8 @@ export function eventDate(e: Pick<IcsEvent, 'dtstart'> & Partial<Pick<IcsEvent, 
   if (source && source === validZone(timeZone)) return `${y}-${mo}-${d}`;
   if (z || source) {
     const wall = Date.parse(`${y}-${mo}-${d}T${h}:${mi}:${s ?? '00'}Z`);
-    if (Number.isNaN(wall)) return null;
+    // Date.parse rolls 2027-02-30 over to March; a real date round-trips.
+    if (Number.isNaN(wall) || new Date(wall).toISOString().slice(0, 10) !== `${y}-${mo}-${d}`) return null;
     return dateIn(source ? wallTimeToInstant(wall, source) : wall, validZone(timeZone));
   }
   return `${y}-${mo}-${d}`;
@@ -210,6 +211,11 @@ function durations(text: string): number[] {
     hm.push(hoursMinutes(h, a, b, c));
     return ' ';
   });
+  // "1h 30 easy" is 90 minutes and "1 hour 3 intervals" is 60: the words cannot
+  // tell them apart, so neither is guessed. A distance after it is plainly not
+  // minutes ("2 hours 40 km").
+  const unclear = /(?<![\d.,:])\d{1,2}\s*(?:h|hr|hrs|hours?)\s+\d{1,2}\s*(?!(?:kms?|k|kilomet\w*|kilometr\w*|mi|miles?|miler|mls)\b)[a-z]/i.test(rest);
+  if (unclear) return [];
   return [...hm, ...writtenMinutes(rest)];
 }
 
@@ -227,11 +233,6 @@ function onlyOne(summary: string, description: string, pick: (s: string) => numb
 
 function onlyDistance(summary: string, description: string): { value: number; unit: 'km' | 'mi' } | null {
   for (const part of [summary, description]) {
-  // "1h 30 easy" is 90 minutes and "1 hour 3 intervals" is 60: the words cannot
-  // tell them apart, so neither is guessed. A distance after it is plainly not
-  // minutes ("2 hours 40 km").
-  const unclear = /(?<![\d.,:])\d{1,2}\s*(?:h|hr|hrs|hours?)\s+\d{1,2}\s*(?!(?:kms?|k|kilomet\w*|kilometr\w*|mi|miles?|miler|mls)\b)[a-z]/i.test(rest);
-  if (unclear) return [];
     const { km, mi } = writtenDistances(part);
     if (km.length + mi.length === 1) return km.length ? { value: km[0], unit: 'km' } : { value: mi[0], unit: 'mi' };
     if (km.length + mi.length > 1) return null;
