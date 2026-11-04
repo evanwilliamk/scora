@@ -661,7 +661,7 @@ final class ScoraTests: XCTestCase {
         let steps = [PlanStep(type: "warmup", durationMin: 10, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil),
                      PlanStep(type: "steady", durationMin: 30, intensity: "tempo", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
         let watch = FakeWatch()
-        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
+        let early = PlanDay.gregorian().date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
         let o = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
         XCTAssertEqual(o, .sent("Fri Oct 23"))
         XCTAssertEqual(watch.scheduled.map(\.at), [DateComponents(year: 2026, month: 10, day: 23, hour: 6, minute: 0)])
@@ -729,7 +729,7 @@ final class ScoraTests: XCTestCase {
         // name changed, but the Watch must still hold one session for Friday.
         let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
         let watch = FakeWatch()
-        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
+        let early = PlanDay.gregorian().date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "tempo · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-24", displayName: "long · 90 min", dayLabel: "Sat Oct 24", scheduler: watch, now: early)
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "endurance · 40 min", dayLabel: "Fri Oct 23",
@@ -742,7 +742,7 @@ final class ScoraTests: XCTestCase {
         // replace only its own earlier copy.
         let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
         let watch = FakeWatch()
-        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
+        let early = PlanDay.gregorian().date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 20))!
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "easy · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
         _ = await WatchSend.send(steps: steps, type: "ride", date: "2026-10-23", displayName: "recovery · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
         _ = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "easy · 40 min", dayLabel: "Fri Oct 23", scheduler: watch, now: early)
@@ -767,7 +767,7 @@ final class ScoraTests: XCTestCase {
         return w
     }
     private func at6(_ day: Int) -> DateComponents { DateComponents(year: 2026, month: 11, day: day, hour: 6, minute: 0) }
-    private var reconcileNow: Date { Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
+    private var reconcileNow: Date { PlanDay.gregorian().date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
 
     // Sends `w` with the fake Watch and records it, as Your Plan does.
     // `olderBuild`: as a build before plan ids sent it (a random id).
@@ -1026,7 +1026,7 @@ final class ScoraTests: XCTestCase {
         // The plan screen was left open overnight: yesterday's session still shows.
         let steps = [PlanStep(type: "steady", durationMin: 40, intensity: "easy", reps: nil, workDurationMin: nil, workIntensity: nil, restDurationMin: nil, restIntensity: nil)]
         let watch = FakeWatch()
-        let nextMorning = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 7))!
+        let nextMorning = PlanDay.gregorian().date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 7))!
         let o = await WatchSend.send(steps: steps, type: "run", date: "2026-10-23", displayName: "x", dayLabel: "Fri Oct 23", scheduler: watch, now: nextMorning)
         XCTAssertEqual(o, .dayPassed("Fri Oct 23"))
         XCTAssertTrue(watch.scheduled.isEmpty)
@@ -1878,7 +1878,7 @@ final class TokenSaveTests: XCTestCase {
 
 final class WatchReconcileBranchTests: XCTestCase {
     private let today = "2026-11-03"
-    private var now: Date { Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
+    private var now: Date { PlanDay.gregorian().date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 5))! }
     private func at6(_ day: Int) -> DateComponents { DateComponents(year: 2026, month: 11, day: day, hour: 6, minute: 0) }
     private func session(_ date: String, _ intensity: String, _ min: Int, row: String?) -> PlanWorkout {
         var w = PlanWorkout(date: date, type: "run", intensity: intensity, durationMin: min, distanceKm: nil, description: nil)
