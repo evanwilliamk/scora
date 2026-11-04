@@ -957,3 +957,11 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Why: the tag only records where a plan came from; a refresh that flips it would make the count of Runna athletes depend on the last feed.
 - To reverse: pass 'ical' from the route; the migration can stay, it only widens what is accepted.
 
+
+### 2026-11-04: Voice validator lines drawn in the red-team pass
+- Status: DECIDED
+- Branch: claude/validator-redteam-1104
+- Context: paraphrase bans can swap a good read for the fallback, so some lines are taste, not rule.
+- Choice: caught: sleep advice ("Get more sleep"), "You know your body best", any named condition even when denied ("no sign of overtraining"), a stated session move with no matching Plan change driver. Left passing: "Your body is asking for rest", "Most coaches would keep today easy", "It's your call", "No running today", "injury risk", "Worth seeing a doctor".
+- Why: the caught lines steer, surrender or claim a diagnosis outright; the passing ones can read as description, so a catch would cost real reads.
+- To reverse: BANNED_PATTERNS and PLAN_OVERRIDE in `apps/api/src/validator.ts`, with their rows in `apps/api/test/validator-redteam.test.ts`.

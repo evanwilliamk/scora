@@ -477,7 +477,7 @@ test('must catch: typography, casing and markup never hide a ban', () => {
     'Sleep was short\nGo easy today',
     'HRV is up 8%\n\nTake the day off',
     '(Go easy today.)',
-    '—Go easy today.',
+    '\u2014Go easy today.',
     'Sleep was short…go easy today.',
   ]);
 });
