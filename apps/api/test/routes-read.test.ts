@@ -322,6 +322,24 @@ test('Oura connected: the read\'s date decides what counts as last night (review
   assert.ok(!stale.json().drivers.some((d: any) => d.value === '7:12'), 'no stale sleep value reaches the read');
 });
 
+test('an Oura token refresh that hits a rate limit or outage still reads as connected; a refused one does not', async () => {
+  const expired = { body: [{ oura_access_token: 'oura-tok', oura_refresh_token: 'oura-ref', oura_expires_at: 1 }] };
+  for (const [status, isConnected] of [[429, true], [503, true], [401, false], [400, false]] as const) {
+    rest.reset();
+    guard.reset();
+    connected();
+    rest.answer('athletes', expired);
+    guard.stravaActivities(steady());
+    guard.ouraFails(status);
+    guard.openAi(CLEAN);
+    const r = await read();
+    assert.equal(r.statusCode, 200, r.body);
+    assert.equal(r.json().connections.oura, isConnected, `refresh ${status}`);
+    const sleep = r.json().cards.find((c: any) => c.id === 'sleep');
+    assert.equal(sleep.connect, isConnected ? null : 'oura', `refresh ${status}`);
+  }
+});
+
 test('Strava and Oura each slow by N ms: the read takes about N, not the sum (parallel fetch)', async () => {
   const N = 600;
   const ouraRow = { body: [{ oura_access_token: 'oura-tok', oura_refresh_token: 'oura-ref', oura_expires_at: Math.floor(now / 1000) + 3600 }] };

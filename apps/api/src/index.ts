@@ -20,7 +20,7 @@ import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from '
 import { generateValidatedVoice, OPENAI_TIMEOUT_MS } from './voice';
 import { checkCdvWithRetry, cdvEmission, cdvTextOk } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
-import { vendorErrorKind, vendorFailureLine, vendorHttpError } from './vendor-error';
+import { stravaTokenFailureLine, vendorErrorKind, vendorFailureLine, vendorHttpError, vendorIsTransient } from './vendor-error';
 
 import {
   registerDeviceToken, unregisterDeviceToken,
@@ -290,9 +290,7 @@ fastify.post('/api/cdv', async (request, reply) => {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
-      return reply.code(401).send({
-        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
-      });
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
 
     // Eight weeks: the weekday patterns claim "x of the last 6 weeks" and the
@@ -566,9 +564,7 @@ fastify.post('/api/read', async (request, reply) => {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
-      return reply.code(401).send({
-        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
-      });
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
 
     // Independent reads start together once the Strava token resolves (a
@@ -582,7 +578,9 @@ fastify.post('/api/read', async (request, reply) => {
     // Oura if connected; else the Sleep + Recovery cards show connect prompts.
     const loadOura = async (day: string) => {
       const token = await ouraToken;
-      if (!token.ok) return { connected: false, summary: null, error: token.error };
+      // A rate limit or outage on the refresh is not "not connected": the card
+      // must not ask the athlete to connect a ring that is connected.
+      if (!token.ok) return { connected: vendorIsTransient(token.error), summary: null, error: token.error };
       try {
         return { connected: true, summary: await fetchOuraSummary(token.value, { localToday: day }), error: null };
       } catch (e) {
@@ -988,8 +986,6 @@ fastify.put('/api/preferences', async (request, reply) => {
 // dates resolve and whose numbers appear in the pasted text.
 // A real calendar date or null: 2026-13-01 and 2026-02-31 do not pass.
 const isoDay = (v: unknown): string | null => (isCalendarDay(v) ? v : null);
-// The /api/read reply when no Strava token resolves.
-const STRAVA_RECONNECT = 'Strava not connected or refresh failed. Please reconnect Strava.';
 
 // The app's local date, accepted only within a day of the server's UTC date
 // (every real time zone is). A far-off "today" would steer plan queries,
@@ -1224,8 +1220,8 @@ fastify.get('/api/plan/prediction', async (request, reply) => {
     let token: string;
     try {
       token = await getValidStravaToken(athleteId);
-    } catch {
-      return reply.code(401).send({ error: STRAVA_RECONNECT });
+    } catch (e) {
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
     let activities: any[];
     try {
@@ -1253,8 +1249,8 @@ fastify.get('/api/calories', async (request, reply) => {
     let token: string;
     try {
       token = await getValidStravaToken(athleteId);
-    } catch {
-      return reply.code(401).send({ error: STRAVA_RECONNECT });
+    } catch (e) {
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
     const headers = { Authorization: `Bearer ${token}` };
     const after = Math.floor(Date.now() / 1000) - 14 * 86400;
@@ -1354,9 +1350,7 @@ fastify.post('/api/weekly', async (request, reply) => {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
-      return reply.code(401).send({
-        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
-      });
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
 
     // This week and the one before, plus a day for time zones.

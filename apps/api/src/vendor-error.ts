@@ -39,3 +39,18 @@ function vendorNeedsReconnect(e: unknown): boolean {
 export function vendorFailureLine(vendor: VendorName, e: unknown): string {
   return vendorNeedsReconnect(e) ? `${vendor} needs to be connected again.` : `${vendor} is not answering right now.`;
 }
+
+// The vendor did not answer this time (rate limit, 5xx, timeout, network), so
+// nothing says the connection is gone. A token refresh refused with a 400 or
+// 401 is the opposite: the refresh token is dead.
+export function vendorIsTransient(e: unknown): boolean {
+  if (e instanceof VendorHttpError) return e.status === 408 || e.status === 429 || e.status >= 500;
+  return e instanceof TypeError || (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError'));
+}
+
+// What the routes say when no Strava token could be had. A 429 on the refresh
+// must not send the athlete off to reconnect a connection that is fine.
+export const STRAVA_RECONNECT = 'Strava not connected or refresh failed. Please reconnect Strava.';
+export function stravaTokenFailureLine(e: unknown): string {
+  return vendorIsTransient(e) ? vendorFailureLine('Strava', e) : STRAVA_RECONNECT;
+}

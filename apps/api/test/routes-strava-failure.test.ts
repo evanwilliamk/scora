@@ -78,6 +78,37 @@ for (const route of routes) {
   }
 }
 
+// The token refresh fails before any pull. A rate limit or an outage there
+// says nothing about the connection; a refused refresh token does.
+const expired = () => rest.handle('athletes', () => ({
+  body: [{ strava_access_token: 'tok-a1', strava_refresh_token: 'ref-a1', strava_expires_at: 1 }],
+}));
+const STALE_TOKEN = 'Strava not connected or refresh failed. Please reconnect Strava.';
+const refreshCases: { how: number | 'network'; line: string }[] = [
+  { how: 429, line: UNAVAILABLE },
+  { how: 503, line: UNAVAILABLE },
+  { how: 'network', line: UNAVAILABLE },
+  { how: 400, line: STALE_TOKEN },
+  { how: 401, line: STALE_TOKEN },
+];
+for (const route of routes) {
+  for (const c of refreshCases) {
+    test(`${route.name}: token refresh ${c.how} answers "${c.line}"`, async () => {
+      if (route.env) process.env[route.env] = 'on';
+      try {
+        expired();
+        guard.stravaRefreshFails(c.how);
+        const r = await route.call();
+        assert.equal(r.statusCode, 401, r.body);
+        assert.deepEqual(r.json(), { error: c.line });
+        assert.ok(!guard.calls.some((x) => x.host === 'api.openai.com'), 'no model call');
+      } finally {
+        if (route.env) process.env[route.env] = '';
+      }
+    });
+  }
+}
+
 // The same rule APIErrorText.isForAthlete applies in the app: a full stop at
 // the end, short, no markup, no env-style names, no "Missing:" label.
 test('both lines pass the app\'s athlete-text check', () => {

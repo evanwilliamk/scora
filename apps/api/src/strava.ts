@@ -106,9 +106,8 @@ async function refreshStravaToken(refreshToken: string, fetchImpl: typeof fetch 
     signal: AbortSignal.timeout(15_000),
   });
 
-  if (!response.ok) {
-    throw new Error(`Strava token refresh failed: ${response.statusText}`);
-  }
+  // The status decides what the athlete is told (stravaTokenFailureLine).
+  if (!response.ok) throw await vendorHttpError(response, 'Strava token refresh failed:');
 
   return (await response.json()) as StravaTokenResponse;
 }

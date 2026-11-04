@@ -21,9 +21,14 @@ export interface FetchGuard {
   // Every Strava API call answers this status, or throws a network error
   // ('network'); sticky. Token-refresh calls are not affected.
   stravaFails(how: number | 'network'): void;
+  // The token endpoint answers this status or throws a network error; sticky.
+  // Without one, a refresh is a blocked request.
+  stravaRefreshFails(how: number | 'network'): void;
   // Oura answers by route name (sleep, daily_sleep, daily_readiness); sticky.
   // Without any, Oura answers 401 (not connected).
   oura(routes: Record<string, unknown>): void;
+  // Every Oura call, the token endpoint included, answers this status; sticky.
+  ouraFails(status: number): void;
   // Queue OpenAI chat replies (message content), used in order.
   openAi(...replies: (string | Answer)[]): void;
   // Hold every answer from a host for ms before it is returned; sticky.
@@ -46,8 +51,10 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
   const calls: GuardCall[] = [];
   let activities: unknown[] = [];
   let stravaFail: number | 'network' | null = null;
+  let stravaRefreshFail: number | 'network' | null = null;
   let llm: (string | Answer)[] = [];
   let ouraRoutes: Record<string, unknown> | null = null;
+  let ouraFail: number | null = null;
   let delays: Record<string, number> = {};
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -64,10 +71,15 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
       if (stravaFail === 'network') throw new TypeError('fetch failed');
       return json(stravaFail, { message: 'canned failure' });
     }
+    if (u.hostname === 'www.strava.com' && u.pathname === '/oauth/token' && stravaRefreshFail != null) {
+      if (stravaRefreshFail === 'network') throw new TypeError('fetch failed');
+      return json(stravaRefreshFail, { message: 'canned failure' });
+    }
     if (u.hostname === 'www.strava.com' && u.pathname === '/api/v3/athlete/activities') {
       return json(200, Number(u.searchParams.get('page') ?? '1') > 1 ? [] : activities);
     }
     if (u.hostname === 'api.ouraring.com') {
+      if (ouraFail != null) return json(ouraFail, { detail: 'canned failure' });
       if (!ouraRoutes) return json(401, { detail: 'not connected in tests' });
       const route = u.pathname.split('/').pop() ?? '';
       return json(200, ouraRoutes[route] ?? { data: [] });
@@ -85,10 +97,12 @@ export function installFetchGuard(allowOrigin: string, opts: { allowHttp2?: stri
     calls,
     stravaActivities(list) { activities = list; },
     stravaFails(how) { stravaFail = how; },
+    stravaRefreshFails(how) { stravaRefreshFail = how; },
     oura(routes) { ouraRoutes = routes; },
+    ouraFails(status) { ouraFail = status; },
     openAi(...replies) { llm.push(...replies); },
     delay(host, ms) { delays[host] = ms; },
-    reset() { calls.length = 0; llm = []; activities = []; stravaFail = null; ouraRoutes = null; delays = {}; },
+    reset() { calls.length = 0; llm = []; activities = []; stravaFail = null; stravaRefreshFail = null; ouraRoutes = null; ouraFail = null; delays = {}; },
     restore() { globalThis.fetch = real; (http2 as any).connect = realConnect; },
   };
 }
