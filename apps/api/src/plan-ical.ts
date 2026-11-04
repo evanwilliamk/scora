@@ -101,29 +101,45 @@ export function parseIcsEvents(text: string): IcsEvent[] {
   return events;
 }
 
-const knownZone = (tz: string | undefined): string | null => {
-  if (!tz) return null;
-  try {
-    new Intl.DateTimeFormat('en-CA', { timeZone: tz });
-    return tz;
-  } catch {
-    return null;
+// Building an Intl.DateTimeFormat takes a noticeable part of a millisecond, and
+// a 1 MB feed holds over 10,000 events: one per event stalls the server for
+// seconds. Keep them per zone (names are case-insensitive), null for a name
+// Intl refuses. Bounded, since the names come from the file.
+const MAX_ZONE_FORMATS = 1000;
+interface ZoneFormats { date: Intl.DateTimeFormat; parts: Intl.DateTimeFormat }
+const zoneFormats = new Map<string, ZoneFormats | null>();
+
+function formatsFor(timeZone: string): ZoneFormats | null {
+  const key = timeZone.toLowerCase();
+  let found = zoneFormats.get(key);
+  if (found === undefined) {
+    try {
+      found = {
+        // en-CA formats as YYYY-MM-DD.
+        date: new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }),
+        parts: new Intl.DateTimeFormat('en-US', {
+          timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+        }),
+      };
+    } catch {
+      found = null;
+    }
+    if (zoneFormats.size >= MAX_ZONE_FORMATS) zoneFormats.clear();
+    zoneFormats.set(key, found);
   }
-};
+  return found;
+}
+
+const knownZone = (tz: string | undefined): string | null => (tz && formatsFor(tz) ? tz : null);
 
 const validZone = (tz: string | undefined): string => knownZone(tz) ?? 'UTC';
 
-// en-CA formats as YYYY-MM-DD.
-const dateIn = (t: number, timeZone: string) =>
-  new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(t);
+const dateIn = (t: number, timeZone: string) => formatsFor(timeZone)!.date.format(t);
 
 // Milliseconds `timeZone` is ahead of UTC at instant `t`.
 function zoneOffset(t: number, timeZone: string): number {
   const parts: Record<string, number> = {};
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
-  for (const p of fmt.formatToParts(t)) if (p.type !== 'literal') parts[p.type] = Number(p.value);
+  for (const p of formatsFor(timeZone)!.parts.formatToParts(t)) if (p.type !== 'literal') parts[p.type] = Number(p.value);
   return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - Math.floor(t / 1000) * 1000;
 }
 
