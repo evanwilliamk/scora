@@ -148,6 +148,7 @@ export function capWords(text: string, max: number): string {
 // Postgres text holds neither NUL nor a lone surrogate; either fails the save.
 // A space, not nothing, so "4\u00005 km" does not become 45 km.
 const UNSTORABLE = /[\0\p{Cs}]/gu;
+export const storableText = (text: string) => text.replace(UNSTORABLE, ' ');
 
 // Checks the LLM's rows against the source text. `today` is YYYY-MM-DD in the
 // athlete's zone. Each row is checked against its own words: the description
@@ -187,7 +188,7 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
       if (description) adjusted.push({ row: item, reason: 'description is not in the text; kept the day without numbers' });
       description = '';
     }
-    description = description.replace(UNSTORABLE, ' ').trim();
+    description = storableText(description).trim();
 
     // Numbers must be written for this session with their unit. One that is
     // not becomes null; the session itself stays.

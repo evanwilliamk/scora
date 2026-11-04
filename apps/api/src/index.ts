@@ -36,7 +36,7 @@ import { supabasePrefsStore } from './preferences';
 import type { PrefsStore } from './preferences';
 import { isValidTimezone, isValidDeliveryMinute } from './delivery';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { parsePlanText, openAiPlanLlm, PlanParseError } from './plan-parse';
+import { parsePlanText, openAiPlanLlm, PlanParseError, storableText } from './plan-parse';
 import { supabasePlanStore, withDescriptions, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
 import { planForRead, planTodayCard, readNamesPlan, todayLine } from './plan-read';
@@ -1040,7 +1040,7 @@ fastify.post('/api/plan/manual', async (request, reply) => {
         rejected: parsed.rejected.map((r) => r.reason),
       });
     }
-    const { planId } = await planStore().saveManualPlan(String(athleteId), text.trim(), parsed.rows);
+    const { planId } = await planStore().saveManualPlan(String(athleteId), storableText(text).trim(), parsed.rows);
     return reply.send({
       planId,
       workouts: parsed.rows,

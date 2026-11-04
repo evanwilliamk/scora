@@ -63,6 +63,18 @@ test('manual plan: numbers the text does not state are dropped before saving', a
   assert.ok(body.adjusted.some((a: string) => /duration 40 min is not written/.test(a)));
 });
 
+test('manual plan: a NUL in the paste does not fail the save of the kept text', async () => {
+  const text = 'Tue: 45 min tempo\u0000\nThu: easy run';
+  guard.openAi(JSON.stringify({ workouts: [
+    { date: addDays(T, 1), type: 'run', intensity: 'tempo', duration_min: 45, description: 'Tue: 45 min tempo' },
+  ] }));
+  rest.answer('rpc/replace_manual_plan', { body: 'plan-1' });
+  const r = await post('/api/plan/manual', { athleteId: 'a1', text, today: T });
+  assert.equal(r.statusCode, 200, r.body);
+  const saved = rest.requests.find((q) => q.table === 'rpc/replace_manual_plan')!;
+  assert.equal(saved.body.p_raw_text, 'Tue: 45 min tempo \nThu: easy run', 'Postgres text cannot hold a NUL');
+});
+
 test('manual plan: nothing with a day is a 422 and nothing is saved', async () => {
   guard.openAi(JSON.stringify({ workouts: [] }));
   const r = await post('/api/plan/manual', { athleteId: 'a1', text: 'Run more this month', today: T });
