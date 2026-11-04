@@ -117,9 +117,10 @@ export async function generatePlan(
   const start = startDateForRace(template, req.goal_race_date);
   if (start < mondayOf(today)) {
     // matchTemplate puts a template that fits first, so this one is the
-    // shortest there is: name the earliest race it can still reach (the
-    // Monday of its final week, counted from this week).
-    const earliest = addDays(mondayOf(today), 7 * (template.duration_weeks - 1));
+    // shortest there is: name the earliest race it can still reach, counted
+    // from this week. That is the Thursday of its final week: a race Monday to
+    // Wednesday runs the whole final week first, so it needs one week more.
+    const earliest = addDays(mondayOf(today), 7 * (template.duration_weeks - 1) + 3);
     throw new GenerateError(
       'race_too_soon',
       `The shortest plan for this race is ${template.duration_weeks} weeks. It needs a race on or after ${earliest}.`,

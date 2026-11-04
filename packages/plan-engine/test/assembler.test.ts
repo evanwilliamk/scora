@@ -63,7 +63,7 @@ test('ids are stable and unique per template version, week and day', () => {
 
 test('race date: start is the Monday that puts the race in the final week; nothing is scheduled on or after it', () => {
   assert.equal(startDateForRace(T, '2026-11-15'), MON); // Sunday race
-  assert.equal(startDateForRace(T, '2026-11-09'), MON); // Monday race
+  assert.equal(startDateForRace(T, '2026-11-12'), MON); // Thursday race
   const sun = assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-15' });
   assert.equal(sun.workouts.length, 19);
   const sat = assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-14' });
@@ -73,6 +73,36 @@ test('race date: start is the Monday that puts the race in the final week; nothi
   assert.deepEqual(sat.week_minutes.slice(0, 3), [252, 262, 270]);
 });
 
+test('race Monday to Wednesday (Q35 B): the whole final week runs first, the plan ends on race day', () => {
+  for (const race of ['2026-11-16', '2026-11-17', '2026-11-18']) { // Mon, Tue, Wed after the 4-week block from MON
+    assert.equal(startDateForRace(T, race), MON, race);
+    const p = assemblePlan({ template: T, start_date: MON, goal_race_date: race });
+    assert.equal(p.workouts.length, 20, 'no session is dropped');
+    assert.equal(p.end_date, race);
+    assert.equal(p.workouts.at(-1)!.scheduled_date, '2026-11-15');
+    assert.deepEqual(p.week_minutes, assemblePlan({ template: T, start_date: MON }).week_minutes);
+    assert.ok(p.workouts.every((w) => w.week <= 4 && w.scheduled_date < race));
+  }
+  // Thursday is the first day that falls inside the final week again.
+  const thu = assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-12' });
+  assert.equal(thu.end_date, '2026-11-15');
+  assert.deepEqual(thu.workouts.filter((w) => w.week === 4).map((w) => w.weekday), ['tuesday', 'wednesday']);
+  // A start already chosen with the race early in the final week still assembles as before.
+  const old = assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-09' });
+  assert.equal(old.end_date, '2026-11-15');
+  assert.equal(old.workouts.filter((w) => w.week === 4).length, 0);
+});
+
+test('template matching counts the extra week for a Monday race', () => {
+  const q = { sport: 'run', goal_type: '10k', experience_level: 'regular', current_weekly_km: 30 } as const;
+  const w4 = T;
+  const w5: PlanTemplate = { ...T, slug: 'tpl-5wk', duration_weeks: 5 };
+  // Monday 2026-11-16 is 4 weeks after MON: the 5-week plan would need last week, so 4 fits.
+  assert.equal(matchTemplate([w5, w4], { ...q, goal_race_date: '2026-11-16', today: MON }), w4);
+  // Thursday 2026-11-19 falls in week 5 from MON: 5 fits and is longer.
+  assert.equal(matchTemplate([w5, w4], { ...q, goal_race_date: '2026-11-19', today: MON }), w5);
+});
+
 test('assembly refuses bad dates with a named error', () => {
   const code = (fn: () => unknown) => {
     try { fn(); } catch (e) { return e instanceof AssemblyError ? e.code : String(e); }
@@ -80,7 +110,7 @@ test('assembly refuses bad dates with a named error', () => {
   };
   assert.equal(code(() => assemblePlan({ template: T, start_date: '2026-10-20' })), 'start_not_monday');
   assert.equal(code(() => assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-08' })), 'race_outside_final_week');
-  assert.equal(code(() => assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-16' })), 'race_outside_final_week');
+  assert.equal(code(() => assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-11-19' })), 'race_outside_final_week'); // Thursday after
   assert.equal(code(() => assemblePlan({ template: T, start_date: MON, goal_race_date: '2026-10-01' })), 'race_before_start');
 });
 

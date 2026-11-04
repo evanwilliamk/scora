@@ -197,6 +197,24 @@ test('planBlock: week of the plan, phases with their weeks, the current one, the
 
 // Review 2026-11-01: plan generation path.
 
+test('Q35: a Monday race keeps the full final week, starts a week earlier, and the plan row ends on race day', async () => {
+  const store = sqlGenerateStore(db);
+  const { planId, plan } = await generatePlan('q35', { ...req, goal_race_date: '2026-11-16' }, '2026-10-19', templates, store);
+  assert.equal(plan.start_date, '2026-10-19');
+  assert.equal(plan.workouts.length, 20);
+  const p = (await db.query<any>(
+    `select to_char(end_date, 'YYYY-MM-DD') as end_date, to_char(goal_race_date, 'YYYY-MM-DD') as race from training_plans where id = $1`, [planId])).rows[0];
+  assert.deepEqual(p, { end_date: '2026-11-16', race: '2026-11-16' });
+  const last = (await db.query<any>(
+    `select to_char(max(scheduled_date), 'YYYY-MM-DD') as d from scheduled_workouts where training_plan_id = $1`, [planId])).rows[0];
+  assert.equal(last.d, '2026-11-15');
+  // A Monday race inside what would be the final week now needs a week more than is left.
+  assert.equal(await code(generatePlan('q35b', { ...req, goal_race_date: '2026-11-09' }, '2026-10-19', templates, store)), 'race_too_soon');
+  // The earliest date the refusal names is accepted.
+  const ok = await generatePlan('q35c', { ...req, goal_race_date: '2026-11-12' }, '2026-10-19', templates, store);
+  assert.equal(ok.plan.start_date, '2026-10-19');
+});
+
 test('review 2026-11-01: a session with half-minute steps saves as whole minutes, not a failed save', async () => {
   // In-memory variant of the fixture: strides-style steps add up to 45.5 min
   // (the README's own example shape). planned_duration_min is a smallint.
@@ -243,7 +261,7 @@ test('review 2026-11-01: a race too close for the shortest template names the ea
   // would need a plan that started 10-12. There is no shorter plan to pick.
   await assert.rejects(generatePlan('p2', { ...req, goal_race_date: '2026-11-08' }, '2026-10-21', templates, sqlGenerateStore(db)),
     (e: any) => e.code === 'race_too_soon'
-      && e.message === 'The shortest plan for this race is 4 weeks. It needs a race on or after 2026-11-09.');
+      && e.message === 'The shortest plan for this race is 4 weeks. It needs a race on or after 2026-11-12.');
 });
 
 test('review 2026-11-01: the same setup sent twice keeps one plan, with its done marks and changes', async () => {

@@ -92,29 +92,45 @@ export interface AssembleInput {
   goal_race_date?: string | null;
 }
 
-// The Monday that makes the race fall in the template's final week.
+// A race this many days into its week (Monday to Wednesday) follows the
+// template's final week instead of falling inside it. Otherwise "nothing on or
+// after race day" drops the taper and the days before the race hold the
+// previous week's harder sessions (Q35 B, 2026-11-04).
+const LAST_EARLY_WEEK_DOW = 2;
+
+function dayOfWeek(date: string): number {
+  return (new Date(parseDate(date)).getUTCDay() + 6) % 7; // 0 = Monday
+}
+
+// The Monday of week 1. A race Thursday to Sunday falls in the template's final
+// week; a race Monday to Wednesday falls just after it, so the whole final week
+// runs first.
 export function startDateForRace(template: PlanTemplate, race: string): string {
-  const dow = (new Date(parseDate(race)).getUTCDay() + 6) % 7; // 0 = Monday
-  return addDays(race, -dow - 7 * (template.duration_weeks - 1));
+  const dow = dayOfWeek(race);
+  const finalWeekMonday = addDays(race, dow <= LAST_EARLY_WEEK_DOW ? -dow - 7 : -dow);
+  return addDays(finalWeekMonday, -7 * (template.duration_weeks - 1));
 }
 
 export function assemblePlan({ template: t, start_date, goal_race_date = null }: AssembleInput): AssembledPlan {
   if (new Date(parseDate(start_date)).getUTCDay() !== 1) {
     throw new AssemblyError('start_not_monday', `start_date ${start_date} is not a Monday`);
   }
-  const end_date = addDays(start_date, 7 * t.duration_weeks - 1);
+  const lastTemplateDay = addDays(start_date, 7 * t.duration_weeks - 1);
   if (goal_race_date) {
     if (daysBetween(start_date, goal_race_date) < 0) {
       throw new AssemblyError('race_before_start', `race ${goal_race_date} is before the plan starts (${start_date})`);
     }
-    const finalWeekStart = addDays(end_date, -6);
-    if (daysBetween(finalWeekStart, goal_race_date) < 0 || daysBetween(goal_race_date, end_date) < 0) {
+    const finalWeekStart = addDays(lastTemplateDay, -6);
+    const latestRace = addDays(lastTemplateDay, LAST_EARLY_WEEK_DOW + 1);
+    if (daysBetween(finalWeekStart, goal_race_date) < 0 || daysBetween(goal_race_date, latestRace) < 0) {
       throw new AssemblyError(
         'race_outside_final_week',
-        `race ${goal_race_date} must fall in week ${t.duration_weeks} (${finalWeekStart} to ${end_date})`,
+        `race ${goal_race_date} must fall from week ${t.duration_weeks} to the Wednesday after it (${finalWeekStart} to ${latestRace})`,
       );
     }
   }
+  // The plan runs through race day, also when the race follows the final week.
+  const end_date = goal_race_date && goal_race_date > lastTemplateDay ? goal_race_date : lastTemplateDay;
 
   const workouts: AssembledWorkout[] = [];
   for (let week = 1; week <= t.duration_weeks; week++) {
