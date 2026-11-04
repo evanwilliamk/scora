@@ -957,3 +957,10 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Why: the tag only records where a plan came from; a refresh that flips it would make the count of Runna athletes depend on the last feed.
 - To reverse: pass 'ical' from the route; the migration can stay, it only widens what is accepted.
 
+### 2026-11-04: After a Strava 429 the API asks nothing until the window turns
+- Status: DECIDED
+- Branch: claude/vendor-budget-1104
+- Context: Strava's limit is per application, so one 429 means every other athlete's call fails too, and a morning send kept asking.
+- Choice: one in-process cooldown to the next quarter hour, or midnight UTC if the daily count is spent. Reads answer "Strava is not answering right now." meanwhile and the scheduler retries inside its late window. Alternative: serve the last pull, which needs a store that does not exist yet.
+- Why: small, no new service, and it saves the daily count for when the window turns. Athletes past the 120-minute late window lose that day's push either way.
+- To reverse: remove the check at the top of `stravaFetch` in apps/api/src/strava.ts.
