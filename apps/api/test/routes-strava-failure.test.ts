@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { fakeRest, type FakeRest } from './helpers/fake-rest';
 import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
+import { resetStravaCooldown } from '../src/strava';
 
 blankEnv();
 
@@ -30,6 +31,7 @@ after(async () => {
 beforeEach(() => {
   rest.reset();
   guard.reset();
+  resetStravaCooldown();
 });
 
 const now = Date.now();
@@ -54,6 +56,7 @@ const routes: { name: string; call: () => Promise<any>; env?: string }[] = [
 const cases: { how: number | 'network'; line: string }[] = [
   { how: 401, line: RECONNECT },
   { how: 403, line: RECONNECT },
+  { how: 429, line: UNAVAILABLE },
   { how: 503, line: UNAVAILABLE },
   { how: 500, line: UNAVAILABLE },
   { how: 'network', line: UNAVAILABLE },
@@ -70,6 +73,49 @@ for (const route of routes) {
         assert.equal(r.statusCode, 401, r.body);
         assert.deepEqual(r.json(), { error: c.line });
         assert.ok(guard.calls.some((x) => x.host === 'www.strava.com'), 'Strava was asked');
+        assert.ok(!guard.calls.some((x) => x.host === 'api.openai.com'), 'no model call');
+      } finally {
+        if (route.env) process.env[route.env] = '';
+      }
+    });
+  }
+}
+
+test('after a 429 the next read asks Strava nothing and says the same sentence', async () => {
+  connected();
+  guard.stravaFails(429);
+  await routes[0].call();
+  const asked = () => guard.calls.filter((x) => x.host === 'www.strava.com').length;
+  assert.equal(asked(), 1);
+  const second = await routes[0].call();
+  assert.equal(second.statusCode, 401);
+  assert.deepEqual(second.json(), { error: UNAVAILABLE });
+  assert.equal(asked(), 1, 'no second request into the limit');
+});
+
+// The token refresh fails before any pull. A rate limit or an outage there
+// says nothing about the connection; a refused refresh token does.
+const expired = () => rest.handle('athletes', () => ({
+  body: [{ strava_access_token: 'tok-a1', strava_refresh_token: 'ref-a1', strava_expires_at: 1 }],
+}));
+const STALE_TOKEN = 'Strava not connected or refresh failed. Please reconnect Strava.';
+const refreshCases: { how: number | 'network'; line: string }[] = [
+  { how: 429, line: UNAVAILABLE },
+  { how: 503, line: UNAVAILABLE },
+  { how: 'network', line: UNAVAILABLE },
+  { how: 400, line: STALE_TOKEN },
+  { how: 401, line: STALE_TOKEN },
+];
+for (const route of routes) {
+  for (const c of refreshCases) {
+    test(`${route.name}: token refresh ${c.how} answers "${c.line}"`, async () => {
+      if (route.env) process.env[route.env] = 'on';
+      try {
+        expired();
+        guard.stravaRefreshFails(c.how);
+        const r = await route.call();
+        assert.equal(r.statusCode, 401, r.body);
+        assert.deepEqual(r.json(), { error: c.line });
         assert.ok(!guard.calls.some((x) => x.host === 'api.openai.com'), 'no model call');
       } finally {
         if (route.env) process.env[route.env] = '';

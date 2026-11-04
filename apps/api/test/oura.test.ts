@@ -67,6 +67,13 @@ test('a failing route leaves its fields null and never throws', async () => {
   assert.equal(s.restingHrHistory, undefined);
 });
 
+test('a failed route reports its name and category, nothing from the vendor', async () => {
+  stubOura({ sleep: 429, daily_sleep: { data: [] }, daily_readiness: 503 });
+  const seen: string[][] = [];
+  await fetchOuraSummary('token', { onFailure: (route, kind) => seen.push([route, kind]) });
+  assert.deepEqual(seen, [['sleep', 'http_429'], ['daily_readiness', 'http_503']]);
+});
+
 test('a night split into long_sleep plus a short sleep counts once, by its longest period', async () => {
   const sleep = [
     { day: day(17), type: 'long_sleep', total_sleep_duration: 26000, average_hrv: 50, lowest_heart_rate: 48 },

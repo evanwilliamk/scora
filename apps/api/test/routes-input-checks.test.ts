@@ -165,7 +165,6 @@ test('chat: a non-string, blank or over-long message is a 400 before the quota o
 test('chat quota: with a stored time zone the app\'s date cannot open a fresh day', async () => {
   const zone = 'Etc/GMT+12'; // UTC-12
   const local = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  connected();
   rest.answer('athlete_preferences', { body: [{ timezone: zone }] });
   connected({ cdv_count: 3, cdv_count_date: local });
   guard.stravaActivities(steady());
@@ -173,6 +172,7 @@ test('chat quota: with a stored time zone the app\'s date cannot open a fresh da
   const r = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today: addDays(T, 1) });
   assert.equal(r.statusCode, 429, r.body);
   assert.equal(llmCalls().length, 0);
+  assert.ok(!guard.calls.some((c) => c.host === 'www.strava.com'), 'refused before any Strava call');
   assert.ok(!rest.requests.some((q) => q.method === 'PATCH'));
   assert.equal(rest.requests.find((q) => q.table === 'athlete_preferences')!.params.get('athlete_id'), 'eq.42');
 });

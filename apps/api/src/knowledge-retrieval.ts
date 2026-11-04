@@ -248,12 +248,12 @@ let _sb: SupabaseClient | null = null;
 
 // Live wiring for the read route. Builds the OpenAI and Supabase clients only
 // when the flag is on, so a default deploy makes no extra calls.
-export function knowledgeDepsFromEnv(log?: KnowledgeDeps['log']): KnowledgeDeps & { sb: SupabaseClient | null } {
+export function knowledgeDepsFromEnv(log?: KnowledgeDeps['log'], fetchImpl?: typeof fetch): KnowledgeDeps & { sb: SupabaseClient | null } {
   const enabled = knowledgeRetrievalEnabled();
   const { OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
   if (!enabled || !OPENAI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { enabled: false, log, sb: null };
   }
   _sb = _sb ?? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  return { enabled: true, embed: openAiEmbedder(OPENAI_API_KEY), match: supabaseChunkMatcher(_sb), log, sb: _sb };
+  return { enabled: true, embed: openAiEmbedder(OPENAI_API_KEY, fetchImpl), match: supabaseChunkMatcher(_sb), log, sb: _sb };
 }

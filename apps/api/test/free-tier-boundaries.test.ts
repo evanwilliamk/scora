@@ -70,8 +70,16 @@ const withEnv = async (name: string, fn: () => Promise<void>) => {
 
 // --- Chat-driven viz: 3 queries a day, reset at the athlete's midnight ---
 
+test('free cdv: an athlete already at the limit costs no Strava call and no model call', async () => {
+  connected({ cdv_count: 3, cdv_count_date: today });
+  const r = await post('/api/cdv', { athleteId: '42', message: 'How was my week?', today });
+  assert.equal(r.statusCode, 429, r.body);
+  assert.deepEqual(guard.calls, [], 'no outside call of any kind');
+});
+
 test('free cdv: the limit is 3 a day; the third is answered, the fourth is a 429 with no model call', async () => {
   assert.equal(FREE_CDV_DAILY_LIMIT, 3);
+  connected({ cdv_count: 2, cdv_count_date: today });
   connected({ cdv_count: 2, cdv_count_date: today });
   connected({ cdv_count: 2, cdv_count_date: today });
   guard.stravaActivities(steady());
@@ -99,6 +107,7 @@ test('free cdv: the count resets at the athlete\'s local midnight from the store
   connected({ cdv_count: 3, cdv_count_date: addDays(zoneToday, -1) });
   rest.answer('athlete_preferences', { body: [{ timezone: tz }] });
   connected({ cdv_count: 3, cdv_count_date: addDays(zoneToday, -1) });
+  connected({ cdv_count: 3, cdv_count_date: addDays(zoneToday, -1) });
   guard.stravaActivities(steady());
   guard.openAi('Runs have held steady across the last four weeks.\nCHART: none');
   const fresh = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today: zoneToday });
@@ -119,7 +128,8 @@ test('free cdv: the count resets at the athlete\'s local midnight from the store
 });
 
 test('free cdv: a failed quota lookup lets the query through (fail-open, documented)', async () => {
-  connected();
+  connected(); // the limit check before the Strava pull
+  connected(); // the Strava token
   // No row for the quota read: the lookup throws and the route allows the chat.
   guard.stravaActivities(steady());
   guard.openAi('Runs have held steady across the last four weeks.\nCHART: none');

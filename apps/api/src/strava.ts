@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { vendorHttpError } from './vendor-error';
+import { VendorHttpError, vendorHttpError } from './vendor-error';
+import { vendorLimitLine } from './telemetry';
 
 // Lazy Supabase client so a missing env var can't crash the whole API at boot.
 // Only the token endpoints depend on it; /health and OAuth pages stay up.
@@ -92,8 +93,44 @@ interface StravaTokenResponse {
   expires_at: number;
 }
 
+// Strava's limits belong to the application, not the athlete, so after one 429
+// every other athlete's call fails too, and each failed call is still a request.
+// Without this a morning send would keep asking, one failed call per due athlete
+// per retry. Until the window turns, this process asks nothing and answers as
+// Strava would. Windows turn on the clock's quarter hours, the day at 00:00 UTC.
+const QUARTER_HOUR_MS = 15 * 60_000;
+let stravaCooldownUntil = 0;
+
+export function resetStravaCooldown(): void {
+  stravaCooldownUntil = 0;
+}
+
+// When a 429 ends. Strava's headers carry "15-minute,daily" pairs, overall and
+// for reads; a spent daily count waits for midnight UTC, anything else (headers
+// missing included) for the next quarter hour.
+export function stravaCooldownEnd(headers: Headers | undefined, now: number): number {
+  const pair = (name: string) => (headers?.get(name) ?? '').split(',').map(Number);
+  const dailySpent = ['X-RateLimit', 'X-ReadRateLimit'].some((prefix) => {
+    const daily = pair(`${prefix}-Limit`)[1];
+    return daily > 0 && pair(`${prefix}-Usage`)[1] >= daily;
+  });
+  if (dailySpent) return (Math.floor(now / 86_400_000) + 1) * 86_400_000;
+  return (Math.floor(now / QUARTER_HOUR_MS) + 1) * QUARTER_HOUR_MS;
+}
+
+async function stravaFetch(url: string, init: RequestInit, fetchImpl: typeof fetch): Promise<Response> {
+  if (Date.now() < stravaCooldownUntil) throw new VendorHttpError('Strava', 429);
+  const res = await fetchImpl(url, init);
+  if (res.status === 429) {
+    const now = Date.now();
+    stravaCooldownUntil = stravaCooldownEnd(res.headers, now);
+    console.warn(vendorLimitLine('Strava', Math.ceil((stravaCooldownUntil - now) / 60_000)));
+  }
+  return res;
+}
+
 async function refreshStravaToken(refreshToken: string, fetchImpl: typeof fetch = fetch): Promise<StravaTokenResponse> {
-  const response = await fetchImpl('https://www.strava.com/oauth/token', {
+  const response = await stravaFetch('https://www.strava.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -104,11 +141,10 @@ async function refreshStravaToken(refreshToken: string, fetchImpl: typeof fetch 
     }),
     // Callers for this athlete share one refresh; a hung one must not hold them all.
     signal: AbortSignal.timeout(15_000),
-  });
+  }, fetchImpl);
 
-  if (!response.ok) {
-    throw new Error(`Strava token refresh failed: ${response.statusText}`);
-  }
+  // The status decides what the athlete is told (stravaTokenFailureLine).
+  if (!response.ok) throw await vendorHttpError(response, 'Strava token refresh failed:');
 
   return (await response.json()) as StravaTokenResponse;
 }
@@ -197,11 +233,11 @@ export async function fetchActivitiesSince(
 ): Promise<any[]> {
   const out: any[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await fetchImpl(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${afterSec}&page=${page}`, {
+    const res = await stravaFetch(`https://www.strava.com/api/v3/athlete/activities?per_page=200&after=${afterSec}&page=${page}`, {
       headers: { Authorization: `Bearer ${token}` },
       // A hung page must not hold the read (and the scheduler tick behind it).
       signal: AbortSignal.timeout(15_000),
-    });
+    }, fetchImpl);
     if (!res.ok) throw await vendorHttpError(res, 'Strava');
     const body: unknown = await res.json();
     // Outside data: anything but a list is a failed pull, and entries that
@@ -211,6 +247,16 @@ export async function fetchActivitiesSince(
     if (body.length < 200) break;
   }
   return out;
+}
+
+// The athlete's Strava profile (the calorie engine's weight).
+export async function fetchStravaAthlete(token: string, fetchImpl: typeof fetch = fetch): Promise<{ weight?: number | null }> {
+  const res = await stravaFetch('https://www.strava.com/api/v3/athlete', {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  }, fetchImpl);
+  if (!res.ok) throw await vendorHttpError(res, 'Strava');
+  return (await res.json()) as { weight?: number | null };
 }
 
 // The athlete's activities from the last `days` days, newest first: the order

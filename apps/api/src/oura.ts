@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { vendorHttpError } from './vendor-error';
+import { vendorErrorKind, vendorHttpError } from './vendor-error';
 
 // Oura OAuth + data pull. Mirrors strava.ts, with three Oura-specific
 // differences that bit the earlier attempt:
@@ -216,7 +216,15 @@ export interface OuraSummary {
 // newest night (ring off, not yet synced) leaves sleep, HRV, resting HR, the
 // sleep score and readiness null rather than presenting old values as fresh.
 // The prior-night history and the chart series keep every night.
-export async function fetchOuraSummary(token: string, opts: { localToday?: string } = {}): Promise<OuraSummary> {
+//
+// A failed route is otherwise silent, so a rate limit looks like a ring with no
+// data. `onFailure` gets the route and a fixed category, never a vendor message.
+export async function fetchOuraSummary(
+  token: string,
+  opts: { localToday?: string; onFailure?: (route: string, kind: string) => void } = {},
+): Promise<OuraSummary> {
+  const failed = (route: string, e: unknown) => opts.onFailure?.(route, vendorErrorKind(e));
+  const badStatus = (route: string, res: Response) => opts.onFailure?.(route, `http_${res.status}`);
   // One 20s budget for the three routes: a hung Oura must not hold the read.
   const auth = { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) };
   const day = 86400000;
@@ -298,9 +306,10 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
         hrvMs: typeof p.average_hrv === 'number' ? p.average_hrv : null,
         restingHr: typeof p.lowest_heart_rate === 'number' ? p.lowest_heart_rate : null,
       }));
-    }
-  } catch {
+    } else badStatus('sleep', res);
+  } catch (e) {
     // leave sleep fields null
+    failed('sleep', e);
   }
 
   // Daily sleep score.
@@ -321,9 +330,10 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
       summary.sleepScoreNights = rows
         .filter((r) => typeof r.day === 'string' && typeof r.score === 'number' && (!night || r.day <= night.day))
         .map((r) => ({ day: r.day, score: r.score }));
-    }
-  } catch {
+    } else badStatus('daily_sleep', res);
+  } catch (e) {
     // leave null
+    failed('daily_sleep', e);
   }
 
   // Daily readiness score.
@@ -333,9 +343,10 @@ export async function fetchOuraSummary(token: string, opts: { localToday?: strin
       const json: any = await res.json();
       const rows: any[] = (json.data || []).slice().sort((a: any, b: any) => (a.day < b.day ? 1 : -1));
       if (rows[0] && fresh(rows[0].day)) summary.readinessScore = rows[0].score ?? null;
-    }
-  } catch {
+    } else badStatus('daily_readiness', res);
+  } catch (e) {
     // leave null
+    failed('daily_readiness', e);
   }
 
   return summary;

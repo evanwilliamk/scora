@@ -4,7 +4,7 @@ Status: 2026-11-01, branch `claude/free-tier-boundaries`. Tests only, no source 
 
 | Boundary | Spec (§5.1 / §5.2) | Current behavior | Test | Gap |
 |---|---|---|---|---|
-| CDV daily limit | Free 3/day; Plan ~30/day soft | 3/day for everyone (`FREE_CDV_DAILY_LIMIT`), 429 on the 4th with no model call; failed model calls are refunded | `cdv: the limit is 3 a day...` | Plan 30/day needs Q30. Quota lookup failing lets the query through (fail-open, by design): `cdv: a failed quota lookup...` |
+| CDV daily limit | Free 3/day; Plan ~30/day soft | 3/day for everyone (`FREE_CDV_DAILY_LIMIT`), 429 on the 4th with no model call and no Strava call; failed model calls are refunded | `cdv: the limit is 3 a day...` | Plan 30/day needs Q30. Quota lookup failing lets the query through (fail-open, by design): `cdv: a failed quota lookup...` |
 | CDV reset | daily | Resets at the athlete's local midnight from the stored zone; the app's date only counts with no zone stored, and the day never moves back | `cdv: the count resets at the athlete's local midnight...` | None |
 | History: read, CDV, weekly | Free 90 days; Plan unlimited | Strava pulled by date: read 35 days, CDV 56, weekly 15 (calories 14, flag off) | `history: the read, chat and weekly ask Strava...` | Matches the Free cap (all under 90). Nothing stores history, so "unlimited for Plan" does not exist yet (needs Q30 and storage) |
 | History: Oura, HealthKit, charts | same | Oura at most 30 days back; HealthKit nights capped at 35; inline chart series 28 days | `history: Oura is asked for at most 30 days...` | Same as above |

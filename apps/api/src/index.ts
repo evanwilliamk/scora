@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { settle, unwrap } from './settle';
-import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
+import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities, fetchStravaAthlete } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion, checkCardPosture, cardErrorFallback } from './card-expand';
@@ -16,11 +16,12 @@ import {
   fetchOuraSummary,
   OURA_CLIENT_ID,
 } from './oura';
-import { athleteQuotaDay, consumeCdvQuota, pingDatabase, refundCdvQuota } from './usage';
+import { athleteQuotaDay, cdvQuotaSpent, consumeCdvQuota, pingDatabase, refundCdvQuota, type CdvQuota } from './usage';
 import { generateValidatedVoice, OPENAI_TIMEOUT_MS } from './voice';
+import { meteredFetch } from './llm-meter';
 import { checkCdvWithRetry, cdvEmission, cdvTextOk } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
-import { vendorErrorKind, vendorFailureLine, vendorHttpError } from './vendor-error';
+import { stravaTokenFailureLine, vendorErrorKind, vendorFailureLine, vendorHttpError, vendorIsTransient } from './vendor-error';
 
 import {
   registerDeviceToken, unregisterDeviceToken,
@@ -268,6 +269,12 @@ fastify.get('/api/auth/oura/callback', async (request, reply) => {
 // What chat says when OpenAI is down: no number, no advice, checked like any
 // other chat reply before it is sent.
 const CDV_OUTAGE_REPLY = 'No answer could be reached just now, so nothing is shown for this question.';
+const cdvLimitReply = (quota: CdvQuota) => ({
+  error: `You've used your ${quota.limit} chats for today. Resets tomorrow.`,
+  used: quota.used,
+  limit: quota.limit,
+  remaining: 0,
+});
 
 fastify.post('/api/cdv', async (request, reply) => {
   try {
@@ -283,6 +290,17 @@ fastify.post('/api/cdv', async (request, reply) => {
       return reply.code(400).send({ error: 'Message is too long (1000 characters at most).' });
     }
 
+    // Already at the limit: refuse before any Strava call. The count itself is
+    // taken below, once the data is in hand. Fail-open like that count.
+    let cdvDay: string | null = null;
+    try {
+      cdvDay = await athleteQuotaDay(String(athleteId), body.today);
+      const spent = await cdvQuotaSpent(athleteId, undefined, undefined, cdvDay);
+      if (spent) return reply.code(429).send(cdvLimitReply(spent));
+    } catch (e) {
+      fastify.log.error({ err: e }, 'CDV quota peek failed: going on (fail-open)');
+    }
+
     // Resolve a valid token from storage, auto-refreshing if expired.
     // The app no longer needs to pass (or hold a fresh) token.
     let stravaToken: string;
@@ -290,9 +308,7 @@ fastify.post('/api/cdv', async (request, reply) => {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
-      return reply.code(401).send({
-        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
-      });
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
 
     // Eight weeks: the weekday patterns claim "x of the last 6 weeks" and the
@@ -448,21 +464,17 @@ Answer THIS question specifically using the data above. If the data can't answer
     // breaking the chat. A soft cap must never take down core functionality.
     let quota = null;
     try {
-      quota = await consumeCdvQuota(athleteId, undefined, undefined, await athleteQuotaDay(String(athleteId), (request.body as any)?.today));
+      quota = await consumeCdvQuota(athleteId, undefined, undefined, cdvDay ?? await athleteQuotaDay(String(athleteId), body.today));
     } catch (e) {
       fastify.log.error({ err: e }, 'CDV quota check failed: allowing query (fail-open)');
     }
     if (quota && !quota.allowed) {
-      return reply.code(429).send({
-        error: `You've used your ${quota.limit} chats for today. Resets tomorrow.`,
-        used: quota.used,
-        limit: quota.limit,
-        remaining: 0,
-      });
+      return reply.code(429).send(cdvLimitReply(quota));
     }
 
+    const cdvFetch = meteredFetch('cdv', athleteId, fastify.log);
     const askModel = async (user: string): Promise<string> => {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await cdvFetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -552,6 +564,10 @@ Answer THIS question specifically using the data above. If the data can't answer
   }
 });
 
+// Fixed labels only: a failed Oura route leaves its values empty, and without
+// this line a rate limit would look like a ring with no data.
+const ouraRouteFailed = (route: string, kind: string) => fastify.log.warn({ route, kind }, 'Oura route failed');
+
 // Daily read — the free-tier core. Returns Today's Read (the voice) plus the
 // six dashboard cards, all computed from the athlete's real Strava data.
 fastify.post('/api/read', async (request, reply) => {
@@ -566,9 +582,7 @@ fastify.post('/api/read', async (request, reply) => {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
-      return reply.code(401).send({
-        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
-      });
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
 
     // Independent reads start together once the Strava token resolves (a
@@ -582,9 +596,11 @@ fastify.post('/api/read', async (request, reply) => {
     // Oura if connected; else the Sleep + Recovery cards show connect prompts.
     const loadOura = async (day: string) => {
       const token = await ouraToken;
-      if (!token.ok) return { connected: false, summary: null, error: token.error };
+      // A rate limit or outage on the refresh is not "not connected": the card
+      // must not ask the athlete to connect a ring that is connected.
+      if (!token.ok) return { connected: vendorIsTransient(token.error), summary: null, error: token.error };
       try {
-        return { connected: true, summary: await fetchOuraSummary(token.value, { localToday: day }), error: null };
+        return { connected: true, summary: await fetchOuraSummary(token.value, { localToday: day, onFailure: ouraRouteFailed }), error: null };
       } catch (e) {
         return { connected: true, summary: null, error: e as unknown };
       }
@@ -696,7 +712,7 @@ fastify.post('/api/read', async (request, reply) => {
       try {
         // Optional: gpt-4o-mini words the reason from the posture drivers,
         // checked in code, fixed sentence on any failure (ADAPTATION_REASON_LLM).
-        const llm = reasonLlmEnabled() ? openAiReasonLlm(process.env.OPENAI_API_KEY || '') : null;
+        const llm = reasonLlmEnabled() ? openAiReasonLlm(process.env.OPENAI_API_KEY || '', meteredFetch('adaptation_reason', athleteId, fastify.log)) : null;
         const opts = llm
           ? {
               writeReason: async (d: Parameters<typeof writeReason>[0], fallback: string) => {
@@ -766,7 +782,7 @@ fastify.post('/api/read', async (request, reply) => {
 
     // Substance for the read: the knowledge library when KNOWLEDGE_RETRIEVAL=on,
     // else the curated pattern library, else nothing. Never blocks the read.
-    const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) });
+    const knowledgeDeps = knowledgeDepsFromEnv({ warn: (m) => fastify.log.warn(m) }, meteredFetch('retrieval', athleteId, fastify.log));
     const knowledgeLoad = settle(() => knowledgeForRead(
       {
         posture: posture.result.posture,
@@ -825,7 +841,7 @@ Write today's read using only these drivers.`;
         userPrompt,
         drivers: readDrivers,
         maxTokens: 200,
-        leadIn: "Today's numbers", surface: 'daily',
+        leadIn: "Today's numbers", surface: 'daily', athleteId,
         // Library mode: no advice relayed from a passage, no number lifted from one.
         check: (v) => [
           ...postureClaimHits(v, posture.backed ? posture.result.posture : null),
@@ -918,7 +934,7 @@ fastify.post('/api/card-expand', async (request, reply) => {
       userPrompt: plan.userPrompt,
       drivers: plan.drivers,
       maxTokens: 150,
-      leadIn: card.title, surface: 'card',
+      leadIn: card.title, surface: 'card', athleteId,
       // As on the read: a posture the read did not decide is retried, then
       // falls back (checkCardPosture below stays as the last guard).
       check: (v) => postureClaimHits(v, snapshot.posture),
@@ -988,8 +1004,6 @@ fastify.put('/api/preferences', async (request, reply) => {
 // dates resolve and whose numbers appear in the pasted text.
 // A real calendar date or null: 2026-13-01 and 2026-02-31 do not pass.
 const isoDay = (v: unknown): string | null => (isCalendarDay(v) ? v : null);
-// The /api/read reply when no Strava token resolves.
-const STRAVA_RECONNECT = 'Strava not connected or refresh failed. Please reconnect Strava.';
 
 // The app's local date, accepted only within a day of the server's UTC date
 // (every real time zone is). A far-off "today" would steer plan queries,
@@ -1019,7 +1033,7 @@ fastify.post('/api/plan/manual', async (request, reply) => {
   // The app sends its local date so weekday names resolve in the athlete's zone.
   const today = nearToday(clientToday) ?? new Date().toISOString().slice(0, 10);
   try {
-    const parsed = await parsePlanText(text, today, openAiPlanLlm(process.env.OPENAI_API_KEY || ''));
+    const parsed = await parsePlanText(text, today, openAiPlanLlm(process.env.OPENAI_API_KEY || '', meteredFetch('plan_parse', athleteId, fastify.log)));
     if (parsed.rows.length === 0) {
       return reply.code(422).send({
         error: 'No sessions with a day or date were found. Try one session per line, like "Tue: 45 min tempo".',
@@ -1224,8 +1238,8 @@ fastify.get('/api/plan/prediction', async (request, reply) => {
     let token: string;
     try {
       token = await getValidStravaToken(athleteId);
-    } catch {
-      return reply.code(401).send({ error: STRAVA_RECONNECT });
+    } catch (e) {
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
     let activities: any[];
     try {
@@ -1253,18 +1267,15 @@ fastify.get('/api/calories', async (request, reply) => {
     let token: string;
     try {
       token = await getValidStravaToken(athleteId);
-    } catch {
-      return reply.code(401).send({ error: STRAVA_RECONNECT });
+    } catch (e) {
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
-    const headers = { Authorization: `Bearer ${token}` };
     const after = Math.floor(Date.now() / 1000) - 14 * 86400;
     // A failed profile fetch (HTTP error, timeout, network, unreadable body)
     // answers like the activity pull below: 401 with the athlete sentence.
     let athlete: { weight?: number | null };
     try {
-      const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', { headers });
-      if (!athleteRes.ok) throw await vendorHttpError(athleteRes, 'Strava');
-      athlete = (await athleteRes.json()) as { weight?: number | null };
+      athlete = await fetchStravaAthlete(token);
     } catch (e) {
       return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
     }
@@ -1354,9 +1365,7 @@ fastify.post('/api/weekly', async (request, reply) => {
       stravaToken = await getValidStravaToken(athleteId);
     } catch (e) {
       fastify.log.warn(`Strava token unavailable for ${athleteId}: ${e instanceof Error ? e.message : e}`);
-      return reply.code(401).send({
-        error: 'Strava not connected or refresh failed. Please reconnect Strava.',
-      });
+      return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
 
     // This week and the one before, plus a day for time zones.
@@ -1374,7 +1383,7 @@ fastify.post('/api/weekly', async (request, reply) => {
     let ouraSummary = null;
     try {
       const ouraToken = await getValidOuraToken(athleteId);
-      ouraSummary = await fetchOuraSummary(ouraToken, { localToday: today });
+      ouraSummary = await fetchOuraSummary(ouraToken, { localToday: today, onFailure: ouraRouteFailed });
     } catch {
       // Oura optional — weekly read works on Strava alone.
     }
@@ -1434,7 +1443,7 @@ Write this week's review using only these drivers.`;
         userPrompt,
         drivers,
         maxTokens: 320,
-        leadIn: 'This week', surface: 'weekly',
+        leadIn: 'This week', surface: 'weekly', athleteId,
         log: fastify.log,
       });
       voice = result.voice;

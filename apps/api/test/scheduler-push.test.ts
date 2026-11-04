@@ -43,6 +43,15 @@ test('weekly read has no numbers line: the voice alone, trimmed for a notificati
   assert.ok(!body.includes('\n'));
 });
 
+test('device tokens are read before the read is bought: a failed lookup or no device spends no model call', async () => {
+  const { stub, calls } = io({ status: 200, body: { read: { voice: 'Body is settled.' } } }, {});
+  assert.equal(await pushToAthlete('http://x', 'a1', '/api/read', 'Today', '2026-10-22', quiet, stub), true);
+  assert.equal(calls.fetch.length, 0, 'no device: no read');
+  stub.getDeviceTokens = async () => { throw new Error('Failed to read device tokens'); };
+  await assert.rejects(pushToAthlete('http://x', 'a1', '/api/read', 'Today', '2026-10-22', quiet, stub));
+  assert.equal(calls.fetch.length, 0, 'failed lookup: no read');
+});
+
 test('a failed or empty read pushes nothing and is not marked done', async () => {
   for (const response of [{ status: 500 }, { status: 200, body: { read: {} } }]) {
     const { stub, calls } = io(response, { t: { ok: true, status: 200 } });
