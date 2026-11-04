@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { fakeRest, type FakeRest } from './helpers/fake-rest';
 import { blankEnv } from './helpers/test-env';
 import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
+import { resetStravaCooldown } from '../src/strava';
 
 blankEnv();
 
@@ -30,6 +31,7 @@ after(async () => {
 beforeEach(() => {
   rest.reset();
   guard.reset();
+  resetStravaCooldown();
 });
 
 const now = Date.now();
@@ -54,6 +56,7 @@ const routes: { name: string; call: () => Promise<any>; env?: string }[] = [
 const cases: { how: number | 'network'; line: string }[] = [
   { how: 401, line: RECONNECT },
   { how: 403, line: RECONNECT },
+  { how: 429, line: UNAVAILABLE },
   { how: 503, line: UNAVAILABLE },
   { how: 500, line: UNAVAILABLE },
   { how: 'network', line: UNAVAILABLE },
@@ -77,6 +80,18 @@ for (const route of routes) {
     });
   }
 }
+
+test('after a 429 the next read asks Strava nothing and says the same sentence', async () => {
+  connected();
+  guard.stravaFails(429);
+  await routes[0].call();
+  const asked = () => guard.calls.filter((x) => x.host === 'www.strava.com').length;
+  assert.equal(asked(), 1);
+  const second = await routes[0].call();
+  assert.equal(second.statusCode, 401);
+  assert.deepEqual(second.json(), { error: UNAVAILABLE });
+  assert.equal(asked(), 1, 'no second request into the limit');
+});
 
 // The token refresh fails before any pull. A rate limit or an outage there
 // says nothing about the connection; a refused refresh token does.

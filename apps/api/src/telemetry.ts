@@ -41,6 +41,11 @@ export function trackVoice(log: { info?: (m: string) => void } | undefined, e: V
   log?.info?.(voiceEmissionLine(e));
 }
 
+// A vendor's rate limit was hit, and how long this process now stays away.
+export function vendorLimitLine(vendor: string, waitMin: number): string {
+  return `telemetry ${JSON.stringify({ event: 'vendor_limit', vendor, wait_min: waitMin })}`;
+}
+
 // One line per scheduled push (doc 10 1.1.1 and §5.1 delivery rate). The
 // athlete id is the opaque uuid, already in the scheduler's warn lines; no
 // read text and no health value.

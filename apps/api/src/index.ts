@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { settle, unwrap } from './settle';
-import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities } from './strava';
+import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities, fetchStravaAthlete } from './strava';
 import { buildDashboard, buildWeeklySummary } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion, checkCardPosture, cardErrorFallback } from './card-expand';
@@ -1252,15 +1252,12 @@ fastify.get('/api/calories', async (request, reply) => {
     } catch (e) {
       return reply.code(401).send({ error: stravaTokenFailureLine(e) });
     }
-    const headers = { Authorization: `Bearer ${token}` };
     const after = Math.floor(Date.now() / 1000) - 14 * 86400;
     // A failed profile fetch (HTTP error, timeout, network, unreadable body)
     // answers like the activity pull below: 401 with the athlete sentence.
     let athlete: { weight?: number | null };
     try {
-      const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', { headers });
-      if (!athleteRes.ok) throw await vendorHttpError(athleteRes, 'Strava');
-      athlete = (await athleteRes.json()) as { weight?: number | null };
+      athlete = await fetchStravaAthlete(token);
     } catch (e) {
       return reply.code(401).send({ error: vendorFailureLine('Strava', e) });
     }
