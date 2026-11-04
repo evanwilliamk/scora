@@ -494,10 +494,120 @@ test('must pass: markup and line breaks do not make a legal read look like an or
   ]);
 });
 
+test('must catch with a plan on the calendar: talking the athlete out of it', () => {
+  mustCatch([
+    'The tempo can wait.',
+    "Today's tempo can wait until Thursday.",
+    'Hold off on the tempo.',
+    'Thursday works better for the tempo.',
+    'The tempo fits better on Thursday.',
+    'The tempo would land better on Thursday.',
+    'Thursday suits the tempo better.',
+    "Today isn't the day for the tempo.",
+    'Today is not the day for tempo.',
+    'Today may not be the day for the tempo.',
+    "Today's tempo looks like too much.",
+    'The tempo is too much today.',
+    'Set the plan aside today.',
+    'Ignore the plan today.',
+    'Forget the plan.',
+    "Don't follow the plan today.",
+    "The plan is wrong today.",
+    'Trade the tempo for an easy run.',
+    "Replace today's tempo with an easy run.",
+    'Bump the tempo to Thursday.',
+    'Drop the tempo.',
+    'An easy run instead of the tempo.',
+    'Tempo today is optional.',
+    // The engine made no change today, so none of this happened.
+    "Today's tempo was moved to Wednesday.",
+    'The tempo has been moved to Wednesday.',
+    "Today's tempo moved to Wednesday.",
+  ], PLAN);
+});
 
+test('must pass with a plan on the calendar: naming the tension is the voice', () => {
+  mustPass([
+    "Today's tempo is on your plan, and your body is settled. The plan reads cleanly this morning.",
+    'Your plan calls for a long run Saturday, and your recovery is trending up. You will come to it fresh.',
+    "You're two nights of thin sleep in, and HRV is trending up. The plan calls for tempo intervals today, a call worth thinking about.",
+    'Today is the day for the tempo on your plan.',
+    "HRV climbed instead of falling, up 8% on the week.",
+    'Sleep held at 7:12 instead of dropping.',
+    'Sleep shortened for a second night.',
+    'Sleep has shortened all week.',
+    'You skipped nothing this week.',
+    "You skipped yesterday's tempo, and today's tempo is on the plan.",
+    "Yesterday's tempo was skipped, and today's tempo is on the plan.",
+    'The plan fits the week: sleep held and load is up 12%.',
+    "Today's tempo sits on a rested system.",
+    'The plan shifted yesterday to give the body a day.',
+    'The tempo moved the load: up 12%.',
+    'Load dropped the week before.',
+  ], PLAN);
+});
 
+const CHANGED: Driver[] = [
+  { metric: 'Sleep (last night)', value: '5.5 h' },
+  { metric: 'Plan today', value: 'easy run, 40 min' },
+  { metric: 'Plan change', value: "Today's tempo moved to Wednesday because of short sleep." },
+];
 
+test('must pass: observing an adaptation the plan engine made (§1.3)', () => {
+  mustPass([
+    "Today's tempo was moved to Wednesday because you slept 5.5 hours Monday. Body and plan will align better.",
+    "Today's tempo moved to Wednesday.",
+    'The plan moved the tempo to Wednesday.',
+    'The tempo has been moved to Wednesday.',
+  ], CHANGED);
+  // The stored reason's first sentence, quoted (plan-adapt.ts reasonText).
+  mustPass([
+    "Tuesday's intervals moved to Thursday.",
+    "Tuesday's intervals moved to Thursday, and the plan reads cleanly this morning.",
+  ], [{ metric: 'Plan today', value: 'rest' }, { metric: 'Plan change', value: "Tuesday's intervals moved to Thursday." }]);
+});
 
+test('must catch: an observed adaptation does not license a different day or advice', () => {
+  mustCatch([
+    "Today's tempo was moved to Friday.",
+    'Move the tempo to Wednesday.',
+    'You should move the tempo to Wednesday.',
+    'Skip the tempo.',
+    "Today's tempo could move to Wednesday.",
+  ], CHANGED);
+});
 
+test('must pass: every shipped pattern, rendered with plausible slot values', () => {
+  const values: Record<string, string | number> = {
+    coach_name: 'Sarah',
+    'scheduled_workout.planned_intensity': 'tempo',
+    yesterday_workout_planned_intensity: 'tempo',
+  };
+  const entries = loadPatterns();
+  assert.ok(entries.length >= 12);
+  for (const e of entries) {
+    const slots: Record<string, string | number> = {};
+    for (const k of templateSlots(e.template)) slots[k] = values[k] ?? 7;
+    const text = fillTemplate(e.template, slots).text;
+    const nums = (text.match(/\d+/g) ?? []).join(' ');
+    const drivers: Driver[] = [{ metric: 'Slots', value: nums }, { metric: 'Plan today', value: 'tempo' }];
+    const r = validateVoice(text, drivers);
+    assert.deepEqual(r.bannedHits, [], `${e.id}: ${text}`);
+  }
+});
 
+test('the chat surface inherits the catches, and the fallback stays clean', () => {
+  const data = { hrv: 52, minutes: 45 };
+  for (const line of ['I would keep today easy.', '**Go easy today.**', 'Your best bet is rest.', "You're right about the load."]) {
+    const r = checkCdvReply(line, [{ metric: 'HRV', value: '52' }], data, 'how am I doing?');
+    assert.equal(r.fallback, true, line);
+    assert.equal(r.finalOk, true, line);
+  }
+  const ok = checkCdvReply('HRV sits at 52, and the last run was 45 min.', [{ metric: 'HRV', value: '52' }], data, 'how am I doing?');
+  assert.equal(ok.fallback, false);
+});
 
+test('a METRIC line cannot smuggle advice past the chat check', () => {
+  const r = checkCdvReply('HRV sits at 52.', [{ metric: 'Your best bet is rest', value: '52' }, { metric: 'HRV', value: '52' }], { hrv: 52 }, 'how am I doing?');
+  assert.deepEqual(r.drivers, [{ metric: 'HRV', value: '52' }]);
+});
