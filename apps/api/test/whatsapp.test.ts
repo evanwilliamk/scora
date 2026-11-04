@@ -167,7 +167,7 @@ test('gate 1.1.4: why and more replies each log a voice_emission line with final
   } finally {
     globalThis.fetch = realFetch;
   }
-  const emissions = lines.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice('telemetry '.length)));
+  const emissions = lines.filter((l) => l.startsWith('telemetry ')).map((l) => JSON.parse(l.slice('telemetry '.length))).filter((e) => e.event === 'voice_emission');
   assert.deepEqual(emissions.map((e) => [e.surface, e.final_ok, e.fallback]), [['why', true, false], ['more', true, true], ['why', true, true]]);
   const gate = voiceGateReport(lines.join('\n'));
   assert.equal(gate.failThroughs, 0);
