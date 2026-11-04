@@ -63,7 +63,12 @@ async function callOpenAI(
     throw await vendorHttpError(res, 'OpenAI');
   }
   const json: any = await res.json();
-  return (json.choices?.[0]?.message?.content || '').trim();
+  const text = (json.choices?.[0]?.message?.content || '').trim();
+  // No text is no answer, as in chat. Empty passes every validator (nothing to
+  // catch), so it would go out as a blank read, and the scheduler would then
+  // spend another call on it every 15 minutes.
+  if (!text) throw new Error('OpenAI reply had no text');
+  return text;
 }
 
 // For logs: labels and a count only. The unbacked numbers themselves can be

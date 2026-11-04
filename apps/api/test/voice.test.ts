@@ -160,3 +160,16 @@ test('an extra check passing on the retry uses the retry', async () => {
   const r = await generateValidatedVoice({ ...params, check: (v) => (/primed/i.test(v) ? ['posture primed'] : []) });
   assert.deepEqual([r.voice, r.attempts, r.usedFallback], ['Load is 412 min, up 8% on the week.', 2, false]);
 });
+
+test('an empty completion is no answer: the fallback at once, never a blank read, no second call', async () => {
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return new Response(JSON.stringify({ choices: [{ message: { content: '  ' } }] }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const r = await generateValidatedVoice({ systemPrompt: 's', userPrompt: 'u', drivers });
+  assert.equal(calls, 1);
+  assert.equal(r.usedFallback, true);
+  assert.equal(r.llmError, true);
+  assert.ok(r.voice.trim().length > 0);
+});

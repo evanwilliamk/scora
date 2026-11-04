@@ -55,6 +55,11 @@ export async function pushToAthlete(
   io: PushIo = realIo,
 ): Promise<boolean> {
   const { getDeviceTokens, sendPush, removeDeviceToken } = io;
+  // Before the read: a failed lookup afterwards would throw away a generated
+  // read and buy it again at every retry, up to eight in the late window. No
+  // device left means nothing to buy (the day is marked done, as it was).
+  const tokens = await getDeviceTokens(athleteId);
+  if (tokens.length === 0) return true;
   const res = await io.fetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -72,7 +77,6 @@ export async function pushToAthlete(
 
   const kind = path === '/api/read' ? 'daily' : 'weekly';
   const sentAt = Math.floor((io.now?.() ?? new Date()).getTime() / 1000);
-  const tokens = await getDeviceTokens(athleteId);
   let accepted = 0;
   for (const token of tokens) {
     // Numbers first (PRD §5.A.2); the weekly read has none and sends the voice.
