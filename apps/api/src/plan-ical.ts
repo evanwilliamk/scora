@@ -288,14 +288,16 @@ export function importIcs(ics: string, today: string, timeZone?: string): IcalIm
 
     const summary = oneLine(e.summary);
     const details = oneLine(e.description);
-    const text = [summary, details].filter(Boolean).join(' | ').slice(0, MAX_DESCRIPTION);
+    const text = capWords([summary, details].filter(Boolean).join(' | '), MAX_DESCRIPTION);
     if (!text) { pre.push({ row: label, reason: 'event has no title or notes' }); continue; }
-    // Numbers are read from the same capped text the validator checks.
+    // Everything is read from the same capped text the validator checks. An
+    // uncapped title also stalls the keyword patterns: "\d+\s*[x×]" backtracks
+    // quadratically on a long run of digits.
     const capSummary = summary ? text.slice(0, summary.length) : '';
     const capDetails = details ? text.slice(summary ? summary.length + 3 : 0) : '';
 
-    const intensity = first(TITLE_INTENSITY_WORDS, summary) ?? first(INTENSITY_WORDS, details);
-    const type: WorkoutType = intensity === 'rest' ? 'other' : first(TYPE_WORDS, summary) ?? first(TYPE_WORDS, details) ?? 'other';
+    const intensity = first(TITLE_INTENSITY_WORDS, capSummary) ?? first(INTENSITY_WORDS, capDetails);
+    const type: WorkoutType = intensity === 'rest' ? 'other' : first(TYPE_WORDS, capSummary) ?? first(TYPE_WORDS, capDetails) ?? 'other';
     const duration = intensity === 'rest' ? null : onlyOne(capSummary, capDetails, durations);
     const distance = intensity === 'rest' ? null : onlyDistance(capSummary, capDetails);
 
