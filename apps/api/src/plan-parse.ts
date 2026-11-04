@@ -125,6 +125,30 @@ const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 // must appear in the paste, and every duration and distance must be written in
 // that description with its unit next to it.
 export function validateParsedRows(raw: unknown, sourceText: string, today: string): ParseResult {
+// What the model wrote, only ever read as a number or shown as text. Coercing
+// any other JSON value can throw: {"toString":1} has no usable conversion, and
+// a very deep array overflows JSON.stringify.
+const numberFrom = (v: unknown) => (typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN);
+const shown = (v: unknown) => {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return '(unreadable)';
+  }
+};
+
+// Cut at the end of a word. A cut inside one changes what it says: "45 minutes"
+// cut to "45 mi" reads as 45 miles.
+export function capWords(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  return /[\p{L}\p{N}]/u.test(text[max]) ? cut.replace(/[\p{L}\p{N}.,:]+$/u, '') : cut;
+}
+
+// Postgres text holds neither NUL nor a lone surrogate; either fails the save.
+// A space, not nothing, so "4\u00005 km" does not become 45 km.
+const UNSTORABLE = /[\0\p{Cs}]/gu;
+
   const items: unknown[] = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.workouts) ? (raw as any).workouts : [];
   const source = norm(sourceText);
   const rows: ParsedRow[] = [];
@@ -144,14 +168,15 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
     if (offset > MAX_PLAN_DAYS) { reject(`date is more than ${MAX_PLAN_DAYS} days out`); continue; }
 
     const type = (TYPES as readonly string[]).includes(r.type) ? (r.type as WorkoutType) : null;
-    if (!type) { reject(`unknown type ${JSON.stringify(r.type)}`); continue; }
+    if (!type) { reject(`unknown type ${shown(r.type)}`); continue; }
     const intensity = r.intensity == null ? null
       : (INTENSITIES as readonly string[]).includes(r.intensity) ? (r.intensity as Intensity) : undefined;
-    if (intensity === undefined) { reject(`unknown intensity ${JSON.stringify(r.intensity)}`); continue; }
+    if (intensity === undefined) { reject(`unknown intensity ${shown(r.intensity)}`); continue; }
 
     // A description the model reworded can't vouch for any number: keep the
     // session (date, type, intensity) but none of its numbers or words.
-    let description = typeof r.description === 'string' ? r.description.trim().slice(0, 500) : '';
+    const asWritten = typeof r.description === 'string' ? r.description.trim() : '';
+    let description = capWords(asWritten, 500);
     const verbatim = description !== '' && source.includes(norm(description).replace(/[.,;:]+$/, ''));
     if (!verbatim) {
       if (description) adjusted.push({ row: item, reason: 'description is not in the text; kept the day without numbers' });
@@ -162,19 +187,20 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
     // not becomes null; the session itself stays.
     let duration: number | null = null;
     if (r.duration_min != null) {
-      const d = Number(r.duration_min);
+    description = description.replace(UNSTORABLE, ' ').trim();
+      const d = numberFrom(r.duration_min);
       // Stored as whole minutes, 1 to 1440 (scheduled_workouts check): a
       // written "0:00:20" rounds to 0 and would fail the whole save.
       if (Number.isFinite(d) && Math.round(d) >= 1 && d <= 1440 && writtenMinutes(description).some((w) => near(w, d))) {
         duration = Math.round(d);
       } else {
-        adjusted.push({ row: item, reason: `duration ${r.duration_min} min is not written for this session` });
+        adjusted.push({ row: item, reason: `duration ${shown(r.duration_min)} min is not written for this session` });
       }
     }
 
     let distanceKm: number | null = null;
     if (r.distance != null) {
-      const v = Number(r.distance);
+      const v = numberFrom(r.distance);
       const unit = r.distance_unit === 'mi' ? 'mi' : r.distance_unit === 'km' ? 'km' : null;
       const written = writtenDistances(description);
       const km = Number.isFinite(v) && unit ? Math.round((unit === 'mi' ? v * KM_PER_MI : v) * 100) / 100 : NaN;
@@ -182,11 +208,11 @@ export function validateParsedRows(raw: unknown, sourceText: string, today: stri
       if (km >= 0.01 && km <= MAX_DISTANCE_KM && written[unit!].some((w) => near(w, v))) {
         distanceKm = km;
       } else {
-        adjusted.push({ row: item, reason: `distance ${r.distance} ${unit ?? '(no unit)'} is not written for this session` });
+        adjusted.push({ row: item, reason: `distance ${shown(r.distance)} ${unit ?? '(no unit)'} is not written for this session` });
       }
     }
 
-    const key = `${date}|${type}|${String(r.description ?? '').trim().toLowerCase()}`;
+    const key = `${date}|${type}|${asWritten.toLowerCase()}`;
     if (seen.has(key)) { reject('duplicate session'); continue; }
     seen.add(key);
 
