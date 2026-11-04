@@ -79,6 +79,13 @@ const HOURS = 'h|hr|hrs|hour|hours';
 const KM = 'km|k|kms|kilometers?|kilometres?';
 const MI = 'mi|mile|miles|miler|mls';
 
+// Hours then minutes: "1 hr 15 min", "1h30", "1h 30." A bare number after a
+// space counts as minutes only when no word follows it: in "2 hours 40 km" and
+// "1 hour 3 intervals" it counts something else. The second half of "2.5 h" is
+// not an hour count.
+export const HOURS_MINUTES = /(?<![\d.,:])(\d{1,2})\s*(?:h|hr|hrs|hours?)(?:\s*(\d{1,2})\s*(?:min|mins|minutes|m)(?![a-z\d])|(\d{1,2})(?![a-z\d])|\s+(\d{1,2})(?!\s*[a-z\d]))/gi;
+export const hoursMinutes = (h: string, ...mins: (string | undefined)[]) => Number(h) * 60 + Number(mins.find((m) => m !== undefined));
+
 // Every duration written in a session, in minutes: "45 min", "1.5 h",
 // "1:15" (not a pace like 4:30/km or 7:30 min/mi), "1:05:00", "1h30",
 // "1 hr 15 min".
@@ -93,9 +100,7 @@ export function writtenMinutes(text: string): number[] {
   for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d):([0-5]\d)(?![\d:])/g)) {
     out.push(Number(m[1]) * 60 + Number(m[2]) + Number(m[3]) / 60);
   }
-  for (const m of text.matchAll(/(\d{1,2})\s*(?:h|hr|hrs|hours?)\s*(\d{1,2})(?:\s*(?:min|mins|minutes|m))?(?![a-z\d])/gi)) {
-    out.push(Number(m[1]) * 60 + Number(m[2]));
-  }
+  for (const m of text.matchAll(HOURS_MINUTES)) out.push(hoursMinutes(m[1], m[2], m[3], m[4]));
   return out;
 }
 
@@ -120,11 +125,6 @@ const daysBetween = (a: string, b: string) =>
 
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 
-// Checks the LLM's rows against the source text. `today` is YYYY-MM-DD in the
-// athlete's zone. Each row is checked against its own words: the description
-// must appear in the paste, and every duration and distance must be written in
-// that description with its unit next to it.
-export function validateParsedRows(raw: unknown, sourceText: string, today: string): ParseResult {
 // What the model wrote, only ever read as a number or shown as text. Coercing
 // any other JSON value can throw: {"toString":1} has no usable conversion, and
 // a very deep array overflows JSON.stringify.
@@ -149,6 +149,11 @@ export function capWords(text: string, max: number): string {
 // A space, not nothing, so "4\u00005 km" does not become 45 km.
 const UNSTORABLE = /[\0\p{Cs}]/gu;
 
+// Checks the LLM's rows against the source text. `today` is YYYY-MM-DD in the
+// athlete's zone. Each row is checked against its own words: the description
+// must appear in the paste, and every duration and distance must be written in
+// that description with its unit next to it.
+export function validateParsedRows(raw: unknown, sourceText: string, today: string): ParseResult {
   const items: unknown[] = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.workouts) ? (raw as any).workouts : [];
   const source = norm(sourceText);
   const rows: ParsedRow[] = [];
@@ -182,12 +187,12 @@ const UNSTORABLE = /[\0\p{Cs}]/gu;
       if (description) adjusted.push({ row: item, reason: 'description is not in the text; kept the day without numbers' });
       description = '';
     }
+    description = description.replace(UNSTORABLE, ' ').trim();
 
     // Numbers must be written for this session with their unit. One that is
     // not becomes null; the session itself stays.
     let duration: number | null = null;
     if (r.duration_min != null) {
-    description = description.replace(UNSTORABLE, ' ').trim();
       const d = numberFrom(r.duration_min);
       // Stored as whole minutes, 1 to 1440 (scheduled_workouts check): a
       // written "0:00:20" rounds to 0 and would fail the whole save.

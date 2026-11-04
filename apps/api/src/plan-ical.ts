@@ -8,7 +8,7 @@
 // through the same validator as a pasted plan (plan-parse.ts), so every kept
 // number is written next to its unit in that session's words.
 
-import { writtenDistances, writtenMinutes, validateParsedRows } from './plan-parse';
+import { HOURS_MINUTES, capWords, hoursMinutes, writtenDistances, writtenMinutes, validateParsedRows } from './plan-parse';
 import type { Intensity, ParseResult, WorkoutType } from './plan-parse';
 
 const MAX_ICS_CHARS = 1_000_000;
@@ -190,8 +190,8 @@ const first = <T>(table: [T, RegExp][], text: string): T | null => {
 function durations(text: string): number[] {
   const hm: number[] = [];
   const noClock = text.replace(/(?<![\d:])\d{1,2}:[0-5]\d(?::[0-5]\d)?(?![\d:])(?:\s*[ap]\.?m\.?)?/gi, ' ');
-  const rest = noClock.replace(/(\d{1,2})\s*(?:h|hr|hrs|hours?)\s*(\d{1,2})(?:\s*(?:min|mins|minutes|m))?(?![a-z\d])/gi, (_m, h: string, mm: string) => {
-    hm.push(Number(h) * 60 + Number(mm));
+  const rest = noClock.replace(HOURS_MINUTES, (_m, h: string, a?: string, b?: string, c?: string) => {
+    hm.push(hoursMinutes(h, a, b, c));
     return ' ';
   });
   return [...hm, ...writtenMinutes(rest)];
@@ -211,6 +211,11 @@ function onlyOne(summary: string, description: string, pick: (s: string) => numb
 
 function onlyDistance(summary: string, description: string): { value: number; unit: 'km' | 'mi' } | null {
   for (const part of [summary, description]) {
+  // "1h 30 easy" is 90 minutes and "1 hour 3 intervals" is 60: the words cannot
+  // tell them apart, so neither is guessed. A distance after it is plainly not
+  // minutes ("2 hours 40 km").
+  const unclear = /(?<![\d.,:])\d{1,2}\s*(?:h|hr|hrs|hours?)\s+\d{1,2}\s*(?!(?:kms?|k|kilomet\w*|kilometr\w*|mi|miles?|miler|mls)\b)[a-z]/i.test(rest);
+  if (unclear) return [];
     const { km, mi } = writtenDistances(part);
     if (km.length + mi.length === 1) return km.length ? { value: km[0], unit: 'km' } : { value: mi[0], unit: 'mi' };
     if (km.length + mi.length > 1) return null;
