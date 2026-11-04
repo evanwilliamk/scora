@@ -1063,7 +1063,7 @@ fastify.post('/api/plan/ical', { bodyLimit: 3_000_000 }, async (request, reply) 
       // Sessions before yesterday were left out by the importer; the old
       // plan's copies stay, with the athlete's marks.
       ? await planStore().refreshIcalPlan(String(athleteId), parsed.rows, addDays(today, -1))
-      : await planStore().saveIcalPlan(String(athleteId), parsed.rows);
+      : await planStore().saveIcalPlan(String(athleteId), parsed.rows, parsed.source);
     if (!saved) return reply.code(409).send({ error: 'Your plan no longer comes from this calendar.' });
     const { planId } = saved;
     return reply.send({

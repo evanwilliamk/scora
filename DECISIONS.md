@@ -948,3 +948,12 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: `POST /api/plan/generate` answers 422 `race_too_far` with a plain sentence past 12 months from the athlete's local today, and the iOS date picker stops at the same day. Alternative: allow it and keep the current plan until the new one starts.
 - Why: no schema change and no second active plan state; the current plan stays untouched.
 - To reverse: remove the `race_too_far` check in `plan-generate.ts` and use `earliestRace(...)...` in the picker again.
+
+### 2026-11-04: Runna calendar feeds are tagged, and read the same as any calendar
+- Status: DECIDED
+- Branch: claude/runna-calendar
+- Context: PLAN.md Phase 2 asks for Runna through the calendar import, since Runna has no public plan API. Checked against a synthetic fixture only; no real Runna feed has been seen, so its real titles and PRODID are unverified.
+- Choice: a feed whose PRODID, event title or event notes name Runna is stored as `external_source='runna'` with rows `external_runna`. Keywords and validator are unchanged, and a refresh keeps the source of the first import even if a later feed stops naming Runna. New migration `20261104000000`. Alternative: retag on every refresh.
+- Why: the tag only records where a plan came from; a refresh that flips it would make the count of Runna athletes depend on the last feed.
+- To reverse: pass 'ical' from the route; the migration can stay, it only widens what is accepted.
+

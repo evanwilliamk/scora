@@ -63,10 +63,11 @@ All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrati
 13. `20261103000000_ical_refresh_keeps_past.sql`: a calendar refresh keeps the plan's sessions from before yesterday (the importer leaves them out) with their done/missed marks and Watch sends; adds a three-argument `refresh_ical_plan()` beside the two-argument one. Needed before `ICAL_IMPORT=on`: the API calls the three-argument version.
 14. `20261103010000_plan_marks_locked.sql`: `mark_scheduled_workout()` and `mark_workout_watch_sent()`, so a done/missed mark or Watch send runs under the per-athlete plan lock and never lands on a plan a refresh or paste just replaced. Needed at merge: `POST /api/plan/workouts/:id/status` and `/watch-sent` call them (they are unflagged).
 15. `20261103020000_knowledge_source_unique.sql` (data-writes review): a unique index on `knowledge_sources (title, author) nulls not distinct`, so two ingest runs of a source with no author keep one row. Index only. Apply with or after migration 1, before the first ingest run; not needed before merge (the library is idle until `KNOWLEDGE_RETRIEVAL=on` and an ingest). If an ingest already ran, the duplicate check in the file's header must return no rows first.
+16. `20261104000000_runna_calendar_source.sql`: a calendar feed naming Runna is stored as a `runna` plan. Redefines `replace_external_plan` and both `refresh_ical_plan` versions and widens the one-active-plan index. Until it is applied, importing a feed that names Runna fails with a 500 (other feeds are unaffected).
 
-The list above is complete as of 2026-11-03. Later ones, if any, follow in filename order.
+The list above is complete as of 2026-11-04. Later ones, if any, follow in filename order.
 
-9 redefines a function 7 creates (13 adds a second version that calls it); 10 and 11 redefine the one 6 creates. If you re-run any earlier migration, re-run every later one after it, in order.
+9 redefines a function 7 creates (13 adds a second version that calls it); 16 redefines 7's and 9's and 13's; 10 and 11 redefine the one 6 creates. If you re-run any earlier migration, re-run every later one after it, in order.
 
 ## 2. Env and flags (Railway)
 
@@ -74,7 +75,7 @@ Flags are on only with the exact value `on`. Each defaults off, and with Plan-ti
 
 | Flag | Turns on | Set only after |
 |---|---|---|
-| `ICAL_IMPORT=on` | `POST /api/plan/ical` and the calendar link field on Your Plan | migrations 2, 7, 9 and 13 |
+| `ICAL_IMPORT=on` | `POST /api/plan/ical` and the calendar link field on Your Plan | migrations 2, 7, 9, 13 and 16 |
 | `KNOWLEDGE_RETRIEVAL=on` | knowledge library passages in the read, with `read_citations` rows | migration 1, the starter sources (spec §6), a real ingest run (section 4) |
 | `PLAN_GENERATION=on` | plan setup screen, `/api/plan/options`, `/api/plan/block` | migrations 4, 6, 10 and 11, reviewed templates in `packages/plan-templates` (none yet) |
 | `PLAN_ADAPTATIONS=on` | named plan changes with the read, `/api/plan/adaptations` and its history | migrations 4 and 5, an active SCORA plan (so `PLAN_GENERATION` first) |

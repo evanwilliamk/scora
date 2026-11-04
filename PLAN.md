@@ -136,7 +136,7 @@ Marking: `[ ]` workable unattended (pure code, or behind a flag that defaults of
 
 ### Phase 2 (rest)
 
-- [ ] Runna through the calendar import: a feed whose PRODID or event text names Runna is stored as `external_source='runna'`, and Runna-style titles ("Easy Run", "Tempo", "Long Run") map to kind and intensity by the existing keywords; synthetic fixture only, same validator, still `ICAL_IMPORT=on`. Done when an import test turns the fixture into a runna-tagged plan and an unknown title falls back as today
+- [~] (`claude/runna-calendar`) Runna through the calendar import: a feed whose PRODID or event text names Runna is stored as `external_source='runna'`, and Runna-style titles ("Easy Run", "Tempo", "Long Run") map to kind and intensity by the existing keywords; synthetic fixture only, same validator, still `ICAL_IMPORT=on`. Done when an import test turns the fixture into a runna-tagged plan and an unknown title falls back as today
 - [!] ASK (payments, keys, waits on Q30): Stripe subscriptions. Payment Links for Plan, Customer Portal, `POST /api/stripe/webhook` with signature check writing the tier row from `docs/tier-gating-design.md`. Done when a test-mode subscription moves an athlete to `plan` and a cancel moves them back to `free`
 - [!] ASK (partner access, possible cost or agreement): Runna direct integration (CLAUDE.md §8.4). Runna has no public plan API; needs a partner agreement. Done when Evan has API access or drops it for the calendar path above
 - [~] WhatsApp doorbell core: message composer, reply parser, Twilio signature check; no sending or storage (`claude/whatsapp-core`, on `claude/integration-2026-10-22`)

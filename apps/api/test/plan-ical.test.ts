@@ -5,8 +5,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
-import { eventDate, importIcs, parseIcsEvents, IcalImportError, MAX_ICS_EVENTS } from '../src/plan-ical';
-import { sqlPlanStore } from '../src/plan-store';
+import { eventDate, feedSource, importIcs, parseIcsEvents, IcalImportError, MAX_ICS_EVENTS } from '../src/plan-ical';
+import { sqlPlanStore, supabasePlanStore } from '../src/plan-store';
 import { validateParsedRows } from '../src/plan-parse';
 
 // Synthetic calendar, shaped like a plan app's feed. Test input, not training content.
@@ -164,7 +164,7 @@ test('only one active pasted or imported plan per athlete, enforced by the schem
               values ('ath', 'external', 'ical', '2026-10-20', '2026-10-21')`),
     /duplicate key|unique/i,
   );
-  await assert.rejects(db.query(`select replace_external_plan('ath', 'runna', null, '[{"date":"2026-10-23","type":"run"}]'::jsonb)`), /Unknown plan source/);
+  await assert.rejects(db.query(`select replace_external_plan('ath', 'strava', null, '[{"date":"2026-10-23","type":"run"}]'::jsonb)`), /Unknown plan source/);
 });
 
 test('the Supabase store imports through replace_external_plan without the calendar text', async () => {
@@ -313,4 +313,80 @@ test('the Supabase store orders same-day sessions by creation, then id', async (
   const store = supabasePlanStore({ from: () => q, rpc: async () => ({ data: null, error: null }) });
   await store.workoutsBetween('ath', '2026-10-23', '2026-10-25');
   assert.deepEqual(orders, [['scheduled_date', true], ['created_at', true], ['id', true]]);
+});
+
+// ---- Runna through the calendar import. Synthetic feed, not Runna's real output. ----
+
+const RUNNA_FEED = [
+  'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Fixture//Runna Plan Export//EN',
+  ev('UID:r1', 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:Easy Run', 'DESCRIPTION:40 min'),
+  ev('UID:r2', 'DTSTART;VALUE=DATE:20261024', 'SUMMARY:Tempo', 'DESCRIPTION:45 min'),
+  ev('UID:r3', 'DTSTART;VALUE=DATE:20261025', 'SUMMARY:Long Run', 'DESCRIPTION:18 km'),
+  ev('UID:r4', 'DTSTART;VALUE=DATE:20261026', 'SUMMARY:Session 12'),
+  'END:VCALENDAR',
+].join('\r\n');
+
+test('Runna: a PRODID or event text naming Runna tags the feed; other feeds stay ical', () => {
+  assert.equal(importIcs(RUNNA_FEED, TODAY, 'UTC').source, 'runna');
+  assert.equal(importIcs(FEED, TODAY, 'UTC').source, 'ical');
+  const inText = cal(ev('UID:a', 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:Easy Run', 'DESCRIPTION:From your RUNNA plan'));
+  assert.equal(importIcs(inText, TODAY, 'UTC').source, 'runna');
+  // A folded PRODID still reads; a word that only contains it does not count.
+  assert.equal(feedSource('BEGIN:VCALENDAR\r\nPRODID:-//Ru\r\n nna//EN\r\nEND:VCALENDAR', []), 'runna');
+  assert.equal(feedSource('BEGIN:VCALENDAR\r\nPRODID:-//Fix//\r\n Runna//EN\r\nEND:VCALENDAR', []), 'runna');
+  assert.equal(feedSource('PRODID:-//Grunnar//EN', [{ summary: 'Grunnar club', description: '' }]), 'ical');
+  // An alarm's text is not the event's.
+  const alarm = cal(ev('UID:a', 'DTSTART;VALUE=DATE:20261023', 'SUMMARY:Easy Run', 'BEGIN:VALARM', 'DESCRIPTION:Runna reminder', 'END:VALARM'));
+  assert.equal(importIcs(alarm, TODAY, 'UTC').source, 'ical');
+});
+
+test('Runna: titles map by the existing keywords; an unknown title falls back as today', () => {
+  const { rows } = importIcs(RUNNA_FEED, TODAY, 'UTC');
+  assert.deepEqual(rows.map((r) => [r.date, r.type, r.intensity, r.duration_min, r.distance_km]), [
+    ['2026-10-23', 'run', 'easy', 40, null],
+    ['2026-10-24', 'run', 'tempo', 45, null],
+    ['2026-10-25', 'run', 'long', null, 18],
+    ['2026-10-26', 'other', null, null, null],
+  ]);
+  const same = importIcs(RUNNA_FEED.replace('Runna Plan Export', 'Other Export'), TODAY, 'UTC');
+  assert.equal(same.source, 'ical');
+  assert.deepEqual(same.rows, rows, 'the tag changes nothing about how a feed is read');
+});
+
+test('Runna: stored as a runna plan with external_runna rows, one external plan, refresh keeps source and marks', async () => {
+  const store = sqlPlanStore(db);
+  const parsed = importIcs(RUNNA_FEED, TODAY, 'UTC');
+  const { planId } = await store.saveIcalPlan('run1', parsed.rows, parsed.source);
+  const plan = async () => (await db.query<any>(
+    `select id, external_source from training_plans where athlete_id = 'run1' and current_status = 'active'`)).rows;
+  assert.deepEqual(await plan(), [{ id: planId, external_source: 'runna' }]);
+  const sources = await db.query<any>(`select distinct source from scheduled_workouts where training_plan_id = $1`, [planId]);
+  assert.deepEqual(sources.rows.map((r) => r.source), ['external_runna']);
+
+  const [fri] = await store.workoutsBetween('run1', '2026-10-23', '2026-10-23');
+  assert.equal(await store.markCompleted('run1', fri.id, true, '2026-10-23'), true);
+  // A refresh with a feed that no longer names Runna: same plan source, mark kept.
+  const again = importIcs(RUNNA_FEED.replace('Runna Plan Export', 'Other Export'), TODAY, 'UTC');
+  const refreshed = await store.refreshIcalPlan('run1', again.rows, '2026-10-21');
+  assert.ok(refreshed);
+  assert.deepEqual(await plan(), [{ id: refreshed!.planId, external_source: 'runna' }]);
+  assert.equal((await store.workoutsBetween('run1', '2026-10-23', '2026-10-23'))[0].athlete_completed, true);
+
+  // Importing a plain calendar replaces it: never two active external plans.
+  await store.saveIcalPlan('run1', importIcs(FEED, TODAY, 'UTC').rows);
+  assert.deepEqual((await plan()).map((r) => r.external_source), ['ical']);
+  // And a paste replaces a runna plan.
+  await store.saveIcalPlan('run1', parsed.rows, 'runna');
+  const pasted = validateParsedRows([{ date: '2026-10-23', type: 'run', intensity: 'easy', description: 'easy 30' }], 'Fri easy 30', TODAY);
+  await store.saveManualPlan('run1', 'Fri easy 30', pasted.rows);
+  assert.deepEqual((await plan()).map((r) => r.external_source), ['manual']);
+  assert.equal(await store.refreshIcalPlan('run1', parsed.rows), null, 'a refresh never replaces a pasted plan');
+});
+
+test('Runna: the Supabase store passes the source through', async () => {
+  const calls: any[] = [];
+  const sb = { from: () => { throw new Error('unused'); }, rpc: async (fn: string, args: any) => { calls.push([fn, args]); return { data: 'id', error: null }; } };
+  const rows = importIcs(RUNNA_FEED, TODAY, 'UTC').rows;
+  await supabasePlanStore(sb).saveIcalPlan('a', rows, 'runna');
+  assert.equal(calls[0][1].p_external_source, 'runna');
 });

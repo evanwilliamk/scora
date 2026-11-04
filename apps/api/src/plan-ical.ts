@@ -220,8 +220,22 @@ function onlyDistance(summary: string, description: string): { value: number; un
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 
+// Where the feed comes from, stored as training_plans.external_source. Runna
+// has no public API; its calendar feed is the path (PLAN.md Phase 2). Nothing
+// reads differently: the same keywords and the same validator apply.
+export type CalendarSource = 'ical' | 'runna';
+
+const RUNNA = /\brunna\b/i;
+
+export function feedSource(ics: string, events: Pick<IcsEvent, 'summary' | 'description'>[]): CalendarSource {
+  const prodid = ics.replace(/\r?\n[ \t]/g, '').split(/\r?\n/).find((l) => /^PRODID[:;]/i.test(l));
+  if (prodid && RUNNA.test(prodid)) return 'runna';
+  return events.some((e) => RUNNA.test(e.summary) || RUNNA.test(e.description)) ? 'runna' : 'ical';
+}
+
 export interface IcalImportResult extends ParseResult {
   skipped_past: number;
+  source: CalendarSource;
 }
 
 // Calendar text -> validated plan rows. `today` is YYYY-MM-DD in the
@@ -237,7 +251,8 @@ export function importIcs(ics: string, today: string, timeZone?: string): IcalIm
   let skipped_past = 0;
 
   let considered = 0;
-  for (const e of parseIcsEvents(ics)) {
+  const events = parseIcsEvents(ics);
+  for (const e of events) {
     const label = e.summary || e.uid || '(untitled event)';
     if (e.cancelled) { pre.push({ row: label, reason: 'cancelled event' }); continue; }
     if (e.recurring) { pre.push({ row: label, reason: 'repeating events are not imported' }); continue; }
@@ -276,5 +291,5 @@ export function importIcs(ics: string, today: string, timeZone?: string): IcalIm
   }
 
   const checked = validateParsedRows(raw, texts.join('\n'), today);
-  return { ...checked, rejected: [...pre, ...checked.rejected], skipped_past };
+  return { ...checked, rejected: [...pre, ...checked.rejected], skipped_past, source: feedSource(ics, events) };
 }
