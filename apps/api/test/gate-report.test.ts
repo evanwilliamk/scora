@@ -195,7 +195,8 @@ test('1.1.4: an OpenAI outage logged by generateValidatedVoice counts as a fallb
   // The chat route's own outage line (index.ts, CDV_OUTAGE_REPLY).
   lines.push(voiceEmissionLine({ surface: 'cdv', attempts: 1, fallback: true, bannedHits: [], unbackedCount: 0, finalOk: true }));
   const r = voiceGateReport(lines.join('\n'));
-  assert.equal(lines.length, 6, 'one line per surface');
+  // llm_call lines sit beside these and must not move the gate's counts.
+  assert.equal(lines.filter((l) => l.includes('voice_emission')).length, 6, 'one emission per surface');
   assert.deepEqual([r.total.emissions, r.total.fallbacks, r.total.caught, r.failThroughs, r.unchecked], [6, 6, 6, 0, 0]);
   assert.match(r.lines.at(-1)!, /fail-throughs 0 of 6 .*PASS/);
   assert.match(r.lines.join('\n'), /Validator fallback rate 100\.0% .*FAIL/);
