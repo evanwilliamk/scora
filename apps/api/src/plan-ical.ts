@@ -109,7 +109,13 @@ const MAX_ZONE_FORMATS = 1000;
 interface ZoneFormats { date: Intl.DateTimeFormat; parts: Intl.DateTimeFormat }
 const zoneFormats = new Map<string, ZoneFormats | null>();
 
+// No zone name is near this long. A 1 MB name would otherwise be kept as a key,
+// up to 1000 of them: bounded in count, not in bytes.
+const MAX_ZONE_NAME = 64;
+export const zoneCacheChars = () => [...zoneFormats.keys()].reduce((n, k) => n + k.length, 0);
+
 function formatsFor(timeZone: string): ZoneFormats | null {
+  if (timeZone.length > MAX_ZONE_NAME) return null;
   const key = timeZone.toLowerCase();
   let found = zoneFormats.get(key);
   if (found === undefined) {

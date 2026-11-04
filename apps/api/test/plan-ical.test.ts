@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
-import { eventDate, feedSource, importIcs, parseIcsEvents, IcalImportError, MAX_ICS_EVENTS } from '../src/plan-ical';
+import { eventDate, feedSource, importIcs, parseIcsEvents, IcalImportError, MAX_ICS_EVENTS, zoneCacheChars } from '../src/plan-ical';
 import { sqlPlanStore, supabasePlanStore } from '../src/plan-store';
 import { validateParsedRows } from '../src/plan-parse';
 
@@ -389,4 +389,11 @@ test('Runna: the Supabase store passes the source through', async () => {
   const rows = importIcs(RUNNA_FEED, TODAY, 'UTC').rows;
   await supabasePlanStore(sb).saveIcalPlan('a', rows, 'runna');
   assert.equal(calls[0][1].p_external_source, 'runna');
+});
+
+test('a very long TZID is no zone, and the zone cache does not keep it', () => {
+  const before = zoneCacheChars();
+  const long = `Mars/${'x'.repeat(200_000)}`;
+  assert.equal(eventDate({ dtstart: '20261103T010000', dtstartParams: { TZID: long } }, 'America/Los_Angeles'), '2026-11-03');
+  assert.ok(zoneCacheChars() - before < 1000, 'bounded by names, so bounded in bytes too');
 });
