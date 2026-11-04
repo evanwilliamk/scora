@@ -28,17 +28,17 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   },
   { re: /\bas an ai\b|\b(?:i'?m|i am) an ai\b/i, label: 'as an ai' },
   { re: /\bi'?m just an ai\b/i, label: 'just an ai' },
-  { re: /\byou should\b/i, label: 'you should' },
-  { re: /\byou need to\b/i, label: 'you need to' },
-  { re: /\byou must\b/i, label: 'you must' },
+  { re: /\byou(?: \w+ly)? should(?:n'?t)?\b/i, label: 'you should' },
+  { re: /\byou(?:'ll|'d| will| would| may| might)?(?: \w+ly)? need to\b/i, label: 'you need to' },
+  { re: /\byou(?: \w+ly)? must(?:n'?t)?\b/i, label: 'you must' },
   { re: /\b(go for an?|go do an?|do an easy|do a hard)\b/i, label: 'workout imperative' },
   // "Run a tempo today" is an order; "your last long run a week ago" is history.
   {
     re: /(?<!\b(?:long|easy|tempo|recovery|hard|last|first|next|the|your|this|that|one|steady|threshold|interval|group|morning|evening|trail|track|race|you|did|didn't)\s)\brun an?\b(?!\s+(?:week|day|month|year|while|few|couple|bit|lot)\b)/i,
     label: 'workout imperative',
   },
-  { re: /\btime to (run|go|get|train)\b/i, label: 'workout imperative' },
-  { re: /\bdoes that sound (?:right|fair|good|ok|okay)\b|\blet me know what you think\b|\b(?:you (?:may|might|could) be right|fair point|i could be wrong|i may be wrong|i might be wrong)\b/i, label: 'authority surrender' },
+  { re: /(?<!\b(?:long|short|some|more|enough|the) )\btime to (run|go|get|train|rest|back off|ease|recover|push|hit|take|cut|pull back|hold back|dial|slow|sleep)\b/i, label: 'workout imperative' },
+  { re: /\bdoes that sound (?:right|fair|good|ok|okay)\b|\blet me know what you think\b|\b(?:you (?:may|might|could) be right|fair point\b(?! of)|i could be wrong|i may be wrong|i might be wrong)\b/i, label: 'authority surrender' },
   { re: /\b(let me know if that )?resonate/i, label: 'authority surrender' },
   { re: /\bgood catch\b/i, label: 'sycophantic flip' },
   { re: /\byou'?re right,? i\b/i, label: 'sycophantic flip' },
@@ -46,13 +46,39 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   // Advice in other words (CLAUDE.md §1.1, §3.1): "Aim for 45 minutes",
   // "Consider a rest day", "It's a good day to run long", "Make sure to sleep".
   {
-    re: /\b(?:aim for|make sure (?:to|you)|you'?ll want to|you (?:ought|have|might want|may want|would want) to|(?:it'?s |it is )?(?:best|wise|smart) to|(?:it'?s |it is )?a (?:good|great|fine|smart) (?:day|time|morning|week) to|(?<!\b(?:coaches|coach|most|many|some|people|runners) would )consider (?:an?|taking|skipping|moving|easing|keeping|resting|going|running|holding)|you (?:might|may|could) (?:go|run|ride|swim|try|take|keep|ease|skip|rest|back off|hold|stay|stick))/i,
+    re: /\b(?:(?<!\b(?:the|plan'?s|block'?s|week'?s|your|its) )aim for|make sure (?:to|you)|you(?:'ll|'d| will) want to|you (?:ought|have|might want|may want|would want) to|(?:it'?s |it is )?(?:best|wise|smart) to(?! date\b)|(?:it'?s |it is )?(?<!\b(?:was|were|been) )a (?:good|great|fine|smart) (?:day|time|morning|week) to|(?<!\b(?:coaches|coach|most|many|some|people|runners) would )consider (?:an?\b|rest\b|(?!training\b)\w+ing\b)|you (?:might|may|could) (?:go|run|ride|swim|try|take|keep|ease|skip|rest|back off|hold|stay|stick))/i,
+    label: 'advice',
+  },
+  // A first-person steer: "I'd keep today easy", "Let's back off". Reading the
+  // record stays allowed: "I'd call this settled", "I'd keep this read".
+  {
+    re: /\b(?:i'?d|i would|we'?d|we would|we should|we could|let'?s)(?: (?:probably|just|really|definitely|still|also|personally))* (?:keep (?:it|today|tomorrow|things|the (?:effort|run|pace|session|tempo)|this (?:one|run|session))|go (?:easy|hard|long|short|out|for)|skip|back off|take (?:it|the day|today|tomorrow|a(?! look)|an)|rest|(?:run|ride|swim)(?! through)|stay (?:easy|off|home|in|light|low|aerobic|under|below)|hold (?:off|back)|ease|cut|shorten|move(?! on)|save|consider (?:an?\b|rest\b|\w+ing\b)|try|aim|stick|pull back|dial|recommend|suggest|advise|encourage)\b|\bif i were you\b|\bi (?:recommend|suggest|advise|encourage|urge)\b|\bmy (?:advice|recommendation|suggestion)\b/i,
+    label: 'advice',
+  },
+  // A verdict on what to do, with no verb to give the order: "Your best bet is
+  // rest", "An easy day makes sense", "Today should be easy". The plan's own
+  // words and history stay allowed: "The plan calls for tempo", "The plan made
+  // the right call", "Sleep should show up in HRV".
+  {
+    re: /\byour (?:best|safest) (?:bet|option|move|choice|call|play)\b|\b(?:the|a) (?:smart|right|best|wise|safe) (?:move|play|choice|option|call) (?:is|today|here|would|this)\b|\bis the (?:right|best|smart) call\b|\bis the way to go\b|\b(?:easy|easier|rest|short|shorter|light|lighter|recovery)\b[^.;!?]{0,20}\bmakes? sense\b|\b(?:today|tomorrow|this morning|this run|this session) (?:should|ought to|needs to|has to|must)(?: \w+ly)? (?:be|stay|remain|feel)\b|\b(?:the run|the session) (?:should|ought to|needs to|has to|must)(?: \w+ly)? (?:stay|remain|be (?:easy|short|shorter|light|lighter|gentle))\b|\b(?:today|tomorrow|this morning) calls? for (?:rest\b|easy\b|recovery\b|an? (?:easy|rest|recovery|short|shorter|light|lighter|gentle)\b)|\b(?:easy|easier|rest(?! of)|short|shorter|light|lighter|gentle|recovery|min|mins|minutes)\b[^.;!?]{0,25}\bwould (?:be (?:ideal|better|plenty|enough(?! to)|wise|smart|prudent|perfect|best|good)|help|pay off)\b|\bwould (?:do you good|serve you)\b|\b(?:wouldn'?t|would not|won'?t|can'?t) hurt\b|(?:^|[.;!?]\s+|,\s+)(?:probably |maybe )?better to\b|\b(?:it'?s|it is|would be) better to\b/i,
+    label: 'advice',
+  },
+  // The same steer through "you": "You'd benefit from", "You're better off",
+  // "You can skip", "You don't need to run". "You can see it" stays allowed.
+  {
+    re: /\byou(?:'d| would)? better\b|\byou(?:'d| would| may| might| could| will|'ll)? benefit from\b|\byou(?:'re| are|'d be| would be| will be|'ll be) better off\b|\byou(?:'d| would) do well to\b|\byou(?:'d| would) be (?:wise|smart)\b|\byou can (?:skip|afford|take it|ease|back off|go easy|cut (?:it|the \w+|today'?s \w+) short|shorten|move (?:it|the \w+|today'?s \w+) to|hold off|rest|keep it)\b|\byou don'?t (?:need|have) to (?:run|push|train|go|do|ride|swim|hit|force|race|finish)\b/i,
+    label: 'advice',
+  },
+  // Offered rather than told: "Worth backing off", "How about a shorter run?",
+  // "Feel free to skip". "Worth a look" and "worth keeping an eye on" stay allowed.
+  {
+    re: /\bworth (?:backing|keeping (?:it|today|tomorrow|things|the|this)|skipping|cutting|shortening|easing|taking|moving|holding|dialing|dropping|pulling|resting|saving|trying|swapping)\b|\b(?:why not|how about|what about) (?:an?|some|taking|skipping|keeping|going|easing|resting|rest|just|take|go|run|keep|skip)\b|\bfeel free to\b|\b(?:it'?s|it is) (?:ok|okay|fine|alright|all right) to (?:skip|rest|back|take|cut|go|ease|move|miss|shorten|run|stop)\b|\bno (?:need|shame|harm) (?:to|in)\b|(?:^|[.;!?]\s+)(?:maybe|perhaps) an? (?:easy|short|shorter|light|lighter|gentle|recovery)\b/i,
     label: 'advice',
   },
   // Commands only at the start of a clause: "Keep the effort low." is an
   // order; "you were able to hold the pace" and "HR did stay in zone 2" are history.
   {
-    re: /(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|\s(?:so|and|then)\s+|[—–]\s*)(?:just\s+)?(?:(?:keep|hold) (?:the|your) (?:effort|pace|intensity|heart rate|hr)\b|don'?t (?:push|go hard|run|race|overdo)|avoid (?:intensity|hard|speed|running|racing|pushing)|stay (?:in|under|below|within) (?:zone|z\s?\d|your))/i,
+    re: /(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|\s(?:so|and|then)\s+|[—–]\s*|\s-\s+)(?:just\s+|please\s+)?(?:(?:keep|hold) (?:the|your) (?:effort|pace|intensity|heart rate|hr)\b|(?:don'?t|do not) (?:push|go hard|run|race|overdo|do|train|ride|swim|force)|avoid (?:intensity|hard|speed|running|racing|pushing)|stay (?:in|under|below|within) (?:zone|z\s?\d|your))/i,
     label: 'advice',
   },
   // "Most coaches would call this a rest day" (descriptive) stays allowed.
@@ -69,8 +95,8 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   // tempo" describes the plan).
   {
     re: new RegExp(
-      String.raw`(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|[—–]\s*|\s-\s+|\(\s*)(?:just\s+)?` +
-      String.raw`(?:go (?:easy|hard|out|run|for|long|slow|do|ride|on)|back off (?:today|tomorrow|now|a bit|this)|swim (?:easy|hard|long|today|tomorrow|an?|\d)|do intervals|move (?:it|the|today'?s|your|tomorrow'?s) \w+ to|take (?:it|the day|a|an|today|tomorrow)|keep (?:it|things|today|the pace|easy)|hit (?:the|your|it)|try (?:a|an|the|to|some|\d)|head (?:out|to)|jog|ease (?:into|up|off|back|in)|stay (?:easy|off|home|in|light|low|aerobic)|ride (?:easy|hard|today|tomorrow|an?|\d)|skip (?:the|it|today|tomorrow|your|this)|rest (?:up|now)|rest (?:today|tomorrow)(?!\s+(?:is|was|sits|stays|on|in|falls|comes)\b)|start (?:with|easy|slow)|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow))\b`,
+      String.raw`(?:^|[.;!?]\s+|,\s+(?:so\s+|then\s+|and\s+)?|[—–]\s*|\s-\s+|\(\s*|\sso\s+|(?:bottom line|the takeaway|takeaway|my (?:advice|read|take|call|vote)|the (?:call|move|play|verdict)):\s+)(?:(?:just|please|maybe|perhaps|probably|simply)\s+)*` +
+      String.raw`(?:go (?:easy|hard|out|run|for|long|slow|do|ride|on)|back off (?:today|tomorrow|now|a bit|this)|swim (?:easy|hard|long|today|tomorrow|an?|\d)|do intervals|move (?:it|the|today'?s|your|tomorrow'?s) \w+ to|take (?:it|the day|a(?! look)|an|today|tomorrow)|keep (?:it|things|today|the pace|easy)|keep (?:the|your|this|tomorrow|today's)(?: \w+)? (?:easy|short|light|low|gentle|relaxed|aerobic|under|below)|hit (?:the|your|it)|try (?:a|an|the|to|some|\d)|head (?:out|to)|jog|ease (?:into|up|off|back|in)|stay (?:easy|off|home|in|light|low|aerobic)|ride (?:easy|hard|today|tomorrow|an?|\d)|skip (?:the|it|today|tomorrow|your|this)|rest (?:up|now)|rest (?:today|tomorrow)(?!\s+(?:is|was|sits|stays|on|in|falls|comes)\b)|start (?:with(?! sleep| hrv| load| the (?:sleep|hrv|load|numbers?|data))|easy|slow)|do (?:an?|the|some|your)|run (?:an?|the|it|\d+|easy|tempo|hard|long|short|slow|fast|today|tomorrow|for)|ride for|swim for|shoot for|target \d+|cap (?:it|the|today|this|your)|limit (?:it|the|today|yourself|this|your)|walk (?:today|tomorrow|it|instead)|(?:hold|pull|dial|scale|throttle) (?:back|it back|things back)|sit (?:this|it|today|tomorrow)(?: \w+)? out|shorten (?:the|it|today'?s|your|this)|cut (?:the|it|today'?s|today|your|this)(?: \w+)? short|swap (?:the|it|today'?s|your)|drop (?:the|it|today'?s|your|this)|give yourself|listen to your body|prioriti[sz]e|focus on (?:recovery|rest|sleep|easy|getting|your)|stick (?:to|with)|get (?:some|more|to bed|to sleep|out|in (?:an?|some)|after it)|go get|add (?:an?|some|\d)|throw in|be sure to|remember to|push (?:through|harder|it|on))\b(?!\s+(?:is|was|were|sits|stays|held)\b)`,
       'i',
     ),
     label: 'workout imperative',
