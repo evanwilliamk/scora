@@ -192,6 +192,23 @@ test('chat: a failed model call is a plain sentence, one logged fallback, and gi
   assert.deepEqual(counts, [2, 1], 'counted, then given back');
 });
 
+test('chat: an empty completion is no answer, so the query is given back and no retry is bought', async () => {
+  const today = new Date(now).toISOString().slice(0, 10);
+  connected({ cdv_count: 1, cdv_count_date: today });
+  connected({ cdv_count: 1, cdv_count_date: today });
+  connected({ cdv_count: 1, cdv_count_date: today });
+  rest.answer('athletes', { body: [{ strava_id: '42' }] });
+  connected({ cdv_count: 2, cdv_count_date: today });
+  guard.stravaActivities(twoWeeks());
+  guard.openAi('   ');
+  const r = await post('/api/cdv', { athleteId: '42', message: 'How steady have I been?', today });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual([r.json().unavailable, r.json().remaining], [true, 2]);
+  assert.equal(llmCalls().length, 1);
+  const counts = rest.requests.filter((q) => q.method === 'PATCH' && q.table === 'athletes').map((q) => q.body.cdv_count);
+  assert.deepEqual(counts, [2, 1], 'counted, then given back');
+});
+
 test('chat: a refund the count no longer allows is not reported as one (review 11-02 late)', async () => {
   const today = new Date(now).toISOString().slice(0, 10);
   // Read first by the limit check, before any Strava call.
