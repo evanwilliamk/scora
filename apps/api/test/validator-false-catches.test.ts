@@ -100,3 +100,14 @@ test('with a plan today: a drop is a noun, and a skipped session can be history'
   caught('Instead of the tempo, an easy run.', planDriver);
   caught('The tempo should be skipped.', planDriver);
 });
+
+test('a long run of spaces does not stall the checks', () => {
+  const at = performance.now();
+  validateVoice(`${' '.repeat(60_000)}x`, []);
+  assert.ok(performance.now() - at < 2000, 'quadratic on whitespace');
+});
+
+test('a line break still starts a clause, spaces around it included', () => {
+  caught('Sleep held   \n   Go easy.');
+  clean('Sleep held   \n   HRV climbing.');
+});

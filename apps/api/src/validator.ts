@@ -229,7 +229,7 @@ export function normalizeForCheck(text: string): string {
 // line break with no period), and "A.I." reads as "AI". Numbers are read from
 // normalizeForCheck, unchanged by this.
 function textForBans(rawVoice: string): string {
-  return normalizeForCheck(rawVoice.replace(/\s*\n\s*/g, '. '))
+  return normalizeForCheck(rawVoice.replace(/\s+/g, (m) => (m.includes('\n') ? '. ' : ' ')))
     .replace(/[*_`"]/g, '')
     .replace(/\ba\.i\.(?=[\s,;:]|$)/gi, 'AI')
     .replace(/\.{2,}\s*/g, '. ')
