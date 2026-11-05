@@ -73,17 +73,27 @@ const hoursMin = (seconds: number): string => {
   return `${h}:${m.toString().padStart(2, '0')}`;
 };
 
+// A recovery reading of 0 is a device with no reading, never a measurement: no
+// night is 0:00 and no HRV is 0 ms. Null here, the same floor the route applies
+// to HealthKit values, so a read never says "HRV 0ms" and no posture fires on it.
+export function usableRecovery<T extends OuraSummary>(r: T | null | undefined): T | null {
+  if (!r) return null;
+  const pos = (v: number | null | undefined) => (typeof v === 'number' && v > 0 ? v : null);
+  return { ...r, sleepSeconds: pos(r.sleepSeconds), sleepScore: pos(r.sleepScore), hrvMs: pos(r.hrvMs), restingHr: pos(r.restingHr), hrvWeekAvgMs: pos(r.hrvWeekAvgMs) };
+}
+
 // Build the six free-tier dashboard cards + the driver list the read may cite.
 // `connections` reflects which data sources the athlete has linked; only
 // Strava is wired today, so sleep + recovery come back as connect prompts.
 export function buildDashboard(
   activities: any[],
   connections: { strava: boolean; oura: boolean; healthKit: boolean },
-  oura?: OuraSummary | null,
+  ouraRaw?: OuraSummary | null,
   recoverySource: string = 'Oura',
   // The athlete's local date, for calendar-day counts ("2 days ago").
   localToday: string = new Date().toISOString().slice(0, 10)
 ): DashboardData {
+  const oura = usableRecovery(ouraRaw);
   const now = Date.now();
   const day = 86400000;
   const runs = activities.filter(isRun);
@@ -143,11 +153,15 @@ export function buildDashboard(
       translation: `${thisWeekMin} min across ${thisWeek.length} run${thisWeek.length === 1 ? '' : 's'} this week.`,
     });
     drivers.push({ metric: 'Load', value: `${thisWeekMin} min`, trend });
-    drivers.push({
-      metric: 'Weekly volume',
-      value: `${thisWeekMiles} mi`,
-      trend: wk(pct(thisWeekMiles, lastWeekMiles)),
-    });
+    // Runs with no recorded distance have no volume to state; a week with no
+    // runs at all is a real 0.
+    if (thisWeekMiles > 0 || thisWeek.length === 0) {
+      drivers.push({
+        metric: 'Weekly volume',
+        value: `${thisWeekMiles} mi`,
+        trend: wk(pct(thisWeekMiles, lastWeekMiles)),
+      });
+    }
   } else {
     cards.push({
       id: 'training_load',
@@ -227,9 +241,11 @@ export function buildDashboard(
   // the posture's "long effort" (last run of 90+ moving minutes, drivers.ts):
   // the two can disagree, so they carry different names (Q31 B). ---
   const last30 = runs.filter((a) => inWindow(a, now - 30 * day, now));
-  if (last30.length > 0) {
-    const longest = last30.reduce((m, a) => ((a.distance || 0) > (m.distance || 0) ? a : m));
-    const longestMiles = +((longest.distance || 0) / M).toFixed(1);
+  const longest = last30.reduce<any>((m, a) => (!m || (a.distance || 0) > (m.distance || 0) ? a : m), null);
+  const longestMiles = longest ? +((longest.distance || 0) / M).toFixed(1) : 0;
+  // Runs with no recorded distance (a manual entry, a watch with no GPS) have
+  // no longest run to name: never "0 mi".
+  if (longestMiles > 0) {
     // Calendar days on the athlete's clock: last night's run is 1 day ago at 08:00.
     const ranOn = typeof longest.start_date_local === 'string'
       ? longest.start_date_local.slice(0, 10)
@@ -259,7 +275,7 @@ export function buildDashboard(
       available: false,
       source: 'Strava',
       connect: connections.strava ? null : 'strava',
-      cta: 'No runs in the last 30 days.',
+      cta: last30.length > 0 ? 'No run distance recorded in the last 30 days.' : 'No runs in the last 30 days.',
     });
   }
 
@@ -312,7 +328,8 @@ const localDay = (a: any) => String(a.start_date_local || a.start_date).slice(0,
 // when a summary is passed. With the athlete's `today`, the week is the 7
 // complete local days [today-7, today-1], the same days the weekly plan
 // driver reads; without it, the last 7x24 hours.
-export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null, today?: string | null): WeeklySummary {
+export function buildWeeklySummary(activities: any[], ouraRaw?: OuraSummary | null, today?: string | null): WeeklySummary {
+  const oura = usableRecovery(ouraRaw);
   const now = Date.now();
   const day = 86400000;
   const runs = activities.filter(isRun);
@@ -340,9 +357,9 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null,
   const volTrend = wk(pct(miles, lastMiles));
   const loadTrend = wk(pct(min, lastMin));
 
-  stats.push({ label: 'Volume', value: `${miles} mi`, trend: volTrend });
+  if (miles > 0) stats.push({ label: 'Volume', value: `${miles} mi`, trend: volTrend });
   stats.push({ label: 'Load', value: `${min} min`, trend: loadTrend });
-  drivers.push({ metric: 'Weekly volume', value: `${miles} mi`, trend: volTrend });
+  if (miles > 0) drivers.push({ metric: 'Weekly volume', value: `${miles} mi`, trend: volTrend });
   drivers.push({ metric: 'Load', value: `${min} min`, trend: loadTrend });
 
   // Distinct days trained.
@@ -356,8 +373,10 @@ export function buildWeeklySummary(activities: any[], oura?: OuraSummary | null,
   // start_date_local is the athlete's wall time marked Z: read it in UTC so
   // the server's own time zone never shifts the day.
   const longDay = WEEKDAYS[new Date(longest.start_date_local || longest.start_date).getUTCDay()];
-  stats.push({ label: 'Long run', value: `${longMiles} mi`, trend: longDay });
-  drivers.push({ metric: 'Long run', value: `${longMiles} mi`, trend: longDay });
+  if (longMiles > 0) {
+    stats.push({ label: 'Long run', value: `${longMiles} mi`, trend: longDay });
+    drivers.push({ metric: 'Long run', value: `${longMiles} mi`, trend: longDay });
+  }
 
   // Hardest session (avg HR), if HR present.
   const withHr = thisWeek.filter((a) => a.average_heartrate);

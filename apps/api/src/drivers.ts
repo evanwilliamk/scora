@@ -8,7 +8,7 @@
 import { computePosture } from '../../../packages/posture/src/index';
 import type { PostureDrivers, PostureResult, UserBaselines } from '../../../packages/posture/src/index';
 import type { OuraSummary } from './oura';
-import type { Driver } from './metrics';
+import { usableRecovery, type Driver } from './metrics';
 import { isRun } from './activity-types';
 
 const DAY = 86400000;
@@ -165,7 +165,7 @@ export function computeDriverRecord(
   }
 
   // --- Recovery: last night against the prior nights ---
-  const r = recovery || null;
+  const r = usableRecovery(recovery);
   const baselines: UserBaselines = { sleep_score_p25: null, sleep_score_p75: null };
 
   d.sleep_last_night_score = r?.sleepScore ?? null;

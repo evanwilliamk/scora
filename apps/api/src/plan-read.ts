@@ -27,9 +27,10 @@ export function todaysWorkout(rows: StoredWorkout[], today: string): StoredWorko
 // is the stored km in the athlete's unit (units.ts).
 export function planDriver(w: StoredWorkout): Driver {
   // In words: the voice and the fallback quote this value as is.
-  const parts: string[] = [(w.planned_intensity ?? w.planned_type).replace(/_/g, ' ')];
-  if (w.planned_duration_min != null) parts.push(`${w.planned_duration_min} min`);
-  if (w.planned_distance_km != null) parts.push(formatPlanDistance(w.planned_distance_km));
+  // A stored 0 is no amount: never "tempo, 0 min".
+  const parts: string[] = [(w.planned_intensity || w.planned_type).replace(/_/g, ' ')];
+  if (Number(w.planned_duration_min) > 0) parts.push(`${w.planned_duration_min} min`);
+  if (Number(w.planned_distance_km) > 0) parts.push(formatPlanDistance(w.planned_distance_km as number));
   return { metric: 'Plan today', value: parts.join(', ') };
 }
 
@@ -89,11 +90,11 @@ export function planTodayCard(rows: StoredWorkout[], today: string): Card | null
   const base = { id: 'plan_today', title: 'Plan today', available: true, source: 'Your plan' };
   if (!w) return { ...base, value: 'Nothing', translation: 'Nothing on your plan today.' };
   if (w.planned_intensity === 'rest') return { ...base, value: 'Rest', translation: 'Your plan has a rest day today.' };
-  const kind = (w.planned_intensity ?? w.planned_type).replace(/_/g, ' ');
+  const kind = (w.planned_intensity || w.planned_type).replace(/_/g, ' ');
   const translation = `On your plan today: ${planDriver(w).value.replace(/_/g, ' ')}.`;
   // The amount is the big number, the kind sits under it; no amount, the kind is the value.
-  if (w.planned_duration_min != null) return { ...base, value: String(w.planned_duration_min), unit: 'min', trend: kind, translation };
-  if (w.planned_distance_km != null) return { ...base, value: String(planDistanceValue(w.planned_distance_km)), unit: distanceUnit(), trend: kind, translation };
+  if (Number(w.planned_duration_min) > 0) return { ...base, value: String(w.planned_duration_min), unit: 'min', trend: kind, translation };
+  if (Number(w.planned_distance_km) > 0) return { ...base, value: String(planDistanceValue(w.planned_distance_km as number)), unit: distanceUnit(), trend: kind, translation };
   return { ...base, value: kind[0].toUpperCase() + kind.slice(1), translation };
 }
 
