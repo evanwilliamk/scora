@@ -19,6 +19,13 @@ enum StravaStatus: Equatable {
     return hasRead ? .connected : .unknown
   }
 
+  // What a failed load leaves. No line means it was cancelled, which says
+  // nothing either way, so the last real answer stands.
+  func after(failure line: String?) -> StravaStatus {
+    guard let line else { return self }
+    return StravaStatus.of(hasRead: false, error: line)
+  }
+
   var line: String {
     switch self {
     case .connected: return "Connected."
@@ -59,6 +66,7 @@ enum StravaReconnect {
   static let reconnected = Notification.Name("stravaReconnected")
   static let connectedLine = "Strava connected."
   static let otherAccountLine = "That was a different Strava account. Nothing changed."
+  static let notReconnectedLine = "Strava was not reconnected. Nothing changed."
 
   enum Outcome: Equatable { case signIn, reconnected, otherAccount }
 
@@ -69,6 +77,23 @@ enum StravaReconnect {
   static func outcome(incoming: String, pendingFor: String?) -> Outcome {
     guard let pendingFor else { return .signIn }
     return incoming == pendingFor ? .reconnected : .otherAccount
+  }
+
+  // The answer to a link that arrived. A dropped account keeps the flag: the
+  // browser page still has its Open SCORA button, and a second tap sends the
+  // same link again, which must be dropped again and not sign that account in.
+  static func resolve(incoming: String) -> Outcome {
+    let answer = outcome(incoming: incoming, pendingFor: pendingFor)
+    if answer != .otherAccount { clear() }
+    return answer
+  }
+
+  // scora://auth/failed (the athlete declined in the browser). Only a reconnect
+  // has a dashboard to tell; on the sign-in screen the link stays silent.
+  static func failure() -> OuraLinkResult? {
+    guard pendingFor != nil else { return nil }
+    clear()
+    return OuraLinkResult(connected: false, message: notReconnectedLine)
   }
 }
 
@@ -299,11 +324,15 @@ struct SettingsView: View {
     ok = await SettingsPrefs.save(athleteId: tokenManager.athleteId, minute: minute)
     #endif
     isSaving = false
+    let line: String
     if ok {
       savedMinute = minute
-      statusLine = "Saved. Your read arrives at \(OnboardingState.timeLabel(minute: minute))."
+      line = "Saved. Your read arrives at \(OnboardingState.timeLabel(minute: minute))."
     } else {
-      statusLine = "Could not save the time. Your read keeps its current time."
+      line = "Could not save the time. Your read keeps its current time."
     }
+    statusLine = line
+    // On success the button under VoiceOver's focus goes away, so say the result.
+    UIAccessibility.post(notification: .announcement, argument: line)
   }
 }

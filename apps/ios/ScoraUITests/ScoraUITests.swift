@@ -162,6 +162,65 @@ final class ScoraUITests: XCTestCase {
         assertTarget(app.buttons["Try again"], "Try again", in: app)
     }
 
+    // Sample read kept on the phone says no ring; the live load has not answered.
+    func testSettingsClaimsNothingFromAReadKeptOnThePhone() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-kept-read", "-demo-settings"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Morning read"].waitForExistence(timeout: 10))
+        XCTAssertTrue(scrollTo(app.buttons["Reconnect Strava"], in: app))
+        let unknown = "Shows once today's read has loaded."
+        XCTAssertTrue(connectionLine("Strava", unknown, in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(connectionLine("Oura", unknown, in: app).exists)
+        XCTAssertFalse(connectionLine("Strava", "Connected.", in: app).exists)
+    }
+
+    func testSettingsSaysConnectedAfterALiveRead() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-cards"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10))
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(scrollTo(app.buttons["Reconnect Strava"], in: app))
+        XCTAssertTrue(connectionLine("Strava", "Connected.", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(connectionLine("Oura", "Connected.", in: app).exists)
+    }
+
+    func testOuraLinkShowsConnectedEvenWhenTheReloadFails() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-read-fails", "-demo-settings", "-demo-link", "scora://oura/success"]
+        app.launch()
+        XCTAssertTrue(connectionLine("Oura", "Connected.", in: app).waitForExistence(timeout: 10))
+    }
+
+    func testBannerWaitingWhenTheDashboardAppearsIsShown() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-waiting-banner"]
+        app.launch()
+        XCTAssertTrue(any("Strava connected.", in: app).waitForExistence(timeout: 10))
+    }
+
+    // The flag comes from the launch arguments, so nothing stays on the simulator.
+    func testDeclinedReconnectLinkShowsItsBanner() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-scora.stravaReconnectFor", "1", "-demo-link", "scora://auth/failed?reason=cancelled"]
+        app.launch()
+        XCTAssertTrue(any("Strava was not reconnected. Nothing changed.", in: app).waitForExistence(timeout: 10))
+    }
+
+    func testOtherAccountLinkLeavesTheDashboardAlone() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-scora.stravaReconnectFor", "1", "-demo-link", "scora://auth/success?athlete_id=2&name=Other&token=test-token"]
+        app.launch()
+        XCTAssertTrue(any("That was a different Strava account. Nothing changed.", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Settings"].exists)
+    }
+
+    // A connection is one VoiceOver stop, so its name and line read together.
+    private func connectionLine(_ name: String, _ line: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", name, line)).firstMatch
+    }
+
     func testSettingsAtAccessibilityTextSize() throws {
         let app = launchAtAX5(["-demo-read", "-demo-cards", "-demo-settings"])
         assertHittable(app.buttons["Done"], "Done")

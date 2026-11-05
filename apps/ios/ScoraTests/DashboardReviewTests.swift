@@ -438,6 +438,9 @@ final class SettingsLogicTests: XCTestCase {
   }
 
   func testSignOutForgetsAStartedReconnect() {
+    // With no athlete id, unregister sends nothing and no real API is called.
+    UserDefaults.standard.removeObject(forKey: "scora.athleteId")
+    stub(200)
     StravaReconnect.begin(athleteId: "1")
     addTeardownBlock { StravaReconnect.clear() }
     TokenManager().logout()
@@ -540,5 +543,141 @@ final class SettingsLogicTests: XCTestCase {
     let ok = await SettingsPrefs.save(athleteId: "1", minute: 390, zone: "Asia/Tokyo")
     XCTAssertTrue(ok)
     XCTAssertTrue(TimeZoneSync.needsSync(current: "Asia/Tokyo"))
+  }
+
+  // MARK: Review of claude/ios-settings
+
+  func testDroppedAccountStaysDroppedWhenTheBrowserButtonSendsItAgain() {
+    StravaReconnect.begin(athleteId: "1")
+    addTeardownBlock { StravaReconnect.clear() }
+    XCTAssertEqual(StravaReconnect.resolve(incoming: "2"), .otherAccount)
+    XCTAssertEqual(StravaReconnect.resolve(incoming: "2"), .otherAccount, "Open SCORA on the page sends the same link")
+    XCTAssertEqual(StravaReconnect.resolve(incoming: "1"), .reconnected, "the right account still gets through")
+    XCTAssertNil(StravaReconnect.pendingFor)
+    XCTAssertEqual(StravaReconnect.resolve(incoming: "1"), .signIn, "a second tap on the right account's link is harmless")
+  }
+
+  func testDeclinedReconnectClearsTheFlagAndSaysSo() {
+    addTeardownBlock { StravaReconnect.clear() }
+    XCTAssertNil(StravaReconnect.failure(), "no reconnect started: the sign-in screen says nothing new")
+    StravaReconnect.begin(athleteId: "1")
+    XCTAssertEqual(StravaReconnect.failure()?.message, StravaReconnect.notReconnectedLine)
+    XCTAssertEqual(StravaReconnect.failure()?.connected, nil)
+    XCTAssertNil(StravaReconnect.pendingFor)
+  }
+
+  func testBannerWaitsForADashboardStillAppearing() {
+    addTeardownBlock { OuraLinkResult.pending = nil }
+    let line = OuraLinkResult(connected: true, message: StravaReconnect.connectedLine)
+    OuraLinkResult.deliver(line, dashboardIsRoot: true)
+    XCTAssertEqual(OuraLinkResult.take(), line)
+    XCTAssertNil(OuraLinkResult.take(), "shown once")
+    OuraLinkResult.deliver(line, dashboardIsRoot: false)
+    XCTAssertNil(OuraLinkResult.take(), "onboarding has no banner, and none shows later")
+  }
+
+  // The exact sentences of apps/api/src/vendor-error.ts, through the app's own filter.
+  func testServerSentencesReachTheStatusAsTheServerWroteThem() {
+    func status(_ sentence: String) -> StravaStatus {
+      let body = try! JSONSerialization.data(withJSONObject: ["error": sentence])
+      let shown = APIErrorText.message(from: body, fallback: ReadFetch.failureLine)
+      XCTAssertEqual(shown, sentence, "the filter keeps it")
+      return StravaStatus.connected.after(failure: shown)
+    }
+    XCTAssertEqual(status("Strava needs to be connected again."), .needsReconnect)
+    XCTAssertEqual(status("Strava not connected or refresh failed. Please reconnect Strava."), .needsReconnect)
+    XCTAssertEqual(status("Strava is not answering right now."), .unknown)
+    XCTAssertEqual(StravaStatus.connected.after(failure: ReadFetch.failureLine), .unknown)
+    for line in NetworkText.read.all {
+      XCTAssertEqual(StravaStatus.needsReconnect.after(failure: line), .unknown)
+    }
+  }
+
+  func testACancelledLoadLeavesTheLastStravaAnswer() {
+    XCTAssertEqual(StravaStatus.connected.after(failure: nil), .connected)
+    XCTAssertEqual(StravaStatus.needsReconnect.after(failure: nil), .needsReconnect)
+    XCTAssertEqual(StravaStatus.unknown.after(failure: nil), .unknown, "a kept read on screen proves nothing")
+  }
+
+  func testOuraFailureBannersPointToSettings() throws {
+    // Reconnect from Settings can fail with a ring already linked, when the
+    // Sleep card has no connect prompt to go back to.
+    for link in ["scora://oura/failed?reason=cancelled", "scora://oura/failed"] {
+      let message = try XCTUnwrap(OuraLinkResult(url: URL(string: link)!)).message
+      XCTAssertTrue(message.contains("Settings"), message)
+      XCTAssertFalse(message.contains("Sleep card"), message)
+      XCTAssertTrue(message.contains("Nothing changed"), message)
+    }
+  }
+
+  // Holds the first request until released, recording each request's body order.
+  private func holdFirstRequest() -> AsyncStream<Void>.Continuation {
+    var release: AsyncStream<Void>.Continuation!
+    let gate = AsyncStream<Void> { release = $0 }
+    var first = true
+    OnboardingSync.transport = { [weak self] req in
+      self?.sent.append(req)
+      if first {
+        first = false
+        for await _ in gate { break }
+      }
+      return (200, Data(#"{"deliveryMinute":390}"#.utf8))
+    }
+    return release
+  }
+
+  private func sentMinutes() -> [Int?] {
+    sent.map { req in
+      req.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["deliveryMinute"] as? Int
+    }
+  }
+
+  private func waitForRequests(_ count: Int) async {
+    for _ in 0..<200 where sent.count < count { try? await Task.sleep(nanoseconds: 10_000_000) }
+  }
+
+  func testSettingsSaveWaitsForAFlushOnItsWaySoTheNewerTimeLandsLast() async {
+    UserDefaults.standard.set("1", forKey: "scora.athleteId")
+    OnboardingSync.keep(PendingOnboarding(athleteId: "1", timezone: "UTC", deliveryMinute: 420))
+    let release = holdFirstRequest()
+    async let flushed = OnboardingSync.flush(athleteId: "1")
+    await waitForRequests(1)
+    async let saved = SettingsPrefs.save(athleteId: "1", minute: 390, zone: "UTC")
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    XCTAssertEqual(sent.count, 1, "the save does not overtake the flush")
+    release.yield()
+    let results = await (flushed, saved)
+    XCTAssertTrue(results.0)
+    XCTAssertTrue(results.1)
+    XCTAssertEqual(sentMinutes(), [420, 390])
+    XCTAssertNil(OnboardingSync.pending)
+  }
+
+  func testAFlushStartedDuringASaveFindsNothingLeftToSend() async {
+    UserDefaults.standard.set("1", forKey: "scora.athleteId")
+    OnboardingSync.keep(PendingOnboarding(athleteId: "1", timezone: "UTC", deliveryMinute: 420))
+    let release = holdFirstRequest()
+    async let saved = SettingsPrefs.save(athleteId: "1", minute: 390, zone: "UTC")
+    await waitForRequests(1)
+    async let flushed = OnboardingSync.flush(athleteId: "1") // a same-account reconnect does this
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    release.yield()
+    _ = await (saved, flushed)
+    XCTAssertEqual(sentMinutes(), [390], "the old choice is never sent after the newer one")
+  }
+
+  func testLoadWaitsForASaveOnItsWay() async {
+    UserDefaults.standard.set("1", forKey: "scora.athleteId")
+    let release = holdFirstRequest()
+    async let saved = SettingsPrefs.save(athleteId: "1", minute: 390, zone: "UTC")
+    await waitForRequests(1)
+    async let loaded = SettingsPrefs.load(athleteId: "1") // Settings reopened at once
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    XCTAssertEqual(sent.count, 1, "reads only after the save has landed")
+    release.yield()
+    let results = await (saved, loaded)
+    XCTAssertTrue(results.0)
+    XCTAssertEqual(results.1, 390)
+    XCTAssertEqual(sent.map(\.httpMethod), ["PUT", "GET"])
   }
 }

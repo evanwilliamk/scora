@@ -4,7 +4,13 @@ import SwiftUI
 struct ScoraApp: App {
   @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var tokenManager = TokenManager()
-  
+
+  #if DEBUG
+  init() {
+    if DemoMode.waitingBanner { OuraLinkResult.pending = OuraLinkResult(connected: true, message: StravaReconnect.connectedLine) }
+  }
+  #endif
+
   var body: some Scene {
     WindowGroup {
       if tokenManager.isAuthenticated && tokenManager.checkingOnboarding {
@@ -26,6 +32,13 @@ struct ScoraApp: App {
           .onOpenURL { url in
             handleDeepLink(url)
           }
+          #if DEBUG
+          .task {
+            guard let link = DemoMode.link else { return }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            handleDeepLink(link)
+          }
+          #endif
       } else {
         ContentView(tokenManager: tokenManager)
           .onOpenURL { url in
@@ -44,20 +57,21 @@ struct ScoraApp: App {
       if let athleteId = components?.queryItems?.first(where: { $0.name == "athlete_id" })?.value,
          let name = components?.queryItems?.first(where: { $0.name == "name" })?.value,
          let token = components?.queryItems?.first(where: { $0.name == "token" })?.value {
-        let outcome = StravaReconnect.outcome(incoming: athleteId, pendingFor: StravaReconnect.pendingFor)
-        StravaReconnect.clear()
+        let outcome = StravaReconnect.resolve(incoming: athleteId)
         if outcome == .otherAccount {
-          let line = OuraLinkResult(connected: false, message: StravaReconnect.otherAccountLine)
-          NotificationCenter.default.post(name: OuraLinkResult.notification, object: line)
+          OuraLinkResult.deliver(OuraLinkResult(connected: false, message: StravaReconnect.otherAccountLine), dashboardIsRoot: dashboardIsRoot)
           return
         }
         tokenManager.saveToken(token, athleteId: athleteId, athleteName: name)
         if outcome == .reconnected {
           NotificationCenter.default.post(name: StravaReconnect.reconnected, object: nil)
-          let line = OuraLinkResult(connected: true, message: StravaReconnect.connectedLine)
-          NotificationCenter.default.post(name: OuraLinkResult.notification, object: line)
+          OuraLinkResult.deliver(OuraLinkResult(connected: true, message: StravaReconnect.connectedLine), dashboardIsRoot: dashboardIsRoot)
         }
       }
+    }
+
+    if url.host == "auth" && url.path == "/failed", let line = StravaReconnect.failure() {
+      OuraLinkResult.deliver(line, dashboardIsRoot: dashboardIsRoot)
     }
 
     // Oura linking finished on the web. Success reloads the dashboard so the
@@ -67,7 +81,11 @@ struct ScoraApp: App {
       if result.connected {
         NotificationCenter.default.post(name: Notification.Name("ouraConnected"), object: nil)
       }
-      NotificationCenter.default.post(name: OuraLinkResult.notification, object: result)
+      OuraLinkResult.deliver(result, dashboardIsRoot: dashboardIsRoot)
     }
+  }
+
+  private var dashboardIsRoot: Bool {
+    tokenManager.isAuthenticated && !tokenManager.needsOnboarding && !tokenManager.checkingOnboarding
   }
 }
