@@ -6,6 +6,7 @@
 
 import { buildFallbackVoice, validateVoice } from './validator';
 import { stripChartLine } from './cdv-chart';
+import { postureClaimHits } from './drivers';
 import type { Driver } from './validator';
 import type { VoiceEmission } from './telemetry';
 
@@ -59,9 +60,16 @@ function trendIssue(trend: string | undefined): 'posture' | 'long' | null {
 
 // What vouches for a number in a chat reply: the measured values in the data
 // block and small counts in the athlete's question.
+function dataKeys(data: unknown): string[] {
+  if (Array.isArray(data)) return data.flatMap(dataKeys);
+  return data && typeof data === 'object' ? Object.entries(data).flatMap(([k, v]) => [k, ...dataKeys(v)]) : [];
+}
+
 function cdvSource(data: unknown, question: string): Driver[] {
   return [
-    { metric: '', value: timesWhole(dataValues(data).join(' ')) },
+    // The field names say which measures the data has ("hrv"); numbers still
+    // come only from the values.
+    { metric: dataKeys(data).join(' ').replace(/\d/g, ''), value: timesWhole(dataValues(data).join(' ')) },
     { metric: '', value: questionCounts(question) },
   ];
 }
@@ -83,6 +91,11 @@ function clockOnlyDecimals(text: string, data: unknown, already: string[] = []):
 function checkCdvText(voice: string, data: unknown, question: string) {
   const v = validateVoice(timesWhole(voice), cdvSource(data, question));
   v.unbackedNumbers.push(...clockOnlyDecimals(voice, data, v.unbackedNumbers));
+  // Claims with no driver count and read like numbers on this surface's note.
+  v.unbackedNumbers.push(...v.unbackedClaims);
+  // The prompt says the chat names no posture; this is the guarantee.
+  v.bannedHits.push(...postureClaimHits(voice, null));
+  v.ok = v.ok && v.bannedHits.length === 0;
   // An empty voice is no answer, so it falls back like a failed one.
   v.ok = v.ok && v.unbackedNumbers.length === 0 && voice.trim() !== '';
   return v;
