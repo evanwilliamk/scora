@@ -363,6 +363,9 @@ enum TimeZoneSync {
     UserDefaults.standard.string(forKey: key) != current
   }
   static func syncIfChanged(athleteId: String) async {
+    #if DEBUG
+    if DemoMode.isOn { return } // the demo calls no API, whatever id a past run left on the simulator
+    #endif
     let current = TimeZone.current.identifier
     guard needsSync(current: current), !athleteId.isEmpty,
           let url = URL(string: "\(apiBase)/api/preferences") else { return }
