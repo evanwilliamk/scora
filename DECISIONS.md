@@ -1019,3 +1019,35 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: No change. Add `athletes.distance_unit` before any km market.
 - Why: Alpha athletes are in the US.
 - To reverse: Answer Q39 A.
+
+### 2026-11-05: Settings states connections only from live answers
+- Status: DECIDED
+- Branch: claude/ios-settings-review
+- Context: Settings said "Connected." from a read kept on the phone (up to 7 days old), and took Oura's line from that same reply, while the live load was pending or offline.
+- Choice: Strava and Oura lines come from replies this session, or from a link that just succeeded. Until then both say "Shows once today's read has loaded." The last answer stands while a reload is out, so a needed reconnect does not flicker to Connected.
+- Why: CLAUDE.md 3.2, a claim needs a real value behind it. The alternative, a dated line ("Connected as of Tuesday"), adds copy for little use.
+- To reverse: `show(live:)` and `stravaStatus` in `DashboardView.swift`.
+
+### 2026-11-05: A dropped Strava account stays dropped until the reconnect ends
+- Status: DECIDED
+- Branch: claude/ios-settings-review
+- Context: The server's callback page keeps an Open SCORA button with the same link. The flag was cleared on the first drop, so a second tap signed the other account in over the first athlete's read.
+- Choice: The flag stays set after a different account. It clears on the right account, on scora://auth/failed, or at sign-out. A declined reconnect now shows "Strava was not reconnected. Nothing changed."
+- Why: Keeps the guard this flow promised without touching the sign-in path (Q46).
+- To reverse: `StravaReconnect.resolve` and `failure` in `SettingsView.swift`.
+
+### 2026-11-05: Delivery time: the last thing the athlete chose wins
+- Status: DECIDED
+- Branch: claude/ios-settings-review
+- Context: A waiting onboarding choice being flushed could reach the server after a newer Settings save, leaving the old time while Settings said Saved.
+- Choice: Flush, Settings load and Settings save run one at a time on the phone (`PreferenceWrites`). A save lands after any flush on its way, and a flush starting during a save finds nothing left to send once it succeeds. Onboarding's own save is not in line, since Settings cannot be open then.
+- Why: Simpler than a server version check, and needs no API change.
+- To reverse: Remove the `inOrder` wrappers.
+
+### 2026-11-05: Oura failure banners point to Settings
+- Status: DECIDED
+- Branch: claude/ios-settings-review
+- Context: Both said to try again from the Sleep card, which has no connect prompt when a ring is already linked, the case a failed Reconnect Oura from Settings produces.
+- Choice: "Oura was not connected. Nothing changed; you can try again from Settings." and "Oura did not connect. Nothing changed; try again from Settings."
+- Why: Settings always has the button.
+- To reverse: `OuraLinkResult.init?(url:)`.
