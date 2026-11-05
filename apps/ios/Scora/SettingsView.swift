@@ -89,11 +89,14 @@ enum SettingsPrefs {
     guard !athleteId.isEmpty, let url = c?.url else { return nil }
     var req = URLRequest(url: url)
     req.httpMethod = "GET"
-    guard let (status, data) = await OnboardingSync.transport(req), status == 200,
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let minute = json["deliveryMinute"] as? Int
-    else { return nil }
-    return shownMinute(remote: minute, pending: OnboardingSync.pending, athleteId: athleteId)
+    // In line behind any save, so it reads what that save left.
+    return await PreferenceWrites.shared.inOrder {
+      guard let (status, data) = await OnboardingSync.transport(req), status == 200,
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let minute = json["deliveryMinute"] as? Int
+      else { return nil }
+      return shownMinute(remote: minute, pending: OnboardingSync.pending, athleteId: athleteId)
+    }
   }
 
   // Saves the time and the phone's zone. `onboarded` is sent because a waiting
@@ -110,13 +113,17 @@ enum SettingsPrefs {
       "deliveryMinute": minute,
       "onboarded": true,
     ] as [String: Any])
-    guard let (status, _) = await OnboardingSync.transport(req), status == 200 else { return false }
-    // A reply that outlived a sign-out records nothing (see keepsRecord).
-    if TimeZoneSync.keepsRecord(sentFor: athleteId, signedIn: UserDefaults.standard.string(forKey: "scora.athleteId")) {
-      TimeZoneSync.remember(zone)
+    // In line behind a waiting choice on its way, so this newer time lands last
+    // and a flush that starts meanwhile finds nothing left to send.
+    return await PreferenceWrites.shared.inOrder {
+      guard let (status, _) = await OnboardingSync.transport(req), status == 200 else { return false }
+      // A reply that outlived a sign-out records nothing (see keepsRecord).
+      if TimeZoneSync.keepsRecord(sentFor: athleteId, signedIn: UserDefaults.standard.string(forKey: "scora.athleteId")) {
+        TimeZoneSync.remember(zone)
+      }
+      if OnboardingSync.pending?.athleteId == athleteId { OnboardingSync.pending = nil }
+      return true
     }
-    if OnboardingSync.pending?.athleteId == athleteId { OnboardingSync.pending = nil }
-    return true
   }
 }
 

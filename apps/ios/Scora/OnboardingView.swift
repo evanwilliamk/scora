@@ -393,6 +393,24 @@ struct PendingOnboarding: Codable, Equatable {
   let deliveryMinute: Int
 }
 
+// /api/preferences calls that must not overtake one another: a waiting
+// onboarding choice and a Settings save both set the delivery minute, and the
+// last to reach the server wins. Each call starts when the one before it ends.
+actor PreferenceWrites {
+  static let shared = PreferenceWrites()
+  private var last: Task<Void, Never>?
+
+  func inOrder<T>(_ work: @escaping () async -> T) async -> T {
+    let before = last
+    let task = Task { () -> T in
+      await before?.value
+      return await work()
+    }
+    last = Task { _ = await task.value }
+    return await task.value
+  }
+}
+
 enum OnboardingSync {
   static let pendingKey = "scora.pendingOnboarding"
   private static let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
@@ -430,6 +448,10 @@ enum OnboardingSync {
   // is never sent under the wrong id).
   @discardableResult
   static func flush(athleteId: String) async -> Bool {
+    await PreferenceWrites.shared.inOrder { await sendPending(athleteId: athleteId) }
+  }
+
+  private static func sendPending(athleteId: String) async -> Bool {
     guard let p = pending else { return true }
     guard p.athleteId == athleteId, !athleteId.isEmpty else { pending = nil; return true }
     guard let url = URL(string: "\(apiBase)/api/preferences") else { return false }
