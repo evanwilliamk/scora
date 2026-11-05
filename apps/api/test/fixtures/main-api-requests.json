@@ -1,0 +1,213 @@
+[
+ {
+  "method": "GET",
+  "table": "athletes",
+  "query": "select=id&limit=1",
+  "prefer": null,
+  "accept": "*/*",
+  "body": null
+ },
+ {
+  "method": "POST",
+  "table": "athletes",
+  "query": "on_conflict=strava_id&select=*",
+  "prefer": "resolution=merge-duplicates, return=representation",
+  "accept": "application/vnd.pgrst.object+json",
+  "body": {
+   "user_id": null,
+   "strava_id": "901",
+   "name": "A B"
+  }
+ },
+ {
+  "method": "POST",
+  "table": "athletes",
+  "query": "on_conflict=strava_id",
+  "prefer": "resolution=merge-duplicates",
+  "accept": "*/*",
+  "body": {
+   "strava_id": "901",
+   "name": "A B",
+   "strava_access_token": "a",
+   "strava_refresh_token": "r",
+   "strava_expires_at": 4102444800
+  }
+ },
+ {
+  "method": "GET",
+  "table": "athletes",
+  "query": "select=strava_access_token%2Cstrava_refresh_token%2Cstrava_expires_at&strava_id=eq.901",
+  "prefer": null,
+  "accept": "application/vnd.pgrst.object+json",
+  "body": null
+ },
+ {
+  "method": "POST",
+  "table": "athletes",
+  "query": "on_conflict=strava_id",
+  "prefer": "resolution=merge-duplicates",
+  "accept": "*/*",
+  "body": {
+   "strava_id": "901",
+   "name": "A B",
+   "strava_access_token": "a",
+   "strava_refresh_token": "r",
+   "strava_expires_at": 1000
+  }
+ },
+ {
+  "method": "GET",
+  "table": "athletes",
+  "query": "select=strava_access_token%2Cstrava_refresh_token%2Cstrava_expires_at&strava_id=eq.901",
+  "prefer": null,
+  "accept": "application/vnd.pgrst.object+json",
+  "body": null
+ },
+ {
+  "method": "PATCH",
+  "table": "athletes",
+  "query": "strava_id=eq.901",
+  "prefer": null,
+  "accept": "*/*",
+  "body": {
+   "strava_access_token": "new-a",
+   "strava_refresh_token": "new-r",
+   "strava_expires_at": 4102444800
+  }
+ },
+ {
+  "method": "PATCH",
+  "table": "athletes",
+  "query": "strava_id=eq.901&select=*",
+  "prefer": "return=representation",
+  "accept": "*/*",
+  "body": {
+   "oura_access_token": "oa",
+   "oura_refresh_token": "or",
+   "oura_expires_at": 1793878535
+  }
+ },
+ {
+  "method": "GET",
+  "table": "athletes",
+  "query": "select=oura_access_token%2Coura_refresh_token%2Coura_expires_at&strava_id=eq.901",
+  "prefer": null,
+  "accept": "application/vnd.pgrst.object+json",
+  "body": null
+ },
+ {
+  "method": "PATCH",
+  "table": "athletes",
+  "query": "strava_id=eq.901&select=*",
+  "prefer": "return=representation",
+  "accept": "*/*",
+  "body": {
+   "oura_access_token": "oa",
+   "oura_refresh_token": "or",
+   "oura_expires_at": null
+  }
+ },
+ {
+  "method": "GET",
+  "table": "athletes",
+  "query": "select=oura_access_token%2Coura_refresh_token%2Coura_expires_at&strava_id=eq.901",
+  "prefer": null,
+  "accept": "application/vnd.pgrst.object+json",
+  "body": null
+ },
+ {
+  "method": "PATCH",
+  "table": "athletes",
+  "query": "strava_id=eq.901",
+  "prefer": null,
+  "accept": "*/*",
+  "body": {
+   "oura_access_token": "new-a",
+   "oura_refresh_token": "new-r",
+   "oura_expires_at": 1793878535
+  }
+ },
+ {
+  "method": "POST",
+  "table": "device_tokens",
+  "query": "on_conflict=token",
+  "prefer": "resolution=merge-duplicates",
+  "accept": "*/*",
+  "body": {
+   "athlete_id": "901",
+   "token": "tok901",
+   "platform": "ios",
+   "updated_at": "2026-11-05T10:35:35.778Z"
+  }
+ },
+ {
+  "method": "GET",
+  "table": "device_tokens",
+  "query": "select=token&athlete_id=eq.901",
+  "prefer": null,
+  "accept": "*/*",
+  "body": null
+ },
+ {
+  "method": "GET",
+  "table": "device_tokens",
+  "query": "select=athlete_id",
+  "prefer": null,
+  "accept": "*/*",
+  "body": null
+ },
+ {
+  "method": "GET",
+  "table": "athletes",
+  "query": "select=cdv_count%2Ccdv_count_date&strava_id=eq.901",
+  "prefer": null,
+  "accept": "application/vnd.pgrst.object+json",
+  "body": null
+ },
+ {
+  "method": "PATCH",
+  "table": "athletes",
+  "query": "strava_id=eq.901",
+  "prefer": null,
+  "accept": "*/*",
+  "body": {
+   "cdv_count": 1,
+   "cdv_count_date": "2026-11-05"
+  }
+ },
+ {
+  "method": "GET",
+  "table": "athletes",
+  "query": "select=cdv_count%2Ccdv_count_date&strava_id=eq.901",
+  "prefer": null,
+  "accept": "application/vnd.pgrst.object+json",
+  "body": null
+ },
+ {
+  "method": "PATCH",
+  "table": "athletes",
+  "query": "strava_id=eq.901",
+  "prefer": null,
+  "accept": "*/*",
+  "body": {
+   "cdv_count": 2,
+   "cdv_count_date": "2026-11-05"
+  }
+ },
+ {
+  "method": "DELETE",
+  "table": "device_tokens",
+  "query": "token=eq.tok901",
+  "prefer": null,
+  "accept": "*/*",
+  "body": null
+ },
+ {
+  "method": "GET",
+  "table": "device_tokens",
+  "query": "select=token&athlete_id=eq.901",
+  "prefer": null,
+  "accept": "*/*",
+  "body": null
+ }
+]
