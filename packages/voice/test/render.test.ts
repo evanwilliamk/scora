@@ -87,3 +87,33 @@ test('a string value keeps its own digits when its sign is dropped', () => {
   assert.equal(fillTemplate('HRV down {{hrv_pct_change}}%.', { hrv_pct_change: '-8.0' }).text, 'HRV down 8.0%.');
   assert.equal(fillTemplate('HRV down {{hrv_pct_change}}%.', { hrv_pct_change: '+8.0' }).text, 'HRV up 8.0%.');
 });
+
+// Awkward but legal values (docs/voice-spec-audit.md).
+test('a count of 1 takes the singular, with or without a word between', () => {
+  assert.equal(fillTemplate('{{n}} hard days.', { n: 1 }).text, '1 hard day.');
+  assert.equal(fillTemplate('{{n}} days out.', { n: '1' }).text, '1 day out.');
+  assert.equal(fillTemplate('{{n}} hard days.', { n: 2 }).text, '2 hard days.');
+  assert.equal(fillTemplate('{{n}} hard days.', { n: 0 }).text, '0 hard days.');
+  assert.equal(fillTemplate('{{n}} days out.', { n: 1.5 }).text, '1.5 days out.');
+  assert.equal(fillTemplate('{{n}} of the plan.', { n: 1 }).text, '1 of the plan.');
+});
+
+test('NaN, Infinity and blank values are gaps, never text', () => {
+  for (const v of [NaN, Infinity, -Infinity, '', '  ', 'NaN', 'undefined', 'null']) {
+    const r = fillTemplate('HRV {{x}}%.', { x: v as any });
+    assert.equal(r.text, 'HRV {{x}}%.', String(v));
+    assert.deepEqual(r.missing, ['x'], String(v));
+  }
+});
+
+test('never "-0%", beside a direction word or not', () => {
+  assert.equal(fillTemplate('HRV {{x}}%.', { x: '-0' }).text, 'HRV 0%.');
+  assert.equal(fillTemplate('HRV {{x}}%.', { x: '-0.0' }).text, 'HRV 0.0%.');
+  assert.equal(fillTemplate('HRV {{x}}%.', { x: -0 }).text, 'HRV 0%.');
+  assert.equal(fillTemplate('HRV down {{x}}%.', { x: '-0' }).text, 'HRV down 0%.');
+});
+
+test('a stored intensity reads as words', () => {
+  assert.equal(fillTemplate('Today: {{scheduled_workout.planned_intensity}}.', { 'scheduled_workout.planned_intensity': 'steady_state' }).text, 'Today: steady state.');
+  assert.equal(fillTemplate('{{coach_name}}.', { coach_name: 'a_b' }).text, 'a_b.');
+});
