@@ -262,6 +262,7 @@ export function openAiReasonLlm(apiKey: string, fetchImpl: typeof fetch = fetch)
     });
     if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
     const json: any = await res.json();
-    return json.choices?.[0]?.message?.content ?? '';
+    // Cut by the token cap: not a line to store. Empty ends in the fixed sentence.
+    return json.choices?.[0]?.finish_reason === 'length' ? '' : json.choices?.[0]?.message?.content ?? '';
   };
 }

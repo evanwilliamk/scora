@@ -38,6 +38,16 @@ export interface GenerateResult {
 // (index.ts) uses the same cap.
 export const OPENAI_TIMEOUT_MS = 20_000;
 
+// A reply the token cap stopped (finish_reason "length") ends mid-sentence, and
+// every validator passes half a sentence. Keep the sentences it finished; none
+// finished is no answer. The stop must be followed by a space: a cut can end on
+// the point of "52.4", and "vs." ends nothing.
+export function keepWholeSentences(text: string): string {
+  const ends = [...text.matchAll(/(?<!\bvs)[.?!](?=\s)/g)];
+  const last = ends[ends.length - 1];
+  return last ? text.slice(0, last.index + 1).trim() : '';
+}
+
 async function callOpenAI(
   model: string,
   systemPrompt: string,
@@ -68,7 +78,8 @@ async function callOpenAI(
     throw await vendorHttpError(res, 'OpenAI');
   }
   const json: any = await res.json();
-  const text = (json.choices?.[0]?.message?.content || '').trim();
+  const raw: string = json.choices?.[0]?.message?.content || '';
+  const text = (json.choices?.[0]?.finish_reason === 'length' ? keepWholeSentences(raw) : raw).trim();
   // No text is no answer, as in chat. Empty passes every validator (nothing to
   // catch), so it would go out as a blank read, and the scheduler would then
   // spend another call on it every 15 minutes.

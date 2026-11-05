@@ -9,6 +9,8 @@ import { installFetchGuard, type FetchGuard } from './helpers/fetch-guard';
 import { computeDriverRecord } from '../src/drivers';
 import { buildDriverSeries } from '../src/driver-links';
 import { usableRecovery } from '../src/metrics';
+import { keepWholeSentences } from '../src/voice';
+import { openAiReasonLlm } from '../src/adaptation-reason';
 import { fetchOuraSummary, type OuraSummary } from '../src/oura';
 
 blankEnv();
@@ -117,4 +119,63 @@ test('a ring reporting only zeros gives way to Apple Health on the read', async 
   assert.equal(r.statusCode, 200, r.body);
   assert.equal(r.json().connections.healthKit, true);
   assert.ok(r.json().drivers.some((d: any) => d.metric === 'HRV' && d.value === '52ms'), r.body);
+});
+
+// Replies the token cap stopped (finish_reason "length").
+
+const cutAnswer = (content: string) => ({ body: { choices: [{ message: { role: 'assistant', content }, finish_reason: 'length' }] } });
+
+test('keepWholeSentences keeps finished sentences and treats a cut decimal or vs. as unfinished', () => {
+  assert.equal(keepWholeSentences('Load is 80 min. HRV is 52 and'), 'Load is 80 min.');
+  assert.equal(keepWholeSentences('Load is 80 min. HRV is 52.'), 'Load is 80 min.');
+  assert.equal(keepWholeSentences('Load is 80 min vs. the'), '');
+  assert.equal(keepWholeSentences('Load is 80'), '');
+});
+
+test('a read cut by the token cap goes out as its whole sentences, on the same call', async () => {
+  rest.handle('athletes', () => ({ body: [{ strava_access_token: 'tok-a1', strava_refresh_token: 'ref-a1', strava_expires_at: Math.floor(now / 1000) + 3600 }] }));
+  guard.stravaActivities([run(1), run(3)]);
+  guard.openAi(cutAnswer('Load is 80 min this week. The second sentence stops right in the'));
+  const r = await app.inject({ method: 'POST', url: '/api/read', payload: { athleteId: '42', today } });
+  assert.equal(r.json().read.voice, 'Load is 80 min this week.');
+  assert.equal(guard.calls.filter((c) => c.host === 'api.openai.com').length, 1);
+});
+
+test('a read cut before its first full stop falls back to the driver read, with no half sentence', async () => {
+  rest.handle('athletes', () => ({ body: [{ strava_access_token: 'tok-a1', strava_refresh_token: 'ref-a1', strava_expires_at: Math.floor(now / 1000) + 3600 }] }));
+  guard.stravaActivities([run(1), run(3)]);
+  guard.openAi(cutAnswer('Load is 80 min this week and it stops right in the'));
+  const r = await app.inject({ method: 'POST', url: '/api/read', payload: { athleteId: '42', today } });
+  assert.doesNotMatch(r.json().read.voice, /right in the/);
+  assert.match(r.json().read.voice, /[.]$/);
+});
+
+const chatAsk = async (...replies: ReturnType<typeof cutAnswer>[]) => {
+  rest.handle('athletes', () => ({ body: [{ strava_access_token: 'tok-a1', strava_refresh_token: 'ref-a1', strava_expires_at: Math.floor(now / 1000) + 3600 }] }));
+  guard.stravaActivities([run(1), run(3)]);
+  guard.openAi(...replies);
+  return app.inject({ method: 'POST', url: '/api/cdv', payload: { athleteId: '42', message: 'How was my week?', today } });
+};
+
+test('chat: the METRIC line the cap cut is dropped; the answer and the whole lines stay', async () => {
+  const r = await chatAsk(cutAnswer('This week came to 2 runs.\nMETRIC: Runs this week | VALUE: 2 runs | TREND: up\nMETRIC: Weekly miles | VALUE: 9'));
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().voice, 'This week came to 2 runs.');
+  assert.deepEqual(r.json().drivers.map((d: any) => d.metric), ['Runs this week']);
+});
+
+test('chat: an answer cut before one full sentence is no answer, on the outage path', async () => {
+  const r = await chatAsk(cutAnswer('This week came to'));
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().unavailable, true);
+});
+
+test('an adaptation reason cut by the cap is not stored', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(cutAnswer('Tuesday moved. Sleep was').body), { status: 200 })) as typeof fetch;
+  try {
+    assert.equal(await openAiReasonLlm('k', globalThis.fetch)('s', 'u'), '');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

@@ -7,6 +7,7 @@
 import { buildFallbackVoice, normalizeForCheck, promptEchoHits, validateVoice } from './validator';
 import { stripChartLine } from './cdv-chart';
 import { postureClaimHits } from './drivers';
+import { keepWholeSentences } from './voice';
 import type { Driver } from './validator';
 import type { VoiceEmission } from './telemetry';
 
@@ -180,6 +181,15 @@ export function parseCdvLines(text: string): { voice: string; metricLines: Drive
     if (metric && value) metricLines.push({ metric, value, ...(trend ? { trend } : {}) });
   }
   return { voice: voiceAt >= 0 ? lines[voiceAt].trim() : '', metricLines };
+}
+
+// A reply the token cap stopped: its last line is unfinished, and a METRIC value
+// cut from 18.4 to 18 would still read as a number. With only the voice line
+// there, its whole sentences. Empty means no answer (the outage path and refund).
+export function uncutCdvReply(text: string): string {
+  const lines = text.trimEnd().split('\n');
+  const kept = lines.slice(0, -1).join('\n');
+  return kept.trim() ? kept : keepWholeSentences(text);
 }
 
 // Check the reply; on a catch, ask once more with the violations named (as

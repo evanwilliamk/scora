@@ -19,7 +19,7 @@ import {
 import { athleteQuotaDay, cdvQuotaSpent, consumeCdvQuota, pingDatabase, refundCdvQuota, type CdvQuota } from './usage';
 import { generateValidatedVoice, OPENAI_TIMEOUT_MS } from './voice';
 import { meteredFetch } from './llm-meter';
-import { checkCdvWithRetry, cdvEmission, cdvTextOk, promptText } from './cdv-check';
+import { checkCdvWithRetry, cdvEmission, cdvTextOk, promptText, uncutCdvReply } from './cdv-check';
 import { trackVoice, pushOpenLine, readPlanLine } from './telemetry';
 import { stravaTokenFailureLine, vendorErrorKind, vendorFailureLine, vendorHttpError, vendorIsTransient } from './vendor-error';
 
@@ -506,8 +506,9 @@ Answer THIS question specifically using the data above. If the data can't answer
       // No text (a null content, a missing choice) is no answer: the outage
       // path below, which logs its line and refunds, not a 500 with neither.
       const content = json?.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || !content.trim()) throw new Error('OpenAI reply had no text');
-      return content;
+      const text = typeof content === 'string' && json.choices[0].finish_reason === 'length' ? uncutCdvReply(content) : content;
+      if (typeof text !== 'string' || !text.trim()) throw new Error('OpenAI reply had no text');
+      return text;
     };
 
     let rawText: string;
