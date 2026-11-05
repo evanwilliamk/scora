@@ -103,7 +103,7 @@ const unbackedTopic = (voice: string, data: unknown) =>
 
 // The full check on one voice line, as checkCdvReply runs it.
 function checkCdvText(voice: string, data: unknown, question: string, prompt = '') {
-  const v = validateVoice(timesWhole(voice), cdvSource(data, question));
+  const v = validateVoice(timesWhole(voice), cdvSource(data, question), { seriesInData: true });
   v.bannedHits.push(...promptEchoHits(voice, prompt));
   if (unbackedTopic(normalizeForCheck(voice), data)) v.bannedHits.push('unbacked topic');
   v.unbackedNumbers.push(...clockOnlyDecimals(voice, data, v.unbackedNumbers));
@@ -148,7 +148,7 @@ export function checkCdvReply(voice: string, metricLines: Driver[], data: unknow
     .filter((d) => {
       const line = `${d.metric} ${d.value} ${d.trend ?? ''}`;
       // The same decimal rule as the voice: the fallback quotes these lines.
-      return validateVoice(timesWhole(line), source).ok && clockOnlyDecimals(line, data).length === 0;
+      return validateVoice(timesWhole(line), source, { seriesInData: true }).ok && clockOnlyDecimals(line, data).length === 0;
     });
   const v = checkCdvText(voice, data, question, prompt);
   if (v.ok) return { voice, drivers, fallback: false, bannedHits: [], unbackedNumbers: [], finalOk: true };

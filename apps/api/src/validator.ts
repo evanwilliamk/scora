@@ -320,13 +320,14 @@ const DRIVER_KINDS: { kind: string; re: RegExp }[] = [
 const SAYS_ABSENT = /\b(?:no|not|none|without|missing|unavailable|unknown|absent|yet|never)\b|n't\b|\boutside (?:this|the) (?:\w+ )?(?:read|data|record)\b/i;
 
 // A driver's direction said in words beside its name, with no number: "HRV is
-// climbing" is not backed by "-8% wk". Only present-tense words that always mean
+// climbing" is not backed by "-8% wk", or by a value with no trend at all. Only present-tense words that always mean
 // a direction, right after the name: "over" and "more" do not, and "Load dropped
 // the week before" is history.
 const SAID_UP = 'up|higher|rising|climbing|climbs';
 const SAID_DOWN = 'down|lower|dropping|falling|dipping|slipping';
-const NAMED_TREND: { metric: RegExp; word: string }[] = [
-  { metric: /^HRV\b/, word: 'hrv' },
+const NAMED_TREND: { metric: RegExp; word: string; kindCovers?: boolean }[] = [
+  // With no HRV driver at all, DRIVER_KINDS already names it.
+  { metric: /^HRV\b/, word: 'hrv', kindCovers: true },
   // "The weeks load up fast" is the verb.
   { metric: /^Load$/, word: "(?<!\\b(?:you|they|to|weeks?|days?|blocks?) )load" },
   { metric: /^Weekly volume$/, word: '(?:weekly )?volume' },
@@ -335,7 +336,7 @@ const SIGNED_PCT = /([+-])\s?(\d+(?:\.\d+)?)\s?%/;
 // "HRV was lower last week" is history. "HRV was down this week" is not.
 const PAST_VERB = /\b(?:was|were|had)\b/i;
 const THEN = /^[^.;!?,]{0,30}\b(?:last|yesterday|earlier|before|ago|previous|prior|first|until|then|in (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b/i;
-function saidAgainstTrend(voice: string, drivers: Driver[]): string[] {
+function saidAgainstTrend(voice: string, drivers: Driver[], seriesInData: boolean): string[] {
   const hits: string[] = [];
   for (const name of NAMED_TREND) {
     const named = drivers.filter((d) => name.metric.test(d.metric));
@@ -343,14 +344,15 @@ function saidAgainstTrend(voice: string, drivers: Driver[]): string[] {
       const m = `${d.value} ${d.trend ?? ''}`.match(SIGNED_PCT);
       return m && parseFloat(m[2]) !== 0 ? [m[1]] : [];
     }));
-    // Nothing signed has nothing to say against. Two drivers of one measure
-    // against different baselines back either word (HRV +2% wk, HRV vs week -3%).
-    if (signs.size !== 1) continue;
-    const against = signs.has('+') ? SAID_DOWN : SAID_UP;
-    const near = new RegExp(String.raw`\b${name.word}\b((?:\s+(?:is|was|has|have|are|were|been|still|also|just|now|already|keeps?|kept))*)\s+(?:${against})\b(?! and (?:up|down)\b)`, 'gi');
+    // Two drivers of one measure against different baselines back either word
+    // (HRV +2% wk, HRV vs week -3%). With no sign anywhere, neither word is backed.
+    if (signs.size > 1) continue;
+    if (signs.size === 0 && (seriesInData || (named.length === 0 && name.kindCovers))) continue;
+    const against = signs.size === 0 ? `${SAID_UP}|${SAID_DOWN}` : signs.has('+') ? SAID_DOWN : SAID_UP;
+    const near = new RegExp(String.raw`\b${name.word}\b((?:\s+(?:is|was|has|have|are|were|been|still|also|just|now|already|keeps?|kept))*)\s+(?:${against})\b(?! and (?:up|down)\b)${signs.size === 0 ? String.raw`(?!\s+[+-]?\d)` : ''}`, 'gi');
     for (const m of voice.matchAll(near)) {
       if (PAST_VERB.test(m[1]) && THEN.test(voice.slice(m.index + m[0].length))) continue;
-      hits.push(`${named[0].metric} direction`);
+      hits.push(`${named[0]?.metric ?? m[0].trim().split(/\s+/)[0]} direction`);
       break;
     }
   }
@@ -494,7 +496,9 @@ function unitPairs(text: string): [string, string, string][] {
 }
 
 // Check a generated voice string against the drivers it was allowed to cite.
-export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationResult {
+// `seriesInData`: the drivers are flattened from a data block holding a series
+// (chat), so a direction can stand on values with no trend field.
+export function validateVoice(rawVoice: string, drivers: Driver[], opts: { seriesInData?: boolean } = {}): ValidationResult {
   const voice = normalizeForCheck(rawVoice);
   const banText = textForBans(rawVoice);
   const bannedHits: string[] = [];
@@ -518,7 +522,7 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
     if (re.test(driverText)) continue;
     if (voice.split(/(?<=[.!?;])\s+/).some((s) => re.test(s) && !SAYS_ABSENT.test(s))) unbackedClaims.push(kind);
   }
-  unbackedClaims.push(...saidAgainstTrend(voice, drivers));
+  unbackedClaims.push(...saidAgainstTrend(voice, drivers, opts.seriesInData === true));
 
   // Driver-existence: every number in the voice must appear in some driver
   // value or trend. A driver NAME backs no number ("Load (7d)" does not back
@@ -557,9 +561,10 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   for (const d of drivers) {
     const m = `${d.value} ${d.trend ?? ''}`.match(/([+-])\s?(\d+(?:\.\d+)?)\s?%/);
     if (!m) continue;
-    // Two signed drivers of the same size: the number alone cannot say which.
-    const same = drivers.filter((o) => new RegExp(String.raw`[+-]\s?${m[2].replace('.', '\\.')}\s?%`).test(`${o.value} ${o.trend ?? ''}`));
-    if (same.length > 1) continue;
+    // Same size, opposite signs: the number alone cannot say which is meant.
+    // Same size, same sign: either way the direction is known.
+    const size = m[2].replace('.', '\\.');
+    if (drivers.some((o) => new RegExp(String.raw`[${m[1] === '+' ? '-' : '+'}]\s?${size}\s?%`).test(`${o.value} ${o.trend ?? ''}`))) continue;
     for (const sentence of sentences) {
       if (saysAgainstSign(sentence, m[1], m[2])) bannedHits.push(`wrong direction for ${d.metric}`);
     }

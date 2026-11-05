@@ -277,7 +277,7 @@ test('direction words agree with the driver in every format the app emits', () =
     'It has been 9 days since the last long effort.',
   ], (l) => dailyIssues(l, [...DOWN, ...EVIDENCE]));
   // 0%: no direction either way.
-  allPass(['HRV is up.', 'HRV is down.', 'HRV is flat at 52ms.'], (l) => dailyIssues(l, [{ metric: 'HRV', value: '52ms', trend: '+0% wk' }]));
+  allPass(['HRV is flat at 52ms.', 'HRV is 52ms.'], (l) => dailyIssues(l, [{ metric: 'HRV', value: '52ms', trend: '+0% wk' }]));
   // Weekly's format.
   allPass(['HRV is climbing.', 'HRV is up 8% vs its week average.'], (l) => dailyIssues(l, [{ metric: 'HRV', value: '52ms', trend: '+8% vs wk avg' }]));
   allPass(['HRV is falling.', 'HRV is 8% below its week average.'], (l) => dailyIssues(l, [{ metric: 'HRV', value: '44ms', trend: '-8% vs wk avg' }]));
@@ -735,8 +735,6 @@ test('legal-looking lines left caught on purpose', () => {
     assert.ok(line === 'HRV is up on yesterday.' ? bad(line, DOWN) : bad(line), line);
   }
   assert.ok(bad('Seven Mile Beach was the long one.', [{ metric: 'Long run', value: '15 mi' }])); // a number with a unit and no driver.
-  // Plain English, but postureClaimHits is in drivers.ts, outside this pass: logged.
-  assert.ok(postureClaimHits('Your miles tapered off late in the week.', null).length > 0);
   // Oura named on a day with an Oura value but no score: nothing in the drivers says Oura.
   assert.ok(bad('Oura has HRV at 52ms.', [{ metric: 'HRV', value: '52ms' }]));
   // A name in lower case, with two function words and no English word around it.
@@ -745,9 +743,9 @@ test('legal-looking lines left caught on purpose', () => {
 
 // Not a catch: logged as a miss. CLAUDE.md 3.2 says the direction needs a driver
 // that moved, and with no trend there is nothing to agree or disagree with.
-test('a direction with a value and no trend passes today: logged as a question', () => {
+test('a direction with a value and no trend is not backed', () => {
   for (const line of ['HRV is climbing.', 'HRV is down.', 'Load is up.']) {
-    assert.equal(validateVoice(line, NO_TREND).ok, true, line);
+    assert.equal(validateVoice(line, NO_TREND).ok, false, line);
   }
 });
 

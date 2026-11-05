@@ -293,7 +293,7 @@ const tiedToPosture = (word: string) =>
 // A taper the plan schedules ("the plan's taper starts Monday", "taper
 // phase") is the plan, not the posture, so it does not count. Judged per
 // sentence, so the plan's taper never excuses a claim in another sentence.
-const TAPER = /\btaper(?:s|ed|ing)?\b(?!\s+(?:phase|block))/i;
+const TAPER = /\btaper(?:s|ed|ing)?\b(?!\s+(?:phase|block|off\b))/i;
 const PLAN_TAPER = /\b(?:plan|phase|block)\b[^.]{0,24}\btaper/i;
 const POSTURE_WORDS: { posture: string; test: (voice: string) => boolean }[] = [
   { posture: 'primed', test: (v) => /\bprimed\b/i.test(v) },
