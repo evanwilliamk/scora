@@ -821,7 +821,7 @@ HARD RULES:
 - The athlete's plan is theirs: never suggest skipping, moving, shortening, delaying or easing a planned session, even when the posture and the plan disagree. Name both and stop.
 - Tone: calm, considered, short sentences, plain English. No exclamation points, no emoji, no hype ("great job", "crush it", "keep it up" are banned). No "coach".
 
-OUTPUT: 2-3 sentences of plain prose. No headers, no bullet points, no metric lines — just the read.`;
+OUTPUT: 2-4 sentences of plain prose. No headers, no bullet points, no metric lines, just the read.`;
 
     const driverBlock = readDrivers
       .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
@@ -840,7 +840,8 @@ Write today's read using only these drivers.`;
         systemPrompt,
         userPrompt,
         drivers: readDrivers,
-        maxTokens: 200,
+        maxTokens: 250,
+        temperature: 0.6,
         leadIn: "Today's numbers", surface: 'daily', athleteId,
         // Library mode: no advice relayed from a passage, no number lifted from one.
         check: (v) => [
@@ -1421,12 +1422,12 @@ fastify.post('/api/weekly', async (request, reply) => {
 HARD RULES:
 - Every claim must be backed by a driver in the DRIVERS list. Never invent a number or reference data that isn't listed (no sleep/HRV unless present).
 - Numeric-first: reference the raw value, then say what it means.
-- Non-prescriptive: never tell the athlete what to do next week, never use "you should / you need to / do a / go for". You may name a posture (primed, steady, moderate, back-off, rest, taper) as an observation.
+- Non-prescriptive: never tell the athlete what to do next week, never use "you should / you need to / do a / go for". No posture is given for the week: name none (primed, steady, moderate, back-off, rest, taper).
 - Reflect across the week — connect the numbers into the week's story (e.g. volume + long run + how it sat relative to last week). This is where patterns get named.
 - Tone: calm, considered, plain English. No exclamation points, no emoji, no hype. No "coach".
 - If a "Plan, last 7 full days" driver is listed, you may say how the week tracked against the athlete's plan, as a fact. Never judge it, never suggest catching up or cutting back.
 
-OUTPUT: 4-6 sentences of plain prose. No headers, no bullets, no metric lines — just the review.`;
+OUTPUT: 3-5 sentences of plain prose. No headers, no bullets, no metric lines, just the review.`;
 
     const driverBlock = drivers
       .map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`)
@@ -1442,8 +1443,11 @@ Write this week's review using only these drivers.`;
         systemPrompt,
         userPrompt,
         drivers,
-        maxTokens: 320,
+        maxTokens: 400,
+        temperature: 0.7,
         leadIn: 'This week', surface: 'weekly', athleteId,
+        // The weekly read has no decided posture to name.
+        check: (v) => postureClaimHits(v, null),
         log: fastify.log,
       });
       voice = result.voice;
