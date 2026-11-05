@@ -88,7 +88,7 @@ test('the fixture drivers are the shapes the surfaces really build', () => {
 test('daily read: the allowed examples in CLAUDE.md 1.3', () => {
   const planned = [...UP, PLAN];
   allPass([
-    "Today's tempo is on your plan, and your body is settled — the plan reads cleanly this morning.",
+    "Today's tempo is on your plan, and your body is settled \u2014 the plan reads cleanly this morning.",
     'Your plan calls for a long run Saturday, and your recovery is trending up. You\'ll come to it fresh.',
   ], (l) => dailyIssues(l, planned));
   const changed = [
