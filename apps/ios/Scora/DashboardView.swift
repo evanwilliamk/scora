@@ -296,7 +296,12 @@ struct ReadResponse: Decodable {
   let posture: ReadPosture?
   let weekSoFar: WeekSoFar?
   let cards: [DashboardCard]
+  let connections: ReadConnections?
   let generatedAt: String?
+}
+
+struct ReadConnections: Decodable, Equatable {
+  let oura: Bool?
 }
 
 // Outcome of the Oura OAuth round trip, from scora://oura/success or
@@ -306,6 +311,12 @@ struct OuraLinkResult: Equatable {
 
   let connected: Bool
   let message: String
+
+  // A Strava reconnect uses the same banner.
+  init(connected: Bool, message: String) {
+    self.connected = connected
+    self.message = message
+  }
 
   init?(url: URL) {
     guard url.scheme == "scora", url.host == "oura" else { return nil }
@@ -343,6 +354,7 @@ struct DashboardView: View {
   @State private var posture: String?
   @State private var week: WeekSoFar?
   @State private var cards: [DashboardCard] = []
+  @State private var ouraConnected: Bool?
   @State private var isLoading = false
   @State private var errorText: String?
   @State private var expanded: Set<String> = []
@@ -355,6 +367,7 @@ struct DashboardView: View {
   @State private var showWeekly = false
   @State private var ouraBanner: OuraLinkResult?
   @State private var showPlan = false
+  @State private var showSettings = false
   @State private var chartSeries: DriverSeries?
 
   private let apiBase = "https://zonal-prosperity-production-3965.up.railway.app"
@@ -426,9 +439,19 @@ struct DashboardView: View {
     .sheet(isPresented: $showPlan) {
       PlanView(tokenManager: tokenManager)
     }
+    .sheet(isPresented: $showSettings) {
+      SettingsView(
+        tokenManager: tokenManager,
+        strava: StravaStatus.of(hasRead: read != nil, error: errorText),
+        oura: OuraStatus.of(connected: ouraConnected),
+        onConnectStrava: connectStrava,
+        onConnectOura: connectOura
+      )
+    }
     .task {
       if read == nil {
         #if DEBUG
+        if DemoMode.opensSettings { showSettings = true }
         if DemoMode.isOn { await loadRead(); return }
         #endif
         NetworkStatus.start()
@@ -442,6 +465,9 @@ struct DashboardView: View {
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
+      Task { await loadRead() }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: StravaReconnect.reconnected)) { _ in
       Task { await loadRead() }
     }
     .onReceive(NotificationCenter.default.publisher(for: OuraLinkResult.notification)) { note in
@@ -487,9 +513,10 @@ struct DashboardView: View {
   // show Today's Read at the top, or This Week for the weekly review.
   private func followPush(_ scroller: ScrollViewProxy) {
     guard let route = PushRoute.take() else { return }
-    let otherSheetOpen = showChat || showPlan || chartSeries != nil
+    let otherSheetOpen = showChat || showPlan || showSettings || chartSeries != nil
     showChat = false
     showPlan = false
+    showSettings = false
     chartSeries = nil
     switch route {
     case .weekly:
@@ -511,8 +538,22 @@ struct DashboardView: View {
   // Kick off the Oura OAuth flow in the browser; on return the app receives a
   // scora://oura/success deep link and reloads the dashboard.
   private func connectOura() {
+    #if DEBUG
+    if DemoMode.isOn { return } // the demo opens nothing
+    #endif
     guard let url = URL(string: "\(apiBase)/api/auth/oura?athlete_id=\(tokenManager.athleteId)")
     else { return }
+    openURL(url)
+  }
+
+  // From Settings. The answer comes back on the sign-in deep link, sorted by
+  // StravaReconnect.
+  private func connectStrava() {
+    #if DEBUG
+    if DemoMode.isOn { return } // the demo opens nothing
+    #endif
+    guard let url = URL(string: "\(apiBase)/api/auth/strava") else { return }
+    StravaReconnect.begin(athleteId: tokenManager.athleteId)
     openURL(url)
   }
 
@@ -541,10 +582,10 @@ struct DashboardView: View {
           Image(systemName: "bubble.left.and.bubble.right").minTapTarget()
         }
         .accessibilityLabel("Ask about your training")
-        Button(action: { tokenManager.logout() }) {
-          Text("Sign Out").font(.subheadline).minTapTarget()
+        Button(action: { showSettings = true }) {
+          Image(systemName: "gearshape").minTapTarget()
         }
-        .padding(.leading, 4)
+        .accessibilityLabel("Settings")
       }
       .foregroundColor(.orange)
     }
@@ -760,6 +801,7 @@ struct DashboardView: View {
     posture = decoded.posture?.posture
     week = decoded.weekSoFar
     cards = decoded.cards
+    ouraConnected = decoded.connections?.oura
     expansions = [:] // a new read means new numbers to interpret
     readGeneration += 1
     loadedDay = day
@@ -786,7 +828,10 @@ struct DashboardView: View {
         if DemoMode.planSessions != nil { read?.today = "Today: 40-minute easy run." }
         posture = "steady"
         week = DemoMode.week
-        if let demoCards = DemoMode.cards { cards = demoCards }
+        if let demoCards = DemoMode.cards {
+          cards = demoCards
+          ouraConnected = !DemoMode.ouraMissing
+        }
         if DemoMode.opensChart { chartSeries = DemoMode.read.series?["hrv"] }
         if DemoMode.opensPlan { showPlan = true }
         if DemoMode.opensWeekly { showWeekly = true }

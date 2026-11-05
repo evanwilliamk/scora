@@ -111,6 +111,67 @@ final class ScoraUITests: XCTestCase {
     // Accessibility pass: the key screens at the largest accessibility text
     // size (AX5), on the DEBUG demo data. Key controls exist and can be tapped.
 
+    func testSettingsOpensFromTheDashboardAndSignsOut() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-cards"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 10))
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.staticTexts["Morning read"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.datePickers.firstMatch.waitForExistence(timeout: 5), "saved time on the wheel")
+        XCTAssertFalse(app.buttons["Save time"].exists, "nothing to save until the time changes")
+        XCTAssertTrue(scrollTo(app.buttons["Reconnect Strava"], in: app))
+        XCTAssertTrue(app.staticTexts["Connections"].exists)
+        XCTAssertTrue(scrollTo(app.buttons["Reconnect Oura"], in: app), "the sample read has a ring")
+        XCTAssertTrue(scrollTo(app.buttons["Sign Out"], in: app))
+        app.buttons["Sign Out"].tap()
+        XCTAssertTrue(app.buttons["Sign in with Strava"].waitForExistence(timeout: 5))
+    }
+
+    func testSettingsSavesAChangedTime() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-settings"]
+        app.launch()
+        let wheel = app.pickerWheels.firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 10))
+        wheel.adjust(toPickerWheelValue: "7")
+        XCTAssertTrue(app.buttons["Save time"].waitForExistence(timeout: 5))
+        app.buttons["Save time"].tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Saved. Your read arrives at 7:30'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Save time"].exists)
+    }
+
+    func testSettingsSaveFailureSaysSo() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-settings", "-demo-delivery-fails"]
+        app.launch()
+        let wheel = app.pickerWheels.firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 10))
+        wheel.adjust(toPickerWheelValue: "7")
+        XCTAssertTrue(app.buttons["Save time"].waitForExistence(timeout: 5))
+        app.buttons["Save time"].tap()
+        XCTAssertTrue(app.staticTexts["Could not save the time. Your read keeps its current time."].waitForExistence(timeout: 5))
+    }
+
+    func testSettingsLoadFailureOffersTryAgainNotADefaultTime() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo-read", "-demo-settings-load-fails"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Could not load your delivery time."].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.datePickers.firstMatch.exists)
+        assertTarget(app.buttons["Try again"], "Try again", in: app)
+    }
+
+    func testSettingsAtAccessibilityTextSize() throws {
+        let app = launchAtAX5(["-demo-read", "-demo-cards", "-demo-settings"])
+        assertHittable(app.buttons["Done"], "Done")
+        XCTAssertTrue(app.staticTexts["Morning read"].waitForExistence(timeout: 10))
+        XCTAssertTrue(scrollTo(app.buttons["Reconnect Strava"], in: app))
+        assertTarget(app.buttons["Reconnect Strava"], "Reconnect Strava", in: app)
+        XCTAssertTrue(scrollTo(app.buttons["Sign Out"], in: app))
+        assertTarget(app.buttons["Sign Out"], "Sign Out", in: app)
+    }
+
     private func launchAtAX5(_ args: [String]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = args + ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
@@ -135,8 +196,8 @@ final class ScoraUITests: XCTestCase {
         assertHittable(app.buttons["Your plan"], "Your plan")
         assertHittable(app.buttons["This week"], "This week")
         assertHittable(app.buttons["Ask about your training"], "Ask about your training")
-        assertHittable(app.buttons["Sign Out"], "Sign Out")
-        for name in ["Your plan", "This week", "Ask about your training", "Sign Out"] {
+        assertHittable(app.buttons["Settings"], "Settings")
+        for name in ["Your plan", "This week", "Ask about your training", "Settings"] {
             let f = app.buttons[name].frame
             XCTAssertGreaterThanOrEqual(f.height, 44, "\(name) is at least 44 pt tall")
             XCTAssertGreaterThanOrEqual(f.width, 44, "\(name) is at least 44 pt wide")

@@ -995,3 +995,27 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: left caught: "All you need to know: HRV is up 8%." (literal §4.1 "you need to"), "You could hold 4:50 pace in March.", "Rest tomorrow, then a long run Saturday: that is how the plan reads.", "Long run Saturday, hit the distance at 4:50 pace.", "Take today's 52ms against the month and it sits high." Not fixed, since this pass adds no bans: "Ride 30 minutes." and "Swim 20 minutes." pass the validator, because `\d` followed by `\b` in the clause-command pattern only matches one digit ("Add 10 minutes." too). Fixed on claude/validator-ride-swim: those three `\d` are now `\d+`. The list exception for "swim 40, ride 260" already allows it.
 - Why: each left-caught line has the same words as a real order, and a missed prescription costs more than one fallback read.
 - To reverse: BANNED_PATTERNS in `apps/api/src/validator.ts`, with rows in `apps/api/test/validator-precision.test.ts`.
+
+### 2026-11-05: Settings sheet (Q40 A, Evan silent 3 days)
+- Status: DECIDED
+- Branch: claude/ios-settings
+- Context: The app had no way to change delivery time or reconnect Strava short of signing out.
+- Choice: A gear on the dashboard opens Settings: delivery time (same picker and PUT /api/preferences as onboarding), Strava and Oura status with connect buttons, Sign Out. The header's Sign Out button moved into the sheet, which also gives it a second tap. No confirmation dialog (that is Q41). No new routes: Oura status reads the `connections.oura` field /api/read already sent; Strava status reads the read's own error sentence.
+- Why: The header had no room for a fourth icon plus Sign Out at large text sizes, and one tap signing out wipes the cached read.
+- To reverse: Drop claude/ios-settings, or put the Sign Out button back in `DashboardView.header`.
+
+### 2026-11-05: Reconnect Strava refuses a different account
+- Status: DECIDED
+- Branch: claude/ios-settings
+- Context: Reconnect uses the sign-in link, which answers with whichever Strava account was chosen in the browser, and signing in as a second athlete keeps the first athlete's data on the phone (Q46, still open). The new button would have made that reachable from normal use.
+- Choice: A reconnect started in Settings that comes back with another athlete id is dropped on the phone, with the banner "That was a different Strava account. Nothing changed." The sign-in path itself is unchanged, and a sign-in link arriving any other way behaves as before. The server still stores that other account's tokens when its callback runs.
+- Why: Guards only the new flow, so Q46 stays Evan's call.
+- To reverse: Remove the `.otherAccount` branch in `ScoraApp.handleDeepLink`.
+
+### 2026-11-05: Miles for everyone stays for the alpha (Q39 B, Evan silent 3 days)
+- Status: DECIDED
+- Branch: claude/ios-settings (log only, no code)
+- Context: No Strava unit preference is stored, so km athletes see miles.
+- Choice: No change. Add `athletes.distance_unit` before any km market.
+- Why: Alpha athletes are in the US.
+- To reverse: Answer Q39 A.
