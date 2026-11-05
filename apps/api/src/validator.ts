@@ -137,7 +137,89 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
     re: /\b(crush(?:ed|es|ing)?|smash(?:ed|ing)?|beast|let'?s go+|(?<!(?:\bnot|n't|\bnever) )keep it up|great (?:job|work)|nice (?:job|work)|amazing|awesome|you(?:'ve| have)? got this(?! (?:far|week|month|block|morning)\b)|nail(?:ed)? it|get after it|let'?s (?:do (?:this|it)|get it)|lfg|kill(?:ing|ed)? it|you'?re on fire|no excuses|no pain,? no gain|you dominat\w+)\b|(?:^|[.;!?]\s+)(?:good job|way to go)\b/i,
     label: 'hype',
   },
+  // What a steered model writes (security review 2026-11-05). Text the athlete
+  // or a third party controls reaches the prompts, so these hold whatever the
+  // model was talked into. A link or address has no place in a read, except
+  // SCORA's own (the doorbell's "Full read:" line).
+  {
+    re: /\b[a-z][a-z0-9+.-]{1,20}:\/\/(?!(?:www\.)?scora\.app(?:[/\s]|\.?$|\.\s))|\bwww\.(?!scora\.app\b)|\b(?:mailto|tel|sms|javascript):|[\w.+-]{1,64}@[\w-]{1,63}\.[a-z]{2,}|\b(?!scora\.app(?:[/\s]|\.?$|\.\s))[a-z0-9-]{1,63}\.(?:com|net|org|io|co|app|ai|dev|me|ly|xyz|info|biz|link|site|online|club|shop|top|example|test)\b|\]\(|<\/?[a-z!][^<>]{0,200}>/i,
+    label: 'link or markup',
+  },
+  // Talk about the prompt or the model: a read is about the athlete's record.
+  {
+    re: /\b(?:system|developer) (?:prompt|message)\b|\bmy (?:\w+ )?(?:prompt|instructions?|programming|guidelines)\b|\bthe prompt\b|\bhard rules\b|\b(?:ignore|disregard|forget) (?:(?:all|any|the|your|my) )*(?:previous|prior|above|earlier|instructions?|rules)\b|\b(?:i was|i'?ve been|i have been|i am|i'?m) (?:told|instructed|programmed|configured)\b|\byou are scora\b|\bapi[ -]?key|\bopenai|\bchatgpt\b|\bgpt-?\d|\blanguage model\b/i,
+    label: 'prompt talk',
+  },
+  { re: /\byou(?: (?:just|kind of|sort of|still|also|maybe|perhaps|all|both|now|then|today|tomorrow|simply))+ (?:should|must|need to|ought to)\b/i, label: 'you should' },
+  { re: /(?:^|[.;!?]\s+)(?:recommend(?:ed|ations?)?|suggest(?:ed|ions?)?|advice|prescription|next steps?|action items?)\s*:/i, label: 'advice' },
+  {
+    re: /\bhere(?:'s| is) your (?:\w+ )?(?:workout|session|run)\b|\b(?:workout|session|run|plan) (?:i have |i'?ve got |i made |i built )?for you\b|(?:^|[.;!?]\s+)(?:today|tomorrow|tonight|this morning),? you (?:run|ride|swim|rest|go|take|skip|jog|walk|train)\b|\byou(?:'ll| will) (?:run|ride|swim|rest|go|skip|jog|walk|take|do)\b|(?:^|[.;!?]\s+)(?:rest|run|ride|swim|jog|walk|sleep|recover|stop)(?=\s*(?:[.;!?]|$))|(?:^|[.;!?]\s+)please \w/i,
+    label: 'workout imperative',
+  },
+  { re: /\b(?:ignore|disregard|forget|ditch|scrap|override) (?:the|your|today'?s|this) (?:\w+ )?(?:plan|workout|session|run|tempo|intervals|schedule)\b/i, label: 'plan override' },
+  { re: /\bscora,\s+(?:your|an?) (?:\w+ )?coach\b|\byour (?:\w+ )?coach,? scora\b/i, label: 'coach self-reference' },
+  { re: /\byou(?:'ve got| have| may have| might have| could have)(?: an?| the)?(?: \w+)? (?:injury|condition|illness|infection|disease|disorder|fracture|deficiency)\b/i, label: 'clinical claim' },
 ];
+
+// Bans spelled around the patterns: "y o u  s h o u l d", "Y.o.u s.h.o.u.l.d",
+// "you-should". Letters only, so no word boundary is left to dodge.
+const SQUASHED_BANS: { re: RegExp; label: string }[] = [
+  { re: /youshould/, label: 'you should' },
+  { re: /youmust/, label: 'you must' },
+  { re: /youneedto/, label: 'you need to' },
+  { re: /(?:iam|im)yourcoach/, label: 'coach self-reference' },
+];
+
+// Digits standing in for letters inside a word ("y0u sh0uld", "c0ach"). Both
+// ends must be letters, so "3x8", "z2" and "vo2" are left alone.
+const LEET: Record<string, string> = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't' };
+const foldLeet = (text: string) =>
+  text.replace(/\b[a-z][a-z013457]{1,38}[a-z]\b/gi, (w) => (/[013457]/.test(w) ? w.replace(/[013457]/g, (d) => LEET[d]) : w));
+
+// English only (the app has no translations): every ban above is English, so a
+// read steered into another language would pass all of them.
+const ENGLISH_WORDS = new Set('the is are was were a an of in on at to and or for with from by your you it its this that has have had not up down over than as but so no last'.split(' '));
+// Common words of the languages a model is likeliest to be asked for, none of
+// them also a common English word.
+const FOREIGN_WORDS = new Set((
+  'el la los las del al de una que por para pero esta este muy hoy manana semana deberias debes correr corre descansa descansar rodaje entrenamiento '
+  + 'tu du je vous votre pour avec dans une tres devrais dois courir aujourd aujourdhui demain semaine entrainement repos '
+  + 'und nicht ist der das ein eine mit fur auf sehr solltest musst heute morgen laufen woche ruhe '
+  + 'dovresti devi correre oggi domani riposo settimana della che sono gli molto '
+  + 'voce deveria hoje amanha descanso com uma nao muito moet vandaag lopen niet een het voor'
+).split(' '));
+const lettersOutsideLatin = (t: string) => (t.match(/(?![\p{Script=Latin}])\p{L}/gu) ?? []).length;
+function isNotEnglish(banText: string): boolean {
+  if (lettersOutsideLatin(banText) >= 2) return true;
+  const wordsOf = (t: string) => t.toLowerCase().match(/[a-z]+/g) ?? [];
+  const count = (words: string[], set: Set<string>) => words.filter((w) => set.has(w)).length;
+  for (const sentence of banText.split(/(?<=[.;!?])\s+/)) {
+    const words = wordsOf(sentence);
+    const foreign = count(words, FOREIGN_WORDS);
+    if (foreign >= 2 && foreign > count(words, ENGLISH_WORDS)) return true;
+  }
+  // Other languages: a long line with none of English's small words. Lines with
+  // a number are left alone, since the fallback read is metric names and values.
+  const all = wordsOf(banText);
+  return all.length >= 8 && !/\d/.test(banText) && count(all, ENGLISH_WORDS) === 0;
+}
+
+// A run of this many words shared with the prompt is the prompt coming back.
+const ECHO_RUN = 8;
+const echoWords = (t: string) => (normalizeForCheck(t).toLowerCase().replace(/'s\b/g, '').match(/[\p{L}\p{N}]+/gu) ?? []);
+
+// The label when `text` repeats a run of words from `prompt`. Text in double
+// quotes is left out: those are examples, which a good answer may sound like.
+export function promptEchoHits(text: string, prompt: string): string[] {
+  const words = echoWords(prompt.replace(/"[^"\n]*"/g, ' . '));
+  const runs = new Set<string>();
+  for (let i = 0; i + ECHO_RUN <= words.length; i++) runs.add(words.slice(i, i + ECHO_RUN).join(' '));
+  const said = echoWords(text);
+  for (let i = 0; i + ECHO_RUN <= said.length; i++) {
+    if (runs.has(said.slice(i, i + ECHO_RUN).join(' '))) return ['prompt echo'];
+  }
+  return [];
+}
 
 // Talking the athlete out of their plan (CLAUDE.md §1.3). Checked only when
 // the read carries a 'Plan today' driver: the voice may name the session and
@@ -232,7 +314,7 @@ export function normalizeForCheck(text: string): string {
 // line break with no period), and "A.I." reads as "AI". Numbers are read from
 // normalizeForCheck, unchanged by this.
 function textForBans(rawVoice: string): string {
-  return normalizeForCheck(rawVoice.replace(/\s+/g, (m) => (m.includes('\n') ? '. ' : ' ')))
+  return foldLeet(normalizeForCheck(rawVoice.replace(/\s+/g, (m) => (m.includes('\n') ? '. ' : ' '))))
     .replace(/[*_`"]/g, '')
     .replace(/\ba\.i\.(?=[\s,;:]|$)/gi, 'AI')
     .replace(/\.{2,}\s*/g, '. ')
@@ -252,6 +334,15 @@ function wordNumbers(text: string): { word: string; value: string }[] {
   for (const m of text.matchAll(tens)) out.push({ word: m[0], value: String(TENS[m[1].toLowerCase()] + (m[2] ? ONES[m[2].toLowerCase()] : 0)) });
   const withUnit = new RegExp(String.raw`\b(${Object.keys(ONES).filter((w) => w !== 'one').join('|')})\s+${WORD_UNITS}\b`, 'gi');
   for (const m of text.matchAll(withUnit)) out.push({ word: m[0], value: String(ONES[m[1].toLowerCase()]) });
+  // "a hundred miles", "two hundred", "a dozen": a number however it is said.
+  const big = new RegExp(String.raw`\b(?:(a|an|${Object.keys(ONES).join('|')})\s+)?(hundred|thousand|dozen)\b`, 'gi');
+  const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, dozen: 12 };
+  for (const m of text.matchAll(big)) out.push({ word: m[0], value: String((ONES[(m[1] ?? '').toLowerCase()] ?? 1) * SCALE[m[2].toLowerCase()]) });
+  // Digits said one by one: "nine nine".
+  const digits = Object.keys(ONES).slice(0, 9).join('|');
+  for (const m of text.matchAll(new RegExp(String.raw`\b(${digits})\s+(${digits})\b`, 'gi'))) {
+    out.push({ word: m[0], value: `${ONES[m[1].toLowerCase()]}${ONES[m[2].toLowerCase()]}` });
+  }
   return out;
 }
 
@@ -289,6 +380,11 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   if (drivers.some((d) => d.metric === PLAN_DRIVER_METRIC) && PLAN_OVERRIDE.test(banText) && !overrideIsObservation(banText, drivers)) {
     bannedHits.push('plan override');
   }
+  const squashed = banText.toLowerCase().replace(/[^a-z]/g, '');
+  for (const { re, label } of SQUASHED_BANS) {
+    if (re.test(squashed) && !bannedHits.includes(label)) bannedHits.push(label);
+  }
+  if (isNotEnglish(banText)) bannedHits.push('not english');
   if (EXCLAMATION.test(voice)) bannedHits.push('exclamation point');
   if (EMOJI.test(voice)) bannedHits.push('emoji');
 

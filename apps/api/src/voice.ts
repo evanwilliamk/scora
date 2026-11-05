@@ -1,4 +1,4 @@
-import { validateVoice, buildFallbackVoice, Driver, ValidationResult } from './validator';
+import { validateVoice, buildFallbackVoice, promptEchoHits, Driver, ValidationResult } from './validator';
 import { catchLabel, trackVoice, type VoiceSurface } from './telemetry';
 import { vendorErrorKind, vendorHttpError } from './vendor-error';
 import { meteredFetch } from './llm-meter';
@@ -106,7 +106,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     log?.error(`voice_llm_error ${JSON.stringify({ event: 'voice_llm_error', surface: surface ?? null, attempt, kind: vendorErrorKind(e) })}`);
   const validate = (text: string): ValidationResult => {
     const v = validateVoice(text, drivers);
-    const extra = check ? check(text) : [];
+    const extra = [...promptEchoHits(text, systemPrompt), ...(check ? check(text) : [])];
     return extra.length ? { ...v, ok: false, bannedHits: [...v.bannedHits, ...extra] } : v;
   };
   // Every catch across both drafts, for the hit-rate telemetry.
