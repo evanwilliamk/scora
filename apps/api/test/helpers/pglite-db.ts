@@ -11,6 +11,27 @@ import type { SchedulerDb } from './fake-scheduler-db';
 
 export const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'supabase', 'migrations');
 
+// What production has today: the migrations on origin/main when the
+// integration branch was cut. Everything else in the folder is unapplied.
+export const MAIN_MIGRATIONS = [
+  '20260701000000_init.sql',
+  '20260703000000_strava_tokens.sql',
+  '20260703120000_oura_tokens.sql',
+  '20260705000000_cdv_usage.sql',
+  '20260717000000_device_tokens.sql',
+];
+
+export const allMigrations = (): string[] => readdirSync(migrationsDir).filter((x) => x.endsWith('.sql')).sort();
+export const newMigrations = (): string[] => allMigrations().filter((f) => !MAIN_MIGRATIONS.includes(f));
+export const migrationSql = (file: string): string => readFileSync(join(migrationsDir, file), 'utf8');
+
+// A database with exactly the migrations on main, as production is before the merge.
+export async function mainSchemaPglite(): Promise<PGlite> {
+  const db = new PGlite({ extensions: { vector } });
+  for (const f of MAIN_MIGRATIONS) await db.exec(migrationSql(f));
+  return db;
+}
+
 export async function migratedPglite(opts: { skip?: (file: string) => boolean } = {}): Promise<PGlite> {
   const db = new PGlite({ extensions: { vector } });
   for (const f of readdirSync(migrationsDir).filter((x) => x.endsWith('.sql')).sort()) {

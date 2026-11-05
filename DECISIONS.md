@@ -1066,3 +1066,19 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice (or options): (1) sentence counts enforced: both bounds, upper only (recommended), or prompt only. (2) Curated lines on legal values such as "after 0 hard days" and "HRV is still 5% above baseline. The body is stubborn": tighten the rules (recommended) or reword. (3) Fixed adaptation sentence has no number and says "Today's" forever: append driver and date (recommended) or leave. (4) "Acute:chronic load" label: "Load vs usual" (recommended) or leave. (5) Fallback as a driver list (recommended for now) or the top pattern, as doc 08 says. (6) Retries: 1 (recommended) or doc 08's 2, a paid call.
 - Why: wording is Evan's, and (6) costs money.
 - To reverse: nothing changed for these.
+### 2026-11-05: Late re-runs of a migration are caught by a check, not rewritten away
+- Status: DECIDED
+- Branch: claude/migration-rehearsal-1105
+- Context: six of the 16 new migrations (2, 6, 7, 9, 10, 13) give no error when re-run after later ones, but silently put an older function back. Pasted twice in a row, all 16 are harmless.
+- Choice: keep the files as they are. The checklist gains a precheck and a check after the migrations (plain selects, function hashes included), tested on PGlite, and names the six. Alternative: rewrite the older files to hold the final function bodies, which is possible since none reached production.
+- Why: a rewrite touches six reviewed files just before a hand-run merge and loses their history, and the check also catches a skipped file or wrong order, which a rewrite would not.
+- To reverse: copy the final function bodies from migrations 7, 11, 13 and 16 into the older files, and drop the hash lines from the check.
+
+### 2026-11-05: No scheduler fallback for a missing athlete_preferences table
+- Status: DECIDED
+- Branch: claude/migration-rehearsal-1105
+- Context: if the merge deploys before migration 3, the push scheduler sends nothing and logs an error each minute. The fallback for scora_due_deliveries does not help, since it reads the same table.
+- Choice: leave it, and have the checklist put migrations first. Alternative: an in-memory once-a-day claim while the table is missing.
+- Why: the table is the claim that stops a second send. In-memory claims would resend on a restart, and pushes resume by themselves when the migration is applied, so the failure is quiet and safe. The migrations-first order was tested clean in both directions.
+- To reverse: catch the missing table in `runTick` in apps/api/src/scheduler.ts and claim in memory.
+

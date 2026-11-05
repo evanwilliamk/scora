@@ -2,7 +2,11 @@
 // fake REST server: supabase-js select / insert / upsert / update / delete
 // with eq, neq, is, gte, lte, gt, lt, in and or filters run as SQL, so the
 // production store code is tested against the real schema and constraints.
-// Not a full PostgREST: no embedding, no ordering beyond `order=col`, no ranges.
+// Not a full PostgREST: no general embedding (only scheduled_workouts' inner
+// join on training_plans), no ordering beyond `order=col`, no ranges.
+// `rpc/<fn>` runs the function with named arguments, and a table or function
+// the schema lacks answers as PostgREST does (404, PGRST205 or PGRST202), so
+// code can be run against an older schema.
 //
 // `hold` lets a race test line requests up: matching requests wait until
 // `count` of them have arrived, then all run, in arrival order.
@@ -45,6 +49,13 @@ function where(params: URLSearchParams, values: unknown[]): string {
   const parts: string[] = [];
   for (const [k, v] of params) {
     if (['select', 'on_conflict', 'columns', 'order', 'limit', 'offset'].includes(k)) continue;
+    if (k === 'training_plans.current_status') {
+      const dot = v.indexOf('.');
+      if (v.slice(0, dot) !== 'eq') throw new Error(`unsupported embedded filter ${v}`);
+      values.push(v.slice(dot + 1));
+      parts.push(`exists (select 1 from training_plans tp where tp.id = training_plan_id and tp.current_status = $${values.length})`);
+      continue;
+    }
     if (k === 'or') {
       const inner = v.replace(/^\(|\)$/g, '').split(',').map((term) => {
         const d = term.indexOf('.');
@@ -60,17 +71,55 @@ function where(params: URLSearchParams, values: unknown[]): string {
 
 function pick(rows: any[], select: string | null): any[] {
   if (!select || select.trim() === '*') return rows;
-  const cols = select.split(',').map((s) => s.trim()).filter(Boolean);
+  const cols = select.split(',').map((s) => s.trim()).filter((c) => c && !c.includes('!inner'));
   if (cols.includes('*')) return rows;
-  return rows.map((r) => Object.fromEntries(cols.map((c) => [c, r[c]])));
+  const embeds = /training_plans!inner/.test(select);
+  return rows.map((r) => ({
+    ...Object.fromEntries(cols.map((c) => [c, r[c]])),
+    ...(embeds ? { training_plans: { current_status: 'active' } } : {}),
+  }));
+}
+
+async function runRpc(pg: PGlite, name: string, args: Record<string, unknown>): Promise<RestAnswer> {
+  const keys = Object.keys(args ?? {});
+  const found = await pg.query<{ retset: boolean }>(
+    `select p.proretset as retset from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = $1 and p.pronargs >= $2
+       and (select count(*) from unnest($3::text[]) k where k = any(p.proargnames)) = $2
+       and p.pronargs - p.pronargdefaults <= $2
+     limit 1`,
+    [name, keys.length, keys]);
+  if (found.rows.length === 0) {
+    return { status: 404, body: { code: 'PGRST202', message: `Could not find the function public.${name} in the schema cache` } };
+  }
+  const named = keys.map((k, i) => `${ident(k)} => $${i + 1}`).join(', ');
+  try {
+    const r = await pg.query<Record<string, unknown>>(`select * from ${ident(name)}(${named})`, keys.map((k) => args[k]));
+    return { status: 200, body: found.rows[0].retset ? r.rows : (r.rows[0] ? Object.values(r.rows[0])[0] : null) };
+  } catch (e: any) {
+    return { status: 400, body: { code: e?.code ?? 'XX000', message: e?.message ?? String(e) } };
+  }
 }
 
 export async function runRest(pg: PGlite, req: RestRequest): Promise<RestAnswer> {
+  if (req.table.startsWith('rpc/')) return runRpc(pg, req.table.slice(4), req.body);
+  const known = await pg.query<{ r: string | null }>('select to_regclass($1)::text as r', [`public.${req.table}`]);
+  if (!known.rows[0].r) {
+    return { status: 404, body: { code: 'PGRST205', message: `Could not find the table 'public.${req.table}' in the schema cache` } };
+  }
   const t = ident(req.table);
   const values: unknown[] = [];
   const prefer = String(req.headers.prefer ?? '');
   const wantRows = prefer.includes('return=representation') || req.method === 'GET';
   const select = req.params.get('select');
+  // A named column the table lacks is an error, as in PostgREST, even with no rows to pick from.
+  const named = (select ?? '').split(',').map((c) => c.trim()).filter((c) => /^[a-z_][a-z0-9_]*$/.test(c));
+  if (named.length) {
+    const have = await pg.query<{ c: string }>(
+      `select column_name as c from information_schema.columns where table_schema = 'public' and table_name = $1`, [req.table]);
+    const gone = named.find((c) => !have.rows.some((r) => r.c === c));
+    if (gone) return { status: 400, body: { code: '42703', message: `column ${req.table}.${gone} does not exist` } };
+  }
   try {
     let rows: any[] = [];
     if (req.method === 'GET') {

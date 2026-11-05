@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
+import { MAIN_MIGRATIONS, newMigrations } from './helpers/pglite-db';
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'supabase', 'migrations');
 let db: PGlite;
@@ -168,4 +169,36 @@ test('create_scora_plan takes the per-athlete plan lock and still saves the plan
   assert.deepEqual(plans.rows.map((r) => [r.id, r.current_status]), [[first, 'replaced'], [second, 'active']]);
   const ws = await db.query<{ n: number }>(`select count(*)::int as n from scheduled_workouts where training_plan_id = $1`, [second]);
   assert.equal(ws.rows[0].n, 2);
+});
+
+// Static checks of the folder against docs/merge-checklist.md. The merge
+// rehearsal itself is in migration-rehearsal.test.ts.
+const checklist = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'merge-checklist.md'), 'utf8');
+const listed = () => [...checklist.slice(checklist.indexOf('## 1. Apply')).matchAll(/^(\d+)\. `(\d{14}_[a-z0-9_]+\.sql)`/gm)];
+
+test('migration versions are 14 digits and unique', () => {
+  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  for (const f of files) assert.match(f, /^\d{14}_[a-z0-9_]+\.sql$/, f);
+  const versions = files.map((f) => f.slice(0, 14));
+  assert.deepEqual(versions.filter((v, i) => versions.indexOf(v) !== i), [], 'two migrations share a version');
+});
+
+test('main\'s migrations come first, and everything else is newer than they are', () => {
+  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  assert.deepEqual(files.slice(0, MAIN_MIGRATIONS.length), MAIN_MIGRATIONS);
+  assert.deepEqual(files.slice(MAIN_MIGRATIONS.length), newMigrations());
+});
+
+test('the checklist lists every new migration once, numbered in filename order, and no file on main', () => {
+  const rows = listed();
+  assert.deepEqual(rows.map((m) => m[2]), newMigrations());
+  assert.deepEqual(rows.map((m) => Number(m[1])), newMigrations().map((_, i) => i + 1));
+});
+
+test('the new migrations are additive, as the checklist says: nothing that drops or rewrites a table, a column or a row, and nothing a transaction refuses', () => {
+  const forbidden = /\b(drop\s+table|drop\s+column|truncate|delete\s+from|alter\s+column|rename\s+to|rename\s+column|concurrently|drop\s+schema|drop\s+function|vacuum)\b/i;
+  for (const f of newMigrations()) {
+    const code = readFileSync(join(dir, f), 'utf8').replace(/--[^\n]*/g, '');
+    assert.equal(forbidden.exec(code)?.[0] ?? null, null, f);
+  }
 });
