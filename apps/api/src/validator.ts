@@ -12,6 +12,9 @@ export interface ValidationResult {
   ok: boolean;
   bannedHits: string[]; // banned phrases found in the voice
   unbackedNumbers: string[]; // numbers in the voice with no matching driver
+  // Claims with no number that no driver backs: a measure the record does not
+  // have ("HRV"), or a direction said against the driver ("Load direction").
+  unbackedClaims: string[];
 }
 
 // §4.1 voice-level bans. Targeted so we don't false-positive on legitimate
@@ -130,6 +133,11 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   {
     re: /\b((?<!\b(?:not|didn'?t|don'?t|doesn'?t|won'?t|can'?t|cannot) )make up (?:for|those|lost|missed|it|(?:the|that|this) (?:lost|missed|missing|gap|difference|minutes|miles|run|tempo|session|workout|long run|\w+ run))|(?<!\b(?:yet|until \w+) to )catch up(?: on)?|you (?:could |should |might |can )(?:cut|scale) back|you (?:cut|scale) back(?! in (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*| last (?:week|month|block)\b)|you fell behind(?! on sleep\b)|fall behind|next week,? you (?:could|should|might|can|need|will want|'ll want|add|run|do|try|take|keep|go))\b|(?:^|[.;!?]\s+)(?:cut|scale) back\b/i,
     label: 'plan advice',
+  },
+  // Doc 06 §4.2 and §4.3: soft prescription and false authority.
+  {
+    re: /\byou should think about\b|\bconsider whether\b|\bin my experience\b|\bdo this workout\b|\b(?:today'?s|tomorrow'?s) (?:workout|session|run) should be\b|(?:^|[.;!?]\s+)move this to\b/i,
+    label: 'advice',
   },
   { re: /\b(smarter|better) than (?:your|a|any|the) (?:human )?coach(?:es)?\b/i, label: 'anti-coach' },
   { re: /\breplac(?:e|es|ed|ing) (?:your|a|the) coach\b/i, label: 'anti-coach' },
@@ -265,6 +273,46 @@ function overrideIsObservation(voice: string, drivers: Driver[]): boolean {
   return true;
 }
 
+// Template mechanics that reached the text: an unfilled {{slot}} (the pattern
+// shape goes to the model with its slots in place) or a value that never
+// existed. Neither has digits, so the number check cannot see them.
+const LEFTOVER = /\{\{|\}\}|\bundefined\b|\bNaN\b|\bInfinity\b|\[object Object\]/;
+
+// What a sentence may name only when a driver for it exists (CLAUDE.md §3.2).
+// The number check cannot catch "HRV is climbing" with no HRV in the record. A
+// sentence saying the data is absent ("no sleep data yet") is not a claim.
+const DRIVER_KINDS: { kind: string; re: RegExp }[] = [
+  { kind: 'HRV', re: /\bhrv\b|\bheart rate variability\b/i },
+  { kind: 'sleep', re: /\bsle(?:ep|pt)\b/i },
+  { kind: 'resting HR', re: /\bresting (?:hr|heart rate)\b|\brhr\b/i },
+  { kind: 'Oura', re: /\boura\b/i },
+];
+const SAYS_ABSENT = /\b(?:no|not|none|without|missing|unavailable|yet|never)\b|n't\b/i;
+
+// A driver's direction said in words beside its name, with no number: "HRV is
+// climbing" is not backed by "-8% wk". Only present-tense words that always mean
+// a direction, right after the name: "over" and "more" do not, and "Load dropped
+// the week before" is history.
+const SAID_UP = 'up|higher|rising|climbing|climbs';
+const SAID_DOWN = 'down|lower|dropping|falling|dipping|slipping';
+const NAMED_TREND: { metric: RegExp; word: string }[] = [
+  { metric: /^HRV\b/, word: 'hrv' },
+  { metric: /^Load$/, word: 'load' },
+  { metric: /^Weekly volume$/, word: '(?:weekly )?volume' },
+];
+function saidAgainstTrend(voice: string, drivers: Driver[]): string[] {
+  const hits: string[] = [];
+  for (const d of drivers) {
+    const name = NAMED_TREND.find((n) => n.metric.test(d.metric));
+    const m = name && `${d.value} ${d.trend ?? ''}`.match(/([+-])\s?(\d+(?:\.\d+)?)\s?%/);
+    if (!name || !m || parseFloat(m[2]) === 0) continue;
+    const against = m[1] === '+' ? SAID_DOWN : SAID_UP;
+    const near = (words: string) => new RegExp(String.raw`\b${name.word}\b(?:\s+(?:is|was|has|have|are|were|been|still|also|just|now|already|keeps?|kept))*\s+(?:${words})\b`, 'i');
+    if (near(against).test(voice)) hits.push(`${d.metric} direction`);
+  }
+  return hits;
+}
+
 const EXCLAMATION = /[!¡]/;
 // Any pictographic emoji (§3.7 no emoji).
 const EMOJI = /\p{Extended_Pictographic}/u;
@@ -352,7 +400,7 @@ const DOWN = /\b(below|(?<!\b(?:settl\w*|slow\w*|wind\w*|calm\w*) )down|under|lo
 // Unit families as the voice and drivers write them.
 const UNIT: [RegExp, string][] = [
   [/^(?:ms|milliseconds?)$/i, 'ms'], [/^bpm$/i, 'bpm'], [/^(?:min|mins|minutes?)$/i, 'min'],
-  [/^(?:mi|miles?)$/i, 'mi'], [/^(?:km|kilomet(?:er|re)s?)$/i, 'km'], [/^(?:%|percent)$/i, '%'], [/^(?:h|hrs?|hours?)$/i, 'h'],
+  [/^(?:mi|miles?)$/i, 'mi'], [/^(?:k|km|kilomet(?:er|re)s?)$/i, 'km'], [/^(?:%|percent)$/i, '%'], [/^(?:h|hrs?|hours?)$/i, 'h'],
 ];
 // [number, unit family or '', matched text] for each number in the text.
 function unitPairs(text: string): [string, string, string][] {
@@ -387,6 +435,14 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   if (isNotEnglish(banText)) bannedHits.push('not english');
   if (EXCLAMATION.test(voice)) bannedHits.push('exclamation point');
   if (EMOJI.test(voice)) bannedHits.push('emoji');
+  if (LEFTOVER.test(voice)) bannedHits.push('unfilled template');
+  const driverText = drivers.map((d) => `${d.metric} ${d.value} ${d.trend ?? ''}`).join(' ');
+  const unbackedClaims: string[] = [];
+  for (const { kind, re } of DRIVER_KINDS) {
+    if (re.test(driverText)) continue;
+    if (voice.split(/(?<=[.!?;])\s+/).some((s) => re.test(s) && !SAYS_ABSENT.test(s))) unbackedClaims.push(kind);
+  }
+  unbackedClaims.push(...saidAgainstTrend(voice, drivers));
 
   // Driver-existence: every number in the voice must appear in some driver
   // value or trend. A driver NAME backs no number ("Load (7d)" does not back
@@ -433,9 +489,10 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   }
 
   return {
-    ok: bannedHits.length === 0 && unbackedNumbers.length === 0,
+    ok: bannedHits.length === 0 && unbackedNumbers.length === 0 && unbackedClaims.length === 0,
     bannedHits,
     unbackedNumbers,
+    unbackedClaims,
   };
 }
 
@@ -444,8 +501,9 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
 // non-prescriptive, no banned phrases by construction.
 export function buildFallbackVoice(drivers: Driver[], leadIn = 'Where things sit'): string {
   if (drivers.length === 0) return `${leadIn}: not enough data to read yet.`;
+  // A value can be a sentence of its own (a stored plan change): one period.
   const parts = drivers.map(
-    (d) => `${d.metric} ${d.value}${d.trend ? ` (${d.trend})` : ''}`
+    (d) => `${d.metric} ${d.value}${d.trend ? ` (${d.trend})` : ''}`.replace(/[.\s]+$/, '')
   );
   return `${leadIn}: ${parts.join('. ')}.`;
 }

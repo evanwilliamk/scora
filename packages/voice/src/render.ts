@@ -59,12 +59,29 @@ function unsigned(v: string | number, n: number): string {
   return String(Math.abs(n));
 }
 
+// Count words a template may put after a slot, with an optional word between
+// ("{{n}} hard days"). A value of 1 takes the singular.
+const COUNT_AFTER = new RegExp(`${SLOT_SRC}(\\s+(?:[a-z]+\\s+)?)(days|nights|runs|rides|weeks|hours|minutes|sessions|workouts)\\b`, 'g');
+
+// A value the slot can print. NaN, Infinity, a blank string and null never
+// existed as data: treated like a missing slot, so they stay visible as a gap
+// for the caller and never reach the text.
+function printable(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null;
+  const s = String(v).trim();
+  if (!s || /^[-+]?(?:NaN|Infinity|undefined|null)$/i.test(s)) return null;
+  return /^-0(?:\.0+)?$/.test(s) ? s.slice(1) : s; // never "-0%"
+}
+
 export function fillTemplate(
   template: string,
   values: Record<string, string | number>
 ): FilledTemplate {
   const missing: string[] = [];
   const directed = template
+    .replace(COUNT_AFTER, (whole, key: string, gap: string, noun: string) =>
+      (signedNumber(values[key]) === 1 ? `{{${key}}}${gap}${noun.slice(0, -1)}` : whole))
     .replace(WORD_BEFORE, (whole, word: string, gap: string, key: string) => {
       const n = signedNumber(values[key]);
       return n === null ? whole : `${agreeingWord(word, n)}${gap}${unsigned(values[key], n)}`;
@@ -74,12 +91,13 @@ export function fillTemplate(
       return n === null ? whole : `${unsigned(values[key], n)}${gap}${agreeingWord(word, n)}`;
     });
   const text = directed.replace(SLOT, (_, key: string) => {
-    const v = values[key];
-    if (v === undefined || v === null) {
+    const v = printable(values[key]);
+    if (v === null) {
       if (!missing.includes(key)) missing.push(key);
       return `{{${key}}}`; // leave intact so the gap is visible, never invent
     }
-    return String(v);
+    // An intensity is stored as steady_state; the read says "steady state".
+    return /intensity$/.test(key) ? v.replace(/_/g, ' ') : v;
   });
   return { text, missing };
 }

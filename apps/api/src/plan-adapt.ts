@@ -99,7 +99,7 @@ export function reasonText(d: Exclude<AdaptationDecision, { type: 'none' }>): st
   if (d.type === 'moved') {
     return `${day}'s ${what} moved to ${weekday(d.to)}. Today's posture reads ${posture}, and ${weekday(d.to)} keeps the week's hard days apart.`;
   }
-  const mins = d.duration_min ? ` at the same ${d.duration_min} minutes` : ' at the same duration';
+  const mins = d.duration_min ? ` at the same ${d.duration_min} minute${d.duration_min === 1 ? '' : 's'}` : ' at the same duration';
   const to = INTENSITY_WORDS[d.to_intensity];
   const article = /^[aeiou]/.test(to) ? 'an' : 'a';
   if (d.reason_code === 'posture_rest_hard_no_window') {

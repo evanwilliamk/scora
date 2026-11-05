@@ -104,6 +104,8 @@ function patternPromptBlock(p: PatternEntry): string {
   const lines = [`PATTERN (curated read for this situation, ${p.id}):`, `Shape: ${p.template.trim()}`];
   if (p.tone_notes) lines.push(`Tone: ${p.tone_notes.trim().replace(/\s+/g, ' ')}`);
   if (p.llm_hint) lines.push(`Hint: ${p.llm_hint.trim().replace(/\s+/g, ' ')}`);
+  // Doc 06 §7: the read shows these as raw numbers.
+  if (p.numeric_slots?.length) lines.push(`Numbers this read shows when DRIVERS has them: ${p.numeric_slots.join(', ')}.`);
   lines.push('Fill the shape only with values from DRIVERS. If a slot has no driver, leave that clause out.');
   return lines.join('\n');
 }

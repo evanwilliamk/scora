@@ -98,7 +98,7 @@ test('a why reply runs through the validators and falls back when it invents a n
 test('review 6: a long read is shortened at a sentence so the message fits Twilio WhatsApp body limit', async () => {
   const { WHATSAPP_MAX_CHARS } = await import('../src/whatsapp');
   const sentence = 'Sleep held for the second night and the week reads settled so far. ';
-  const m = composeDoorbell({ numbers: 'Sleep 7:12', voice: sentence.repeat(60), today: '45 min tempo', link: 'https://scora.app/r/abc', drivers: [] });
+  const m = composeDoorbell({ numbers: 'Sleep 7:12', voice: sentence.repeat(60), today: '45 min tempo', link: 'https://scora.app/r/abc', drivers: [{ metric: 'Sleep', value: '7:12' }] });
   assert.ok(m.length <= WHATSAPP_MAX_CHARS, `length ${m.length}`);
   assert.match(m, /^Sleep 7:12\n\nSleep held/);
   assert.match(m, /settled so far\.\n\nToday: 45 min tempo\n\nFull read: https:\/\/scora\.app\/r\/abc$/, 'cut at a sentence end; today and link kept');

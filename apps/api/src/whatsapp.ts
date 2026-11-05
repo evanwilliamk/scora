@@ -8,6 +8,7 @@
 import crypto from 'node:crypto';
 import { validateVoice, type Driver } from './validator';
 import { generateValidatedVoice } from './voice';
+import { postureClaimHits } from './drivers';
 
 // The morning message, numbers first (CLAUDE.md §3.3):
 //   Sleep 7:12 · Oura 84 · HRV 52ms (+8% wk) · Load 412
@@ -40,11 +41,12 @@ const EMOJI = /\p{Extended_Pictographic}/u;
 
 export function composeDoorbell(p: { numbers: string; voice: string; today?: string | null; link: string; drivers: Driver[] }): string {
   const numbers = p.numbers.trim();
-  const today = p.today ? p.today.replace(/\s+/g, ' ').trim() : '';
+  // The read route's line already says "Today:"; one label, either way.
+  const today = p.today ? p.today.replace(/\s+/g, ' ').trim().replace(/^Today:\s*/i, '') : '';
   const read = p.voice.replace(/\s+/g, ' ').trim();
   if (!read) throw new DoorbellError('empty read');
   const check = validateVoice(read, p.drivers);
-  if (!check.ok) throw new DoorbellError(`read fails the voice validators: ${[...check.bannedHits, ...check.unbackedNumbers].join(', ')}`);
+  if (!check.ok) throw new DoorbellError(`read fails the voice validators: ${[...check.bannedHits, ...check.unbackedNumbers, ...check.unbackedClaims].join(', ')}`);
   for (const line of [numbers, today]) {
     if (EMOJI.test(line)) throw new DoorbellError('emoji in the message');
     if (/[!\u00A1]/.test(line)) throw new DoorbellError('exclamation point in the message');
@@ -199,13 +201,16 @@ const POSTURE_WORDS: Record<string, string> = {
 };
 const postureLine = (p: string) => POSTURE_WORDS[p] ?? p;
 
+// No posture backed today (an empty string): no line, rather than a blank one.
+const postureBlock = (p: string) => (p ? `TODAY'S POSTURE: ${postureLine(p)}\n\n` : '');
+
 const driverBlock = (drivers: { metric: string; value: string; trend?: string }[]) =>
   drivers.map((d) => `- ${d.metric}: ${d.value}${d.trend ? ` (${d.trend})` : ''}`).join('\n') || '- none';
 
 export function whyPrompt(read: string, posture: string, drivers: { metric: string; value: string; trend?: string }[]): ExpansionPrompt {
   return {
     systemPrompt: `You are SCORA, an interpretation layer for endurance athletes. The athlete replied "why" to this morning's read. Answer in 1 or 2 sentences: lead with the driver value that most shaped today's read and say why it matters.\n\n${EXPANSION_RULES}`,
-    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${postureLine(posture)}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
+    userPrompt: `THIS MORNING'S READ:\n${read}\n\n${postureBlock(posture)}DRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
     maxTokens: 100,
   };
 }
@@ -213,7 +218,7 @@ export function whyPrompt(read: string, posture: string, drivers: { metric: stri
 export function morePrompt(read: string, posture: string, drivers: { metric: string; value: string; trend?: string }[]): ExpansionPrompt {
   return {
     systemPrompt: `You are SCORA, an interpretation layer for endurance athletes. The athlete replied "more" to this morning's read. Write 3 or 4 sentences that connect today's posture to what the week so far shows, using the drivers. Describe what has happened; say nothing about what comes next.\n\n${EXPANSION_RULES}`,
-    userPrompt: `THIS MORNING'S READ:\n${read}\n\nTODAY'S POSTURE: ${postureLine(posture)}\n\nDRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
+    userPrompt: `THIS MORNING'S READ:\n${read}\n\n${postureBlock(posture)}DRIVERS (the only values you may cite):\n${driverBlock(drivers)}`,
     maxTokens: 200,
   };
 }
@@ -239,6 +244,8 @@ export async function expansionReply(
     surface: kind,
     athleteId,
     leadIn: kind === 'why' ? 'Behind today\'s read' : 'The fuller read',
+    // As on the read and the card: only the posture the rules decided.
+    check: (v) => postureClaimHits(v, posture || null),
     log,
   });
   return r.voice;

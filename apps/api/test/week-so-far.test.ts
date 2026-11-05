@@ -24,7 +24,7 @@ test('every number in the line is shown, and the line passes the voice validator
   const w = weekSoFar([run('2026-10-19', 40), run('2026-10-12', 30)], '2026-10-19');
   assert.equal(w.line, '1 run, 40 min since Monday; 30 min through Monday last week.');
   const drivers = [{ metric: 'Runs', value: String(w.runs) }, { metric: 'Week', value: `${w.total_min} min` }, { metric: 'Last week', value: `${w.last_week_to_date_min} min` }];
-  assert.deepEqual(validateVoice(w.line, drivers), { ok: true, bannedHits: [], unbackedNumbers: [] });
+  assert.deepEqual(validateVoice(w.line, drivers), { ok: true, bannedHits: [], unbackedNumbers: [], unbackedClaims: [] });
 });
 
 test('no runs yet, with and without last week', () => {
@@ -46,7 +46,7 @@ test('with a plan: each day carries its planned run minutes, and the line states
   assert.equal(w.planned_to_date_min, 90);
   assert.equal(w.line, '2 runs, 85 min since Monday. Plan: 90 min through Thursday.');
   const drivers = [{ metric: 'Runs', value: '2' }, { metric: 'Week', value: '85 min' }, { metric: 'Plan', value: '90 min' }];
-  assert.deepEqual(validateVoice(w.line, drivers), { ok: true, bannedHits: [], unbackedNumbers: [] });
+  assert.deepEqual(validateVoice(w.line, drivers), { ok: true, bannedHits: [], unbackedNumbers: [], unbackedClaims: [] });
 });
 
 test('without a plan nothing about plans appears; mondayOf finds the week', () => {

@@ -14,6 +14,7 @@ interface GenerateParams {
   drivers: Driver[];
   model?: string;
   maxTokens?: number;
+  temperature?: number; // doc 08 §12.2, by surface
   leadIn?: string; // prefix for the deterministic fallback
   surface?: VoiceSurface; // for the telemetry line
   athleteId?: unknown; // whose use this is (the llm_call line)
@@ -42,6 +43,7 @@ async function callOpenAI(
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number,
+  temperature: number,
   fetchImpl: typeof fetch,
 ): Promise<string> {
   const res = await fetchImpl('https://api.openai.com/v1/chat/completions', {
@@ -57,7 +59,7 @@ async function callOpenAI(
         { role: 'user', content: userPrompt },
       ],
       max_tokens: maxTokens,
-      temperature: 0.5,
+      temperature,
     }),
     signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
   });
@@ -77,7 +79,7 @@ async function callOpenAI(
 // For logs: labels and a count only. The unbacked numbers themselves can be
 // health values the model invented or misquoted (doc 10 §6.5, no PHI in logs).
 function logNote(v: ValidationResult): string {
-  return `banned: ${[...new Set(v.bannedHits.map(catchLabel))].join(', ') || 'none'}; unbacked numbers: ${v.unbackedNumbers.length}`;
+  return `banned: ${[...new Set(v.bannedHits.map(catchLabel))].join(', ') || 'none'}; unbacked numbers: ${v.unbackedNumbers.length + v.unbackedClaims.length}`;
 }
 
 function violationNote(v: ValidationResult): string {
@@ -85,6 +87,8 @@ function violationNote(v: ValidationResult): string {
   if (v.bannedHits.length) bits.push(`banned phrasing (${v.bannedHits.join(', ')})`);
   if (v.unbackedNumbers.length)
     bits.push(`numbers not in the drivers (${v.unbackedNumbers.join(', ')})`);
+  if (v.unbackedClaims.length)
+    bits.push(`claims no driver backs (${v.unbackedClaims.join(', ')})`);
   return bits.join('; ');
 }
 
@@ -95,6 +99,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     drivers,
     model = 'gpt-4o',
     maxTokens = 320,
+    temperature = 0.5,
     leadIn = 'Where things sit',
     surface,
     athleteId,
@@ -119,7 +124,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
     if (surface) trackVoice(log, { surface, attempts: r.attempts, fallback: r.usedFallback, bannedHits: seen, unbackedCount: unbacked, finalOk });
     return r;
   };
-  const note = (v: ValidationResult) => { seen.push(...v.bannedHits); unbacked += v.unbackedNumbers.length; };
+  const note = (v: ValidationResult) => { seen.push(...v.bannedHits); unbacked += v.unbackedNumbers.length + v.unbackedClaims.length; };
 
   // Attempt 1. A hard failure (network, timeout, 429, 5xx) on any surface
   // ends in the deterministic fallback with its telemetry line, so an outage
@@ -128,7 +133,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
   // fallback. Callers never log the emission themselves.
   let first: string;
   try {
-    first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens, metered);
+    first = await callOpenAI(model, systemPrompt, userPrompt, maxTokens, temperature, metered);
   } catch (e) {
     llmFailed(1, e);
     const voice = buildFallbackVoice(drivers, leadIn);
@@ -150,7 +155,7 @@ export async function generateValidatedVoice(params: GenerateParams): Promise<Ge
 
 Your previous draft was rejected for: ${violationNote(validation)}.
 Rewrite it. Use ONLY the driver values above, reference no number that isn't a driver, no banned phrasing, no exclamation points, no emoji.`;
-    const second = await callOpenAI(model, systemPrompt, retryUser, maxTokens, metered);
+    const second = await callOpenAI(model, systemPrompt, retryUser, maxTokens, temperature, metered);
     const secondValidation = validate(second);
     if (secondValidation.ok) {
       return done({ voice: second, validation: secondValidation, usedFallback: false, attempts: 2, llmError: false });

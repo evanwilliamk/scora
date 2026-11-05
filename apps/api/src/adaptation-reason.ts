@@ -24,7 +24,7 @@ const SYSTEM = `You write one short line for an athlete's training plan explaini
 RULES:
 - State the change and the reason. The change is decided; never suggest, advise or ask.
 - Name the day(s) exactly as given. Mention no other day.
-- Cite only numbers from DRIVERS, written as they appear there. If a driver is not listed, do not mention it.
+- Cite only numbers from DRIVERS, written as they appear there, and at least one when DRIVERS has one. If a driver is not listed, do not mention it.
 - At most two sentences, under 200 characters. Calm, plain English. No exclamation points, no emoji, no "you should", no "coach".
 
 Example: "Tuesday's intervals moved to Thursday. Sleep was 5:40 last night and HRV is 12% under your week."`;
@@ -33,7 +33,7 @@ export function reasonPrompt(d: Decided, evidence: Driver[]): { system: string; 
   const change = d.type === 'moved'
     ? `MOVED: ${weekday(d.from)}'s ${d.facts.workout_intensity} session to ${weekday(d.to)}, unchanged.`
     : `DOWNGRADED: ${weekday(d.facts.workout_date)}'s ${d.from_intensity} session to ${d.to_intensity.replace('_', ' ')}`
-      + (d.duration_min ? `, same ${d.duration_min} minutes.` : ', same duration.')
+      + (d.duration_min ? `, same ${d.duration_min} minute${d.duration_min === 1 ? '' : 's'}.` : ', same duration.')
       + (d.reason_code === 'posture_rest_hard_no_window' ? ' No other day this week had room for it.' : '');
   const drivers = evidence.map((e) => `- ${e.metric}: ${e.value}${e.trend ? ` (${e.trend})` : ''}`).join('\n');
   return {
@@ -174,7 +174,7 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   const mins = d.facts.workout_duration_min;
   const facts: Driver[] = mins ? [{ metric: 'Duration', value: `${mins} min` }] : [];
   const v = validateVoice(t, [...evidence, ...facts]);
-  issues.push(...v.bannedHits.map((h) => `banned: ${h}`), ...v.unbackedNumbers.map((n) => `unbacked number ${n}`));
+  issues.push(...v.bannedHits.map((h) => `banned: ${h}`), ...v.unbackedNumbers.map((n) => `unbacked number ${n}`), ...v.unbackedClaims.map((c) => `unbacked claim ${c}`));
   issues.push(...promptEchoHits(t, SYSTEM).map((h) => `banned: ${h}`));
 
   // A number said with a time or distance unit must be the change's own
@@ -188,6 +188,15 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   // A move keeps the session whole; it is never shorter.
   if (d.type === 'moved' && saysSessionShortened(t)) issues.push('says shortened for a move');
   return [...new Set(issues)];
+}
+
+// Doc 08 §10.4: a model line cites at least one driver value. Checked on the
+// model's line only: the fixed sentence names the posture, not a number.
+export function citesDriver(text: string, evidence: Driver[]): boolean {
+  const numbers = evidence.flatMap((e) => `${e.value} ${e.trend ?? ''}`.match(/\d+(?:\.\d+)?/g) ?? []);
+  if (numbers.length === 0) return true;
+  const t = normalizeForCheck(text);
+  return numbers.some((n) => new RegExp(`(?<![\\d.])${n.replace('.', '\\.')}(?![\\d])`).test(t));
 }
 
 export interface WrittenReason {
@@ -211,6 +220,7 @@ export async function writeReason(d: Decided, evidence: Driver[], llm: ReasonLlm
     return { text: fallback, source: 'fallback', issues: [`llm failed: ${vendorErrorKind(e)}`], finalOk: fallbackOk() };
   }
   const issues = reasonIssues(text, d, evidence);
+  if (text && !citesDriver(text, evidence)) issues.push('cites no driver');
   return issues.length === 0 ? { text, source: 'llm', issues, finalOk: true } : { text: fallback, source: 'fallback', issues, finalOk: fallbackOk() };
 }
 
@@ -235,8 +245,8 @@ export function openAiReasonLlm(apiKey: string, fetchImpl: typeof fetch = fetch)
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        temperature: 0.3,
-        max_tokens: 120,
+        temperature: 0.4,
+        max_tokens: 100,
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
       signal: AbortSignal.timeout(20_000),
