@@ -91,7 +91,7 @@ function clockOnlyDecimals(text: string, data: unknown, already: string[] = []):
 // behind it, with or without a number ("Your HRV crashed"). Saying it is not in
 // the data is what the prompt asks for and stays allowed.
 const NOT_IN_RUN_DATA = /\b(?:hrv|heart rate variability|sleep|slept|resting (?:hr|heart rate)|readiness)\b/i;
-const NAMES_A_GAP = /\b(?:not|no|without|cannot|never|none|missing|lacks?|only)\b|n't\b/i;
+const NAMES_A_GAP = /\b(?:not|no|without|cannot|never|none|missing|lacks?|only)\b|n't\b|\boutside (?:this|the) (?:\w+ )?(?:read|data|record)\b/i;
 // Field names only: a run named "sleep" backs nothing.
 const hasHealthField = (data: unknown): boolean => {
   if (Array.isArray(data)) return data.some(hasHealthField);

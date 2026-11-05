@@ -7,7 +7,7 @@
 
 import type { AdaptationDecision } from '../../../packages/plan-engine/src/index';
 import type { Driver } from './metrics';
-import { normalizeForCheck, promptEchoHits, validateVoice } from './validator';
+import { clockHourDecimals, normalizeForCheck, promptEchoHits, saysAgainstSign, validateVoice } from './validator';
 import type { VoiceEmission } from './telemetry';
 import { vendorErrorKind, vendorHttpError } from './vendor-error';
 
@@ -48,7 +48,7 @@ const INTENSITY_WORDS: Record<string, RegExp> = {
   intervals: /\bintervals?\b/i,
   tempo: /\btempo\b/i,
   threshold: /\bthreshold\b/i,
-  long: /\blong (?:run|effort|session)\b/i,
+  long: /\blong (?:run|effort|session)\b(?! of\b)/i,
   hard: /\bhard (?:session|day|workout)\b/i,
   easy: /\beasy (?:run|day|session)\b/i,
   recovery: /\brecovery (?:run|day|session)\b/i,
@@ -71,7 +71,16 @@ const DAY_FORMS: Record<string, RegExp> = Object.fromEntries(WEEKDAYS.map((day) 
   new RegExp(`\\b(?:${day}|${day.slice(0, 3)}${day === 'Tuesday' ? '|Tues' : day === 'Thursday' ? '|Thur|Thurs' : ''})\\.?(?:'s)?\\b`, 'i'),
 ]));
 const ADVICE = /\b(skip|try|consider|make sure|remember to|feel free|listen to your body|keep (?:it|things)|ease|go easy|rest up|aim|take it|should|need to|be sure|focus on|prioriti[sz]e)\b/i;
-const NUMBER_WORDS = /\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|half|dozen)\b/i;
+// A number in words must say a value the drivers or the change have ("two hard
+// days" with Hard days in a row 2). "One" counts with a measure after it, not as
+// a pronoun ("the largest one this week").
+const WORD_VALUES: Record<string, string> = { zero: '0', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10', eleven: '11', twelve: '12', thirteen: '13', fourteen: '14', fifteen: '15', sixteen: '16', seventeen: '17', eighteen: '18', nineteen: '19', twenty: '20', thirty: '30', forty: '40', fifty: '50', sixty: '60', seventy: '70', eighty: '80', ninety: '90' };
+const NUMBER_WORDS = /\b(?:one(?=\s+(?:(?!this\b|that\b|last\b|next\b)\w+\s+)?(?:hours?|minutes?|miles?|days?|nights?|weeks?)\b)|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|half|dozen)\b/gi;
+const unbackedNumberWord = (t: string, backed: string) =>
+  [...t.matchAll(NUMBER_WORDS)].some((m) => {
+    const value = WORD_VALUES[m[0].toLowerCase()];
+    return !value || !new RegExp(String.raw`(?<![\d.:])${value}(?![\d:]|\.\d)`).test(backed);
+  });
 // Time and distance units. A number said with one of these is a claim about
 // the session or a duration, never a bare score.
 const MEASURE_UNITS: [RegExp, string][] = [
@@ -115,9 +124,6 @@ function saysSessionShortened(t: string): boolean {
   }
   return false;
 }
-const UP = /\b(above|up|higher|over|rose|risen|climb(?:ed|ing)?|more)\b/i;
-const DOWN = /\b(below|down|under|lower|dropped|fell|fallen|less)\b/i;
-
 // Problems with a candidate line, empty when it may be stored.
 export function reasonIssues(text: string, d: Decided, evidence: Driver[]): string[] {
   const issues: string[] = [];
@@ -129,7 +135,8 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   if (/\?/.test(t)) issues.push('asks a question');
   if (ADVICE.test(t)) issues.push('advice');
   if (/\bcoach/i.test(t)) issues.push('coach');
-  if (NUMBER_WORDS.test(t)) issues.push('number in words');
+  const mins0 = d.facts.workout_duration_min;
+  if (unbackedNumberWord(t, `${evidence.map((e) => `${e.value} ${e.trend ?? ''}`).join(' ')} ${mins0 ?? ''}`)) issues.push('number in words');
 
   // Days: the right ones, in any case or short form, and no others.
   const allowedDays = new Set([weekday(d.facts.workout_date), ...(d.type === 'moved' ? [weekday(d.to)] : [])]);
@@ -162,10 +169,8 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   for (const e of evidence) {
     const m = `${e.value} ${e.trend ?? ''}`.match(/([+-])\s?(\d+(?:\.\d+)?)%/);
     if (!m) continue;
-    const num = new RegExp(`(?<![\\d.])${m[2]}(?![\\d])\\s?%`);
-    for (const s of sentences.filter((x) => num.test(x))) {
-      if (m[1] === '-' && UP.test(s) && !DOWN.test(s)) issues.push(`says up for ${e.metric}`);
-      if (m[1] === '+' && DOWN.test(s) && !UP.test(s)) issues.push(`says down for ${e.metric}`);
+    for (const s of sentences) {
+      if (saysAgainstSign(s, m[1], m[2])) issues.push(`says ${m[1] === '-' ? 'up' : 'down'} for ${e.metric}`);
     }
   }
 
@@ -181,7 +186,11 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   // duration, or a driver that states that number in that unit. "62 minutes
   // shorter" is not backed by "Sleep score 62".
   const backed = new Set<string>(mins ? [`${mins}|min`] : []);
-  for (const e of evidence) for (const [n, u] of measurePairs(`${e.value} ${e.trend ?? ''}`)) backed.add(`${n}|${u}`);
+  for (const e of evidence) {
+    const said = `${e.value} ${e.trend ?? ''}`;
+    for (const [n, u] of measurePairs(said)) backed.add(`${n}|${u}`);
+    for (const n of clockHourDecimals(said)) backed.add(`${n}|h`);
+  }
   for (const [n, u] of measurePairs(t)) {
     if (!backed.has(`${n}|${u}`)) issues.push(`unbacked measure ${n} ${u}`);
   }
