@@ -6,17 +6,31 @@ Reviewing the bundle first? Start with `docs/review-guide.md` (areas, risk, file
 
 ## 0. Order
 
-1. Apply the migrations (section 1) before merging. They only add tables, columns, functions and RLS, so the code on `main` today keeps working on the new schema.
-2. Merge and let Railway deploy with every flag off (section 2).
-3. Run the smoke tests (section 5).
-4. Turn flags on one at a time, each only after the migrations and data it lists.
+Rehearsed on PGlite (`apps/api/test/migration-rehearsal.test.ts`, `migration-deploy-order.test.ts`), with `main`'s schema and existing rows as the start. What PGlite cannot prove is at the end of section 1.
 
-Applying after the merge breaks things even with every flag off: the Plan Today card reads `scheduled_workouts.workout_structure_json` (migration 4), Watch send records write `workout_kit_pushed_at` (migration 4), and the scheduler and onboarding read `athlete_preferences` (migration 3).
+1. Run the precheck (section 1). No rows back means go on.
+2. On Railway, check `SUPABASE_SERVICE_ROLE_KEY` is the service role (secret) key from Supabase Settings > API, not the anon (publishable) one. Migration 8 turns RLS on, and an anon key then reads nothing from `athletes` or `device_tokens`.
+3. Apply the migrations one at a time, in the order of section 1, on the `main` API. It keeps working: it only touches `athletes` and `device_tokens`, no column there changes, and every request it sends got the same answer on the new schema.
+4. Run the check after the migrations (section 1). No rows back means go on.
+5. Merge so the deploy lands outside 06:00 to 08:00 New York time (section 3 says why), and let Railway deploy with every flag off (section 2).
+6. Run the smoke tests (section 5).
+7. Turn flags on one at a time, each only after the migrations and data it lists.
+
+Rolling the code back after this needs no schema change, for the same reason as step 3.
+
+If the merge deploys before the migrations (tested, every flag off):
+
+- Nothing is lost and no row changes. `/health`, `/api/keepalive`, `/api/read`, `/api/weekly`, `/api/cdv`, `/api/register-device` and `/api/unregister-device` still answer 200. The read has no plan lines.
+- `GET` and `PUT /api/preferences`, `GET /api/plan`, `POST /api/plan/manual`, and the session `status` and `watch-sent` routes answer 500.
+- The push scheduler sends nothing and logs `failed to load athletes` every minute, until migration 3 is applied. It never guesses: without `athlete_preferences` there is no once-a-day claim.
+- The fix is to apply the migrations then, in the same order. No redeploy is needed. Run `notify pgrst, 'reload schema';` if the routes still answer 500.
+
+With every flag off, the merge needs migrations 2, 3, 4 and 14; leaving out any other one breaks no unflagged route. Apply all 16 anyway.
 
 On without a flag once merged and deployed (with a new app build where it is iOS):
 
 - The push scheduler ticks every minute, retries a failed read every 15 minutes, sends to 4 athletes at a time, and logs `push_delivery` and `push_sent` lines.
-- Each tick asks `scora_due_deliveries` (migration 12) for the athletes due now; until it is applied the log says `scora_due_deliveries not found` once and the tick reads every athlete.
+- Each tick asks `scora_due_deliveries` (migration 12) for the athletes due now; until it is applied the log says `scora_due_deliveries not found` once and the tick reads every athlete (which still needs migration 3).
 - Push times follow each athlete's own time zone and delivery time from `athlete_preferences`; `PUSH_TZ` is no longer read.
 - Pushes carry a `scora` payload; a tap opens Today's Read (or This Week) and is reported to `POST /api/events/push-open`.
 - Plan Today card when the athlete has any plan; Share on This Week and under chat charts; past sessions, Watch send records.
@@ -53,7 +67,34 @@ From 2026-11-04 (one new migration, section 1 item 16; no new flag or env var):
 
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
 
-All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrations.test.ts`), none applied anywhere. Filename order is the apply order. The five files already on `main` (2026-07) are not listed.
+All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrations.test.ts`, `migration-rehearsal.test.ts`), none applied anywhere. Filename order is the apply order. The five files already on `main` (2026-07) are not listed; the precheck confirms they are on production.
+
+**Precheck, before the first migration.** A plain `select`. No rows back means go on; each row names what is wrong.
+
+```sql
+-- precheck
+select problem from (
+  select 'Postgres 15 or newer is needed (migration 15), found ' || current_setting('server_version') as problem
+  where current_setting('server_version_num')::int < 150000
+  union all
+  select 'pgvector is not available on this project (migration 1)'
+  where not exists (select 1 from pg_available_extensions where name = 'vector')
+  union all
+  select 'pgvector 0.5 or newer is needed for the hnsw index (migration 1), found ' || default_version
+  from pg_available_extensions
+  where name = 'vector' and string_to_array(default_version, '.')::int[] < array[0, 5]
+  union all
+  select 'missing, so a migration on main was not applied: ' || w.t || '.' || w.c
+  from (values ('users', 'email'), ('athletes', 'strava_id'), ('athletes', 'strava_access_token'),
+    ('athletes', 'oura_access_token'), ('athletes', 'cdv_count'), ('athletes', 'cdv_count_date'),
+    ('activities', 'athlete_id'), ('workouts', 'athlete_id'), ('health_data', 'athlete_id'),
+    ('device_tokens', 'token')) as w(t, c)
+  where not exists (select 1 from information_schema.columns k
+    where k.table_schema = 'public' and k.table_name = w.t and k.column_name = w.c)
+) p;
+```
+
+Paste one whole file per run. A file that fails changes nothing, so fix the cause and paste it again. Files 4, 7 and 16 hold `drop constraint` or `drop index`, each recreated in the same file, so the editor may warn about destructive operations; no table, column or row is dropped.
 
 1. `20261017000000_knowledge_library.sql`: `knowledge_sources`, `knowledge_chunks`, `read_citations` and `match_knowledge_chunks()`. It runs `create extension if not exists vector`; if the editor refuses, enable `vector` under Database > Extensions and re-run.
 2. `20261017010000_manual_plans.sql`: `training_plans`, `scheduled_workouts` and `replace_manual_plan()` for a pasted plan.
@@ -66,7 +107,7 @@ All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrati
 9. `20261030000000_ical_refresh_pairing.sql`: calendar refresh keeps each done/missed mark and the Watch send on its own session; redefines `refresh_ical_plan()` only.
 10. `20261030010000_create_scora_plan_lock.sql`: plan setup takes the same per-athlete lock as a calendar paste or refresh; redefines `create_scora_plan()` only.
 11. `20261101000000_create_scora_plan_idempotent.sql`: the same plan setup sent twice keeps the plan it made, with its marks and changes; redefines `create_scora_plan()` only.
-12. `20261101010000_due_deliveries.sql`: `scora_due_deliveries()` and `scora_delivery_zone()`, so an idle push scheduler tick is one request instead of reading every athlete's preferences. Optional for correctness (without it the scheduler reads every athlete, as before, and checks again every 15 minutes), needed for scale; can be applied before or after the merge.
+12. `20261101010000_due_deliveries.sql`: `scora_due_deliveries()` and `scora_delivery_zone()`, so an idle push scheduler tick is one request instead of reading every athlete's preferences. Optional for correctness (without it the scheduler reads every athlete, as before, and checks again every 15 minutes), needed for scale; can be applied before or after the merge, but after migration 3, or it fails on the missing table.
 
 13. `20261103000000_ical_refresh_keeps_past.sql`: a calendar refresh keeps the plan's sessions from before yesterday (the importer leaves them out) with their done/missed marks and Watch sends; adds a three-argument `refresh_ical_plan()` beside the two-argument one. Needed before `ICAL_IMPORT=on`: the API calls the three-argument version.
 14. `20261103010000_plan_marks_locked.sql`: `mark_scheduled_workout()` and `mark_workout_watch_sent()`, so a done/missed mark or Watch send runs under the per-athlete plan lock and never lands on a plan a refresh or paste just replaced. Needed at merge: `POST /api/plan/workouts/:id/status` and `/watch-sent` call them (they are unflagged).
@@ -75,7 +116,88 @@ All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrati
 
 The list above is complete as of 2026-11-04. Later ones, if any, follow in filename order.
 
-9 redefines a function 7 creates (13 adds a second version that calls it); 16 redefines 7's and 9's and 13's; 10 and 11 redefine the one 6 creates. If you re-run any earlier migration, re-run every later one after it, in order.
+**Check after the migrations.** Run `notify pgrst, 'reload schema';` first, so the API sees the new tables and functions, then this plain `select`. No rows back means every table, function version, index and RLS flag is the final one. A row names what to re-run.
+
+```sql
+-- verify
+with fn(name, nargs, hash) as (values
+    ('apply_plan_adaptation', 1, 'ed6db179debcb35d342ef6100f115485'),
+    ('create_scora_plan', 1, 'd8b2f0bc6cb4cf3589f1a0767387a4b7'),
+    ('mark_scheduled_workout', 4, 'b8ffa16112ce379d6a85f23a05197b75'),
+    ('mark_workout_watch_sent', 2, '5141d72c7c048906ddeb7f3e4ea4209c'),
+    ('match_knowledge_chunks', 3, '809960cd4e5bdcd85f37370590212d62'),
+    ('refresh_ical_plan', 2, '762cd77cd841e06e0870fd3ce3a82ab4'),
+    ('refresh_ical_plan', 3, '148db66919948435db86f74b83659854'),
+    ('replace_external_plan', 4, 'ff90f7786f2d9bafd89ddaa9675ba8a3'),
+    ('replace_manual_plan', 3, 'c6ac92aa17aeb5c064f93338fcbd4f89'),
+    ('scora_delivery_zone', 1, '55448851d11f9b6efc589ea2ee1d34a8'),
+    ('scora_due_deliveries', 4, '513e7ac1e1af47c808675616cb0baf1a')),
+tbl(t) as (values ('users'), ('athletes'), ('activities'), ('workouts'), ('health_data'), ('device_tokens'),
+    ('knowledge_sources'), ('knowledge_chunks'), ('read_citations'), ('training_plans'), ('scheduled_workouts'),
+    ('athlete_preferences'), ('plan_templates'), ('plan_adaptations')),
+col(t, c) as (values ('training_plans', 'template_id'), ('training_plans', 'goal_race_date'),
+    ('training_plans', 'weekly_volume_start_km'), ('scheduled_workouts', 'workout_structure_json'),
+    ('scheduled_workouts', 'workout_kit_pushed_at')),
+idx(i, has) as (values ('knowledge_chunks_embedding_idx', 'hnsw'), ('knowledge_chunks_source_idx', ''),
+    ('knowledge_chunks_tags_idx', ''), ('knowledge_sources_title_author_one', 'NULLS NOT DISTINCT'),
+    ('plan_adaptations_athlete_time_idx', ''), ('read_citations_athlete_idx', ''), ('read_citations_chunk_idx', ''),
+    ('scheduled_workouts_athlete_date_idx', ''), ('training_plans_athlete_status_idx', ''),
+    ('training_plans_one_active_external_idx', 'runna'), ('training_plans_one_active_scora_idx', '')),
+chk(k, has) as (values ('training_plans_external_source_check', 'ical'), ('training_plans_template_source_check', 'template_id'),
+    ('scheduled_workouts_source_check', 'external_ical'), ('scheduled_workouts_planned_intensity_check', 'steady_state'))
+select 'function missing or an old version, re-run from the newest file that defines it: ' || f.name || ' (' || f.nargs || ' args)' as problem
+from fn f
+where not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = f.name and p.pronargs = f.nargs
+    and md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) = f.hash)
+union all
+select 'table missing: ' || t from tbl where to_regclass('public.' || t) is null
+union all
+select 'row level security is off: ' || c.relname
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity
+union all
+select 'policy not expected, the API uses the service role: ' || tablename || '.' || policyname
+from pg_policies where schemaname = 'public'
+union all
+select 'column missing: ' || t || '.' || c from col
+where not exists (select 1 from information_schema.columns k where k.table_schema = 'public' and k.table_name = t and k.column_name = c)
+union all
+select 'index missing or an old version: ' || i from idx
+where not exists (select 1 from pg_indexes x where x.schemaname = 'public' and x.indexname = i and x.indexdef like '%' || has || '%')
+union all
+select 'constraint missing or an old version: ' || k from chk
+where not exists (select 1 from pg_constraint c where c.conname = k and pg_get_constraintdef(c.oid) like '%' || has || '%')
+union all
+select 'old index still here, re-run migration 7, then 16: training_plans_one_active_manual_idx'
+where to_regclass('public.training_plans_one_active_manual_idx') is not null
+union all
+select 'extension not installed: vector'
+where not exists (select 1 from pg_extension where extname = 'vector');
+```
+
+Pasted twice (tested, with rows in every table):
+
+- The same file twice in a row: all 16 change nothing, with no error.
+- A file re-run after later ones are applied: 10 of the 16 still change nothing. Six give no error and change no row, but silently put an older function back, and the later file's behavior is lost until it is re-applied. The check above names it:
+  - 2 (`manual_plans`): the old `replace_manual_plan` and the dropped index are back. A paste over a calendar plan fails, and a paste over a SCORA plan leaves two active plans.
+  - 6 (`create_scora_plan`) and 10 (`create_scora_plan_lock`): a double tap on plan setup replaces the plan again and loses its marks; 6 also drops the lock.
+  - 7 (`ical_plans`): Runna feeds fail, and a refresh loses Watch sends.
+  - 9 (`ical_refresh_pairing`) and 13 (`ical_refresh_keeps_past`): a Runna plan's refresh silently does nothing.
+- To repair any of them, re-run every later file after it, in order, then the check. Tested for all 16.
+- The files on `main`: `20260701000000_init.sql` stops with `relation "users" already exists` and changes nothing; the other four change nothing.
+
+The API code and the check above expect this exact set; a later migration that changes a function changes its hash here too (a test holds them together).
+
+What PGlite could not prove (Postgres 18 in WebAssembly, one superuser, no Supabase):
+
+- `create extension vector` on the project, and the `vector` schema it lands in. The precheck reads what is available; the check confirms it installed.
+- Production's version. Everything was run on Postgres 18, and production may be older. Only migration 15 needs a newer version (15), as far as a reading of the files shows; the precheck covers that one.
+- That production's schema and rows match `main`'s migrations. They were applied by hand, so drift is possible. The precheck only looks for the columns the code needs.
+- Service role and anon behavior. Tested with stand-in roles set up as Supabase documents them, not the real ones, and not the real key on Railway (step 2 of section 0).
+- PostgREST itself: a local stand-in answered the requests. Its schema cache reload is why `notify pgrst` is there. The named-argument choice between the two `refresh_ical_plan` versions, and the read-only transaction it uses for `scora_due_deliveries`, are read or imitated, not run.
+- That the SQL editor runs one paste as one transaction. PGlite does, and "a file that fails changes nothing" rests on that. If a failed paste looks half-applied, re-paste the file: every one of the 16 is safe to repeat.
+- How long `alter table ... enable row level security` waits on real traffic (it needs a brief exclusive lock on the init tables).
 
 ## 2. Env and flags (Railway)
 
@@ -101,6 +223,10 @@ No new secrets. The existing ones stay as they are, Evan sets, never committed: 
 ## 3. Push
 
 APNs env (`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_KEY`, `APNS_ENV`) starts the scheduler. It now ticks every minute and logs the delivery lines the gate report reads (`docs/gate-reports.md`).
+
+Have the deploy land outside 06:00 to 08:00 New York time. After migration 3 no athlete has a preferences row, so every device reads as New York, 06:00, not sent today (tested on existing rows). `main`'s scheduler keeps no record in the database, so a deploy inside that window sends today's read a second time (and on a Monday the weekly). Outside it nothing is due until the next morning and nothing is missed.
+
+Look at `PUSH_TZ` on Railway first. If it is set to anything but `America/New_York`, deploy after both 08:00 New York and 06:00 in that zone, so today's read went out once; athletes then move to 06:00 New York until the new app build sends their time zone.
 
 ## 4. Knowledge ingest (Evan runs, before `KNOWLEDGE_RETRIEVAL=on`)
 

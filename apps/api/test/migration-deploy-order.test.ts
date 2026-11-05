@@ -49,7 +49,7 @@ const seed = async (db: PGlite) => {
   await db.query(`insert into device_tokens (athlete_id, token) values ($1, $2)`, [ATHLETE, TOKEN]);
 };
 const copy = async (db: PGlite) => {
-  const c = await db.clone();
+  const c = (await db.clone()) as unknown as PGlite;
   opened.push(c);
   return c;
 };
