@@ -79,7 +79,14 @@ const hoursMin = (seconds: number): string => {
 export function usableRecovery<T extends OuraSummary>(r: T | null | undefined): T | null {
   if (!r) return null;
   const pos = (v: number | null | undefined) => (typeof v === 'number' && v > 0 ? v : null);
-  return { ...r, sleepSeconds: pos(r.sleepSeconds), sleepScore: pos(r.sleepScore), hrvMs: pos(r.hrvMs), restingHr: pos(r.restingHr), hrvWeekAvgMs: pos(r.hrvWeekAvgMs) };
+  const out: T = { ...r, sleepSeconds: pos(r.sleepSeconds), sleepScore: pos(r.sleepScore), hrvMs: pos(r.hrvMs), restingHr: pos(r.restingHr), readinessScore: pos(r.readinessScore), hrvWeekAvgMs: pos(r.hrvWeekAvgMs) };
+  // The same for the prior nights: a 0 in a baseline moves every delta against
+  // it, which can fire a posture or hide one, and a chart would plot it.
+  if (r.restingHrHistory) out.restingHrHistory = r.restingHrHistory.filter((v) => v > 0);
+  if (r.sleepScoreHistory) out.sleepScoreHistory = r.sleepScoreHistory.filter((v) => v > 0);
+  if (r.sleepScoreNights) out.sleepScoreNights = r.sleepScoreNights.filter((n) => n.score > 0);
+  if (r.nights) out.nights = r.nights.map((n) => ({ ...n, sleepSeconds: pos(n.sleepSeconds), hrvMs: pos(n.hrvMs), restingHr: pos(n.restingHr) }));
+  return out;
 }
 
 // Build the six free-tier dashboard cards + the driver list the read may cite.

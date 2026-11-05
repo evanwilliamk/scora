@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { settle, unwrap } from './settle';
 import { storeStravaTokens, getValidStravaToken, fetchActivitiesSince, fetchRecentActivities, fetchStravaAthlete } from './strava';
-import { buildDashboard, buildWeeklySummary } from './metrics';
+import { buildDashboard, buildWeeklySummary, usableRecovery } from './metrics';
 import { athleteLocalToday, postureClaimHits, postureForRead, raceWithinWeek } from './drivers';
 import { SnapshotCache, planCardExpansion, checkCardPosture, cardErrorFallback } from './card-expand';
 import { CHART_MENU, parseChartKind, buildChartSpec, isSafeChartSpec, localRunDay, sixWeekRuns, weekdayRunDates } from './cdv-chart';
@@ -656,8 +656,10 @@ fastify.post('/api/read', async (request, reply) => {
     // fetchOuraSummary turns Oura API errors into empty values, so a connected
     // Oura with no sleep, HRV or readiness at all (an outage) is treated like no
     // Oura. Readiness alone still counts as Oura, so it is never dropped.
-    const ouraEmpty = !ouraSummary || [ouraSummary.sleepSeconds, ouraSummary.sleepScore, ouraSummary.hrvMs,
-      ouraSummary.restingHr, ouraSummary.hrvWeekAvgMs, ouraSummary.readinessScore].every((v) => v == null);
+    // A ring reporting only zeros has no reading either (usableRecovery).
+    const ouraUsable = usableRecovery(ouraSummary);
+    const ouraEmpty = !ouraUsable || [ouraUsable.sleepSeconds, ouraUsable.sleepScore, ouraUsable.hrvMs,
+      ouraUsable.restingHr, ouraUsable.hrvWeekAvgMs, ouraUsable.readinessScore].every((v) => v == null);
     if (ouraEmpty && health && typeof health === 'object') {
       // Untrusted input: the same plausible ranges as parseHealthNights;
       // anything else (a string, NaN, a negative) is null, never "NaN:NaN".

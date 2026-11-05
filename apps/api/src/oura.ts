@@ -293,7 +293,9 @@ export async function fetchOuraSummary(
       const priorWeek = periods.slice(1).filter((p) => weekFrom !== null && p.day >= weekFrom);
       const hrvs = priorWeek
         .map((p) => p.average_hrv)
-        .filter((v) => typeof v === 'number');
+        // A 0 is no reading (metrics.ts usableRecovery): it would lower the
+        // average and hide a real HRV drop from the rest rule.
+        .filter((v) => typeof v === 'number' && v > 0);
       if (hrvs.length > 0) {
         summary.hrvWeekAvgMs = Math.round(hrvs.reduce((s, v) => s + v, 0) / hrvs.length);
       }

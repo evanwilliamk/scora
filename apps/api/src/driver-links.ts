@@ -5,7 +5,7 @@
 // chart point is a recorded value (Strava activity or Oura night), never an
 // estimate. Off unless INLINE_CHARTS=on; Plan tier gating waits for Stripe.
 
-import type { Driver } from './metrics';
+import { usableRecovery, type Driver } from './metrics';
 import type { OuraSummary } from './oura';
 import { isRun } from './activity-types';
 import { computeDriverRecord } from './drivers';
@@ -167,11 +167,12 @@ const totals = (key: SeriesKey, label: string, unit: string, points: SeriesPoint
 // left out.
 export function buildDriverSeries(
   activities: any[],
-  oura: OuraSummary | null | undefined,
+  ouraRaw: OuraSummary | null | undefined,
   today: string,
   days = 28,
   now = Date.now(),
 ): Partial<Record<SeriesKey, DriverSeries>> {
+  const oura = usableRecovery(ouraRaw);
   const out: Partial<Record<SeriesKey, DriverSeries>> = {};
   const first = new Date(Date.parse(`${today}T00:00:00Z`) - (days - 1) * DAY).toISOString().slice(0, 10);
   const dates = Array.from({ length: days }, (_, i) => new Date(Date.parse(`${first}T00:00:00Z`) + i * DAY).toISOString().slice(0, 10));
