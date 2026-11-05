@@ -135,6 +135,25 @@ enum DemoMode {
     return OuraLinkResult(url: URL(string: "scora://oura/success")!)
   }
 
+  // -demo-kept-read: the read kept on the phone is on screen, an earlier day's,
+  // saying no ring, and the live load has not answered. Sample data only.
+  static var keptRead: ReadResponse? {
+    guard args.contains("-demo-kept-read") else { return nil }
+    let json = #"{"read":{"voice":"Load was 412 min."},"cards":[],"connections":{"strava":true,"oura":false}}"#
+    return try? JSONDecoder().decode(ReadResponse.self, from: Data(json.utf8))
+  }
+
+  // -demo-waiting-banner: a link's banner is already waiting when the dashboard
+  // first appears, as when a link launches the app.
+  static var waitingBanner: Bool { args.contains("-demo-waiting-banner") }
+
+  // -demo-link <url>: that link arrives shortly after launch, through the app's
+  // own handler, with no system prompt to answer.
+  static var link: URL? {
+    guard let i = args.firstIndex(of: "-demo-link"), i + 1 < args.count else { return nil }
+    return URL(string: args[i + 1])
+  }
+
   // -demo-oura-missing (with -demo-cards): the Sleep card asks to connect
   // Oura, as the API sends it before a ring is linked.
   static var ouraMissing: Bool { args.contains("-demo-oura-missing") }

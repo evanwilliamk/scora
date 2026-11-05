@@ -309,6 +309,22 @@ struct ReadConnections: Decodable, Equatable {
 struct OuraLinkResult: Equatable {
   static let notification = Notification.Name("ouraLinkResult")
 
+  // Kept for the dashboard, as PushRoute.pending is: a link that launches the
+  // app can arrive before the dashboard is listening. Taken on the notice or
+  // when it appears, whichever comes first. Nothing is kept with no dashboard
+  // on screen (onboarding has its own Oura step), or it would show much later.
+  static var pending: OuraLinkResult?
+
+  static func deliver(_ result: OuraLinkResult, dashboardIsRoot: Bool) {
+    pending = dashboardIsRoot ? result : nil
+    NotificationCenter.default.post(name: notification, object: nil)
+  }
+
+  static func take() -> OuraLinkResult? {
+    defer { pending = nil }
+    return pending
+  }
+
   let connected: Bool
   let message: String
 
@@ -329,8 +345,8 @@ struct OuraLinkResult: Equatable {
       let reason = URLComponents(url: url, resolvingAgainstBaseURL: false)?
         .queryItems?.first(where: { $0.name == "reason" })?.value
       message = reason == "cancelled"
-        ? "Oura was not connected. You can try again from the Sleep card."
-        : "Oura did not connect. Nothing changed; try again from the Sleep card."
+        ? "Oura was not connected. Nothing changed; you can try again from Settings."
+        : "Oura did not connect. Nothing changed; try again from Settings."
     default:
       return nil
     }
@@ -354,7 +370,10 @@ struct DashboardView: View {
   @State private var posture: String?
   @State private var week: WeekSoFar?
   @State private var cards: [DashboardCard] = []
+  // Both from live answers this session, never from the read kept on the
+  // phone, which can be days old. Settings shows them.
   @State private var ouraConnected: Bool?
+  @State private var stravaStatus: StravaStatus = .unknown
   @State private var isLoading = false
   @State private var errorText: String?
   @State private var expanded: Set<String> = []
@@ -442,7 +461,7 @@ struct DashboardView: View {
     .sheet(isPresented: $showSettings) {
       SettingsView(
         tokenManager: tokenManager,
-        strava: StravaStatus.of(hasRead: read != nil, error: errorText),
+        strava: stravaStatus,
         oura: OuraStatus.of(connected: ouraConnected),
         onConnectStrava: connectStrava,
         onConnectOura: connectOura
@@ -464,21 +483,18 @@ struct DashboardView: View {
         await WatchReconcile.refresh(athleteId: tokenManager.athleteId, apiBase: apiBase)
       }
     }
+    .onAppear { showWaitingBanner() }
+    // The link itself is the answer, even if the reload that follows fails.
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ouraConnected"))) { _ in
+      ouraConnected = true
       Task { await loadRead() }
     }
     .onReceive(NotificationCenter.default.publisher(for: StravaReconnect.reconnected)) { _ in
+      stravaStatus = .connected
       Task { await loadRead() }
     }
-    .onReceive(NotificationCenter.default.publisher(for: OuraLinkResult.notification)) { note in
-      guard let result = note.object as? OuraLinkResult else { return }
-      withAnimation { ouraBanner = result }
-      Task {
-        try? await Task.sleep(nanoseconds: 5_000_000_000)
-        await MainActor.run {
-          if ouraBanner == result { withAnimation { ouraBanner = nil } }
-        }
-      }
+    .onReceive(NotificationCenter.default.publisher(for: OuraLinkResult.notification)) { _ in
+      showWaitingBanner()
     }
     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("planChanged"))) { _ in
       Task { await loadRead() }
@@ -535,6 +551,18 @@ struct DashboardView: View {
     }
   }
 
+  private func showWaitingBanner() {
+    guard let result = OuraLinkResult.take() else { return }
+    withAnimation { ouraBanner = result }
+    UIAccessibility.post(notification: .announcement, argument: result.message)
+    Task {
+      try? await Task.sleep(nanoseconds: 5_000_000_000)
+      await MainActor.run {
+        if ouraBanner == result { withAnimation { ouraBanner = nil } }
+      }
+    }
+  }
+
   // Kick off the Oura OAuth flow in the browser; on return the app receives a
   // scora://oura/success deep link and reloads the dashboard.
   private func connectOura() {
@@ -561,7 +589,7 @@ struct DashboardView: View {
 
   private var header: some View {
     // At accessibility sizes the buttons take their own row under the name,
-    // so neither the name nor Sign Out is pushed off the screen.
+    // so neither the name nor a button is pushed off the screen.
     let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout())
     return layout {
       Text("SCORA")
@@ -796,12 +824,12 @@ struct DashboardView: View {
   }
 
   @MainActor
-  private func show(_ decoded: ReadResponse, day: String, at date: Date) {
+  private func show(_ decoded: ReadResponse, day: String, at date: Date, live: Bool = true) {
     read = decoded.read
     posture = decoded.posture?.posture
     week = decoded.weekSoFar
     cards = decoded.cards
-    ouraConnected = decoded.connections?.oura
+    if live { ouraConnected = decoded.connections?.oura }
     expansions = [:] // a new read means new numbers to interpret
     readGeneration += 1
     loadedDay = day
@@ -814,16 +842,19 @@ struct DashboardView: View {
     guard read == nil, loadGate.applied == 0,
           let entry = ReadCache.load(athleteId: tokenManager.athleteId),
           let decoded = entry.response else { return }
-    show(decoded, day: entry.day, at: entry.savedAt)
+    show(decoded, day: entry.day, at: entry.savedAt, live: false)
   }
 
   private func loadRead() async {
     #if DEBUG
     if DemoMode.isOn {
       await MainActor.run {
-        ouraBanner = DemoMode.ouraBanner
+        if let banner = DemoMode.ouraBanner { ouraBanner = banner }
         if DemoMode.readFails { errorText = ReadFetch.failureLine; return }
+        // A kept read on screen and the live load still out: it never lands.
+        if let kept = DemoMode.keptRead { show(kept, day: "2026-10-18", at: Date(), live: false); return }
         read = DemoMode.read
+        stravaStatus = .connected
         // With sample SCORA sessions, the read carries today's line as the API would.
         if DemoMode.planSessions != nil { read?.today = "Today: 40-minute easy run." }
         posture = "steady"
@@ -872,6 +903,7 @@ struct DashboardView: View {
         guard loadGate.isLatest(token) else { return }
         // A cancelled pull to refresh leaves the read and says nothing.
         errorText = outcome.errorLine; isLoading = false
+        stravaStatus = stravaStatus.after(failure: outcome.errorLine)
       }
       return
     }
@@ -881,6 +913,8 @@ struct DashboardView: View {
         // A newer reply already landed: this one is older news.
         guard loadGate.accept(token) else { return }
         show(decoded, day: day, at: Date())
+        // An older reply says less than the load still out, which decides.
+        if loadGate.isLatest(token) { stravaStatus = .connected }
         // Kept for the athlete it was asked for, only if they are still signed in.
         ReadCache.save(data, day: day, athleteId: athleteId, signedIn: tokenManager.athleteId)
         // A newer load still in flight keeps the spinner.
@@ -895,6 +929,7 @@ struct DashboardView: View {
       await MainActor.run {
         guard loadGate.isLatest(token) else { return }
         errorText = ReadFetch.failureLine; isLoading = false
+        stravaStatus = stravaStatus.after(failure: ReadFetch.failureLine)
       }
     }
   }

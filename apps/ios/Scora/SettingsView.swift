@@ -19,6 +19,13 @@ enum StravaStatus: Equatable {
     return hasRead ? .connected : .unknown
   }
 
+  // What a failed load leaves. No line means it was cancelled, which says
+  // nothing either way, so the last real answer stands.
+  func after(failure line: String?) -> StravaStatus {
+    guard let line else { return self }
+    return StravaStatus.of(hasRead: false, error: line)
+  }
+
   var line: String {
     switch self {
     case .connected: return "Connected."
@@ -59,6 +66,7 @@ enum StravaReconnect {
   static let reconnected = Notification.Name("stravaReconnected")
   static let connectedLine = "Strava connected."
   static let otherAccountLine = "That was a different Strava account. Nothing changed."
+  static let notReconnectedLine = "Strava was not reconnected. Nothing changed."
 
   enum Outcome: Equatable { case signIn, reconnected, otherAccount }
 
@@ -69,6 +77,23 @@ enum StravaReconnect {
   static func outcome(incoming: String, pendingFor: String?) -> Outcome {
     guard let pendingFor else { return .signIn }
     return incoming == pendingFor ? .reconnected : .otherAccount
+  }
+
+  // The answer to a link that arrived. A dropped account keeps the flag: the
+  // browser page still has its Open SCORA button, and a second tap sends the
+  // same link again, which must be dropped again and not sign that account in.
+  static func resolve(incoming: String) -> Outcome {
+    let answer = outcome(incoming: incoming, pendingFor: pendingFor)
+    if answer != .otherAccount { clear() }
+    return answer
+  }
+
+  // scora://auth/failed (the athlete declined in the browser). Only a reconnect
+  // has a dashboard to tell; on the sign-in screen the link stays silent.
+  static func failure() -> OuraLinkResult? {
+    guard pendingFor != nil else { return nil }
+    clear()
+    return OuraLinkResult(connected: false, message: notReconnectedLine)
   }
 }
 
@@ -89,11 +114,14 @@ enum SettingsPrefs {
     guard !athleteId.isEmpty, let url = c?.url else { return nil }
     var req = URLRequest(url: url)
     req.httpMethod = "GET"
-    guard let (status, data) = await OnboardingSync.transport(req), status == 200,
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let minute = json["deliveryMinute"] as? Int
-    else { return nil }
-    return shownMinute(remote: minute, pending: OnboardingSync.pending, athleteId: athleteId)
+    // In line behind any save, so it reads what that save left.
+    return await PreferenceWrites.shared.inOrder {
+      guard let (status, data) = await OnboardingSync.transport(req), status == 200,
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let minute = json["deliveryMinute"] as? Int
+      else { return nil }
+      return shownMinute(remote: minute, pending: OnboardingSync.pending, athleteId: athleteId)
+    }
   }
 
   // Saves the time and the phone's zone. `onboarded` is sent because a waiting
@@ -110,13 +138,17 @@ enum SettingsPrefs {
       "deliveryMinute": minute,
       "onboarded": true,
     ] as [String: Any])
-    guard let (status, _) = await OnboardingSync.transport(req), status == 200 else { return false }
-    // A reply that outlived a sign-out records nothing (see keepsRecord).
-    if TimeZoneSync.keepsRecord(sentFor: athleteId, signedIn: UserDefaults.standard.string(forKey: "scora.athleteId")) {
-      TimeZoneSync.remember(zone)
+    // In line behind a waiting choice on its way, so this newer time lands last
+    // and a flush that starts meanwhile finds nothing left to send.
+    return await PreferenceWrites.shared.inOrder {
+      guard let (status, _) = await OnboardingSync.transport(req), status == 200 else { return false }
+      // A reply that outlived a sign-out records nothing (see keepsRecord).
+      if TimeZoneSync.keepsRecord(sentFor: athleteId, signedIn: UserDefaults.standard.string(forKey: "scora.athleteId")) {
+        TimeZoneSync.remember(zone)
+      }
+      if OnboardingSync.pending?.athleteId == athleteId { OnboardingSync.pending = nil }
+      return true
     }
-    if OnboardingSync.pending?.athleteId == athleteId { OnboardingSync.pending = nil }
-    return true
   }
 }
 
@@ -292,11 +324,15 @@ struct SettingsView: View {
     ok = await SettingsPrefs.save(athleteId: tokenManager.athleteId, minute: minute)
     #endif
     isSaving = false
+    let line: String
     if ok {
       savedMinute = minute
-      statusLine = "Saved. Your read arrives at \(OnboardingState.timeLabel(minute: minute))."
+      line = "Saved. Your read arrives at \(OnboardingState.timeLabel(minute: minute))."
     } else {
-      statusLine = "Could not save the time. Your read keeps its current time."
+      line = "Could not save the time. Your read keeps its current time."
     }
+    statusLine = line
+    // On success the button under VoiceOver's focus goes away, so say the result.
+    UIAccessibility.post(notification: .announcement, argument: line)
   }
 }
