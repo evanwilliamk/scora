@@ -150,33 +150,39 @@ const BANNED_PATTERNS: { re: RegExp; label: string }[] = [
   // model was talked into. A link or address has no place in a read, except
   // SCORA's own (the doorbell's "Full read:" line).
   {
-    re: /\b[a-z][a-z0-9+.-]{1,20}:\/\/(?!(?:www\.)?scora\.app(?:[/\s]|\.?$|\.\s))|\bwww\.(?!scora\.app\b)|\b(?:mailto|tel|sms|javascript):|[\w.+-]{1,64}@[\w-]{1,63}\.[a-z]{2,}|\b(?!scora\.app(?:[/\s]|\.?$|\.\s))[a-z0-9-]{1,63}\.(?:com|net|org|io|co|app|ai|dev|me|ly|xyz|info|biz|link|site|online|club|shop|top|example|test)\b|\]\(|<\/?[a-z!][^<>]{0,200}>/i,
+    re: /\b[a-z][a-z0-9+.-]{1,20}:\/\/(?!(?:www\.)?scora\.app(?:[/\s,;)]|\.?$|\.\s))|\bwww\.(?!scora\.app\b)|\b(?:mailto|tel|sms|javascript):|[\w.+-]{1,64}@[\w-]{1,63}\.[a-z]{2,}|\b(?!scora\.app(?:[/\s,;)]|\.?$|\.\s))[a-z0-9-]{1,63}\.(?:com|net|org|io|co|app|ai|dev|me|ly|xyz|info|biz|link|site|online|club|shop|top|example|test)\b|\]\(|<\/?[a-z!][^<>]{0,200}>/i,
     label: 'link or markup',
   },
   // Talk about the prompt or the model: a read is about the athlete's record.
   {
-    re: /\b(?:system|developer) (?:prompt|message)\b|\bmy (?:\w+ )?(?:prompt|instructions?|programming|guidelines)\b|\bthe prompt\b|\bhard rules\b|\b(?:ignore|disregard|forget) (?:(?:all|any|the|your|my) )*(?:previous|prior|above|earlier|instructions?|rules)\b|\b(?:i was|i'?ve been|i have been|i am|i'?m) (?:told|instructed|programmed|configured)\b|\byou are scora\b|\bapi[ -]?key|\bopenai|\bchatgpt\b|\bgpt-?\d|\blanguage model\b/i,
+    re: /\b(?:system|developer) (?:prompt|message)\b|\bmy (?:\w+ )?(?:prompt|instructions?|programming|guidelines)\b|\bthe prompt\b(?! (?:recovery|rebound|return|response|bounce|answer|turnaround|drop|rise|climb|dip)\b)|(?<!\bno )\bhard rules\b|(?<!\b(?:hard to|did not|does not|has not|didn'?t|doesn'?t|hasn'?t|cannot|can'?t|won'?t|never) )\b(?:ignore|disregard|forget) (?:(?:all|any|the|your|my) )*(?:previous|prior|above|earlier|instructions?|rules)\b|\b(?:i was|i'?ve been|i have been|i am|i'?m) (?:told|instructed|programmed|configured)\b|\byou are scora\b|\bapi[ -]?key|\bopenai|\bchatgpt\b|\bgpt-?\d|\blanguage model\b/i,
     label: 'prompt talk',
   },
   { re: /\byou(?: (?:just|kind of|sort of|still|also|maybe|perhaps|all|both|now|then|today|tomorrow|simply))+ (?:should|must|need to|ought to)\b/i, label: 'you should' },
   { re: /(?:^|[.;!?]\s+)(?:recommend(?:ed|ations?)?|suggest(?:ed|ions?)?|advice|prescription|next steps?|action items?)\s*:/i, label: 'advice' },
   {
-    re: /\bhere(?:'s| is) your (?:\w+ )?(?:workout|session|run)\b|\b(?:workout|session|run|plan) (?:i have |i'?ve got |i made |i built )?for you\b|(?:^|[.;!?]\s+)(?:today|tomorrow|tonight|this morning),? you (?:run|ride|swim|rest|go|take|skip|jog|walk|train)\b|\byou(?:'ll| will) (?:run|ride|swim|rest|go|skip|jog|walk|take|do)\b|(?:^|[.;!?]\s+)(?:rest|run|ride|swim|jog|walk|sleep|recover|stop)(?=\s*(?:[.;!?]|$))|(?:^|[.;!?]\s+)please \w/i,
+    re: /\bhere(?:'s| is) your (?!(?:last|latest|longest|fastest|slowest|shortest|hardest|easiest|best|biggest|recent|first|previous|usual|typical)\b)(?:\w+ )?(?:workout|session|run)\b|(?<!\b(?:longest|fastest|slowest|shortest|hardest|easiest|best|biggest|typical|usual|normal) )\b(?:workout|session|run|plan) (?:i have |i'?ve got |i made |i built )?for you\b|(?:^|[.;!?]\s+)(?:today|tomorrow|tonight|this morning),? you (?:run|ride|swim|rest|go|take|skip|jog|walk|train)\b|(?<!\b(?:plan|schedule|calendar) (?:says|has|expects|shows) )\byou(?:'ll| will) (?:run|ride|swim|rest|go(?! into\b)|skip|jog|walk|take(?! (?:that|this|it) into\b)|do)\b|(?:^|[.;!?]\s+)(?:rest|run|ride|swim|jog|walk|sleep(?!\. \d)|recover|stop)(?=\s*(?:[.;!?]|$))|(?:^|[.;!?]\s+)please \w/i,
     label: 'workout imperative',
   },
-  { re: /\b(?:ignore|disregard|forget|ditch|scrap|override) (?:the|your|today'?s|this) (?:\w+ )?(?:plan|workout|session|run|tempo|intervals|schedule)\b/i, label: 'plan override' },
+  { re: /(?<!\b(?:hard to|did not|does not|has not|didn'?t|doesn'?t|hasn'?t|cannot|can'?t|won'?t|never) )\b(?:ignore|disregard|forget|ditch|scrap|override) (?:the|your|today'?s|this) (?:\w+ )?(?:plan|workout|session|run|tempo|intervals|schedule)\b/i, label: 'plan override' },
   { re: /\bscora,\s+(?:your|an?) (?:\w+ )?coach\b|\byour (?:\w+ )?coach,? scora\b/i, label: 'coach self-reference' },
   { re: /\byou(?:'ve got| have| may have| might have| could have)(?: an?| the)?(?: \w+)? (?:injury|condition|illness|infection|disease|disorder|fracture|deficiency)\b/i, label: 'clinical claim' },
 ];
 
 // Bans spelled around the patterns: "y o u  s h o u l d", "Y.o.u s.h.o.u.l.d",
-// "you-should". Letters only, so no word boundary is left to dodge.
-const SQUASHED_BANS: { re: RegExp; label: string }[] = [
-  { re: /youshould/, label: 'you should' },
-  { re: /youmust/, label: 'you must' },
-  { re: /youneedto/, label: 'you need to' },
-  { re: /(?:iam|im)yourcoach/, label: 'coach self-reference' },
+// "you-should". The letters in order with little between them, starting a word,
+// and not running on into another word: "You shouldered", "Tim, your coach".
+const spelled = (word: string, tail = '') => new RegExp(`(?<![a-z])${[...word].join('[^a-z]{0,3}')}${tail}`);
+const SPELLED_BANS: { re: RegExp; label: string }[] = [
+  { re: spelled('youshould', '(?!e)'), label: 'you should' },
+  { re: spelled('youmust', '(?!er|a|y)'), label: 'you must' },
+  { re: spelled('youneedto', '(?!night|day|morrow|ken|wn|o|p)'), label: 'you need to' },
+  { re: spelled('iamyourcoach'), label: 'coach self-reference' },
+  { re: spelled('imyourcoach'), label: 'coach self-reference' },
 ];
+// A real clause break keeps the words apart ("up to you, should the trend hold").
+// One between single letters is the spelling ("y. o. u.").
+const CLAUSE_BREAK = /(?<=[a-z0-9']{2})[.;:!?,]\s+(?=[a-z0-9']{2})/;
 
 // Digits standing in for letters inside a word ("y0u sh0uld", "c0ach"). Both
 // ends must be letters, so "3x8", "z2" and "vo2" are left alone.
@@ -196,20 +202,44 @@ const FOREIGN_WORDS = new Set((
   + 'dovresti devi correre oggi domani riposo settimana della che sono gli molto '
   + 'voce deveria hoje amanha descanso com uma nao muito moet vandaag lopen niet een het voor'
 ).split(' '));
-const lettersOutsideLatin = (t: string) => (t.match(/(?![\p{Script=Latin}])\p{L}/gu) ?? []).length;
+// The words a terse English read is made of, for the long-line check: fragments
+// such as "Sleep held, HRV climbed, load eased" use none of the small words.
+const VOICE_WORDS = new Set((
+  'sleep slept load hrv hr heart rate resting week weeks night nights day days body run runs ran ride long short easy hard tempo plan today '
+  + 'morning yesterday tomorrow held hold holds holding climbed climbing rose rising fell falling eased easing moved steady settled quiet thin '
+  + 'good better best higher lower even flat pace miles mile minutes hours nothing else much more less still yet again anywhere overnight unusual'
+).split(' '));
+// Another script as a run name inside an English line is the name ("Your 朝ラン
+// was 15 miles"). As much of the line as the English around it, or more than a
+// name's length, is the line.
+const NAME_LETTERS = 12;
+function outsideLatinIsTheLine(t: string): boolean {
+  const outside = (t.match(/(?![\p{Script=Latin}])\p{L}/gu) ?? []).length;
+  const latin = (t.match(/\p{Script=Latin}/gu) ?? []).length;
+  return outside >= 2 && (outside > NAME_LETTERS || outside * 2 >= latin);
+}
+// A place name's small words are not the sentence's: "Rio de la Plata", "El
+// Paso", "Las Vegas". Capitalized words only, joined by these. A run of two or
+// more other foreign words is a sentence in title case, and stays.
+const NAME_LINKS = new Set('de del la las los el du di da do der den das von van le les des al'.split(' '));
+const PLACE_NAME = /\b[A-Z][A-Za-z'-]*(?:\s+(?:(?:de|del|la|las|los|el|du|di|da|do|der|den|von|van|le|les|des)\s+)*[A-Z][A-Za-z'-]*)+/g;
+const withoutPlaceNames = (sentence: string) => sentence.replace(PLACE_NAME, (name) => {
+  const others = name.toLowerCase().match(/[a-z]+/g)!.filter((w) => FOREIGN_WORDS.has(w) && !NAME_LINKS.has(w));
+  return others.length >= 2 ? name : ' ';
+});
 function isNotEnglish(banText: string): boolean {
-  if (lettersOutsideLatin(banText) >= 2) return true;
+  if (outsideLatinIsTheLine(banText)) return true;
   const wordsOf = (t: string) => t.toLowerCase().match(/[a-z]+/g) ?? [];
   const count = (words: string[], set: Set<string>) => words.filter((w) => set.has(w)).length;
   for (const sentence of banText.split(/(?<=[.;!?])\s+/)) {
-    const words = wordsOf(sentence);
+    const words = wordsOf(withoutPlaceNames(sentence));
     const foreign = count(words, FOREIGN_WORDS);
     if (foreign >= 2 && foreign > count(words, ENGLISH_WORDS)) return true;
   }
-  // Other languages: a long line with none of English's small words. Lines with
+  // Other languages: a long line with almost none of English's words. Lines with
   // a number are left alone, since the fallback read is metric names and values.
   const all = wordsOf(banText);
-  return all.length >= 8 && !/\d/.test(banText) && count(all, ENGLISH_WORDS) === 0;
+  return all.length >= 8 && !/\d/.test(banText) && count(all, ENGLISH_WORDS) === 0 && count(all, VOICE_WORDS) * 4 < all.length;
 }
 
 // A run of this many words shared with the prompt is the prompt coming back.
@@ -233,7 +263,7 @@ export function promptEchoHits(text: string, prompt: string): string[] {
 // the read carries a 'Plan today' driver: the voice may name the session and
 // the body's state, never change the session.
 const PLAN_DRIVER_METRIC = 'Plan today';
-const PLAN_OVERRIDE = /\b((?<!\b(?:was|were|been|got) )skip(s|ping)?\b|(?<!\b(?:was|were|been|got|you|you'?ve|you have) )skipped\b(?! (?:sessions?|workouts?|runs?|rides?|days?)\b)|swap(s|ping|ped)?\b|postpon(e|es|ing|ed)\b|push(es|ed|ing)? (it|(?!(?<=pushed )the (?:pace|effort)\b)the \w+|today'?s \w+) (back|to)\b|(move|moves|moving|moved|shift|shifting) (it|the \w+|today'?s \w+) to\b|(can|could|should) wait\b|hold(ing)? off\b(?! on (?:calling|reading|naming)\b)|sav(e|ing) (it|the \w+) for\b|(?<!\byou )cut(ting)? (it|the \w+) short\b|(?<!\b(?:sleep|runs) (?:has |have |had |was |is )?)shorten(s|ing|ed)?\b|(?<!\byou (?:ran|rode|swam|trained)\b[^.;!?]{0,40})(?!(?<=\d )instead of (?:the )?(?:usual )?\d)instead\b(?! of (?:(?:an? )?(?:dip|drop|fall|slide|rise|climb)|falling|dropping|dipping|sliding|slipping|climbing|rising|settling|holding)\b)|(?<!\b(?:was|were) (?:a )?)(a )?better day for\b|(an )?eas(y|ier) (day|session|run|effort) (would|fits|makes|might)\b|would be better (on|in|as|for)\b|(?<!\b(?:sleep|load|hrv) is (?:the )?)(the )?better fit\b|keep(ing)? (it|the \w+) (short|under|below)\b|(?<!\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|yesterday)'s )lighter (day|session|option)\b|take it easy\b|dial(ing|led)? (it|things|the \w+) back\b|scal(e|ing) (it|the \w+) back\b|(?<!\b(?:average|trend) )(?:(?:work|fit|suit|land)s?|would (?:work|fit|suit|land|go|sit)) better\b|suits? (?:it|the \w+) better\b|(?:isn'?t|is not|(?:may|might) not be) the day for\b|(?:tempo|session|workout|run|intervals?|today'?s \w+) (?:is|looks?(?: like)?|seems?(?: like)?|(?:may|might) be) too much\b|(?:set|put) (?:the plan|it) aside\b|(?:ignore|forget|ditch|scrap|override|disregard) (?:the|your|today'?s) (?:plan|\w+)\b|don'?t follow\b|plan is wrong\b|(?<!\b(?:the|a|an|that|this|hrv|sleep|load) )(?:trade|replace|bump|drop) (?:it|the (?!(?:next |following )?(?:day|night|morning|week|month)\b)\w+|today'?s \w+)\b|is optional\b|(?:could|can|might|may) (?:move|shift|slide) to\b|(?:(?:today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)'s \w+|the (?!average\b|trend\b)\w+) moved to\b|(?:was|were|has been|have been|got) (?:moved|shifted|pushed|bumped) to\b)/i;
+const PLAN_OVERRIDE = /\b((?<!\b(?:was|were|been|got) )skip(s|ping)?\b|(?<!\b(?:was|were|been|got|you|you'?ve|you have) )skipped\b(?! (?:sessions?|workouts?|runs?|rides?|days?)\b)|swap(s|ping|ped)?\b|postpon(e|es|ing|ed)\b|push(es|ed|ing)? (it|(?!(?<=pushed )the (?:pace|effort)\b)the \w+|today'?s \w+) (back|to)\b|(move|moves|moving|moved|shift|shifting) (it|the \w+|today'?s \w+) to\b|(can|could|should) wait\b|hold(ing)? off\b(?! on (?:calling|reading|naming)\b)|sav(e|ing) (it|the \w+) for\b|(?<!\byou )cut(ting)? (it|the \w+) short\b|(?<!\b(?:sleep|runs) (?:has |have |had |was |is )?)shorten(s|ing|ed)?\b|(?<!\byou (?:ran|rode|swam|trained)\b[^.;!?]{0,40})(?!(?<=\d )instead of (?:the )?(?:usual )?\d)instead\b(?! of (?:(?:an? )?(?:dip|drop|fall|slide|rise|climb)|falling|dropping|dipping|sliding|slipping|climbing|rising|settling|holding)\b)|(?<!\b(?:was|were) (?:a )?)(a )?better day for\b|(an )?eas(y|ier) (day|session|run|effort) (would|fits|makes|might)\b|would be better (on|in|as|for)\b|(?<!\b(?:sleep|load|hrv) is (?:the )?)(the )?better fit\b|keep(ing)? (it|the \w+) (short|under|below)\b|(?<!\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|yesterday)'s )lighter (day|session|option)\b|take it easy\b|dial(ing|led)? (it|things|the \w+) back\b|scal(e|ing) (it|the \w+) back\b|(?<!\b(?:average|trend) )(?:(?:work|fit|suit|land)s?|would (?:work|fit|suit|land|go|sit)) better\b|suits? (?:it|the \w+) better\b|(?:isn'?t|is not|(?:may|might) not be) the day for\b|(?:tempo|session|workout|run|intervals?|today'?s \w+) (?:is|looks?(?: like)?|seems?(?: like)?|(?:may|might) be) too much\b|(?:set|put) (?:the plan|it) aside\b|(?<!\b(?:hard to|did not|does not|has not|didn'?t|doesn'?t|hasn'?t|cannot|can'?t|won'?t|never) )(?:ignore|forget|ditch|scrap|override|disregard) (?:the|your|today'?s) (?:plan|\w+)\b|don'?t follow\b|plan is wrong\b|(?<!\b(?:the|a|an|that|this|hrv|sleep|load) )(?:trade|replace|bump|drop) (?:it|the (?!(?:next |following )?(?:day|night|morning|week|month)\b)\w+|today'?s \w+)\b|is optional\b|(?:could|can|might|may) (?:move|shift|slide) to\b|(?:(?:today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)'s \w+|the (?!average\b|trend\b)\w+) moved to\b|(?:was|were|has been|have been|got) (?:moved|shifted|pushed|bumped) to\b)/i;
 
 // Words that only describe a change the plan engine already made: "the plan
 // moved the tempo to Wednesday", "is now an endurance run instead".
@@ -276,7 +306,7 @@ function overrideIsObservation(voice: string, drivers: Driver[]): boolean {
 // Template mechanics that reached the text: an unfilled {{slot}} (the pattern
 // shape goes to the model with its slots in place) or a value that never
 // existed. Neither has digits, so the number check cannot see them.
-const LEFTOVER = /\{\{|\}\}|\bundefined\b|\bNaN\b|\bInfinity\b|\[object Object\]/;
+const LEFTOVER = /\{\{|\}\}|\bundefined\b|\bNaN\b|\bInfinity\b(?=\s*(?:%|(?:ms|bpm|min|mins|mi|km|pts|hours?|h)\b|[.,;:)]|$))|\[object Object\]/;
 
 // What a sentence may name only when a driver for it exists (CLAUDE.md §3.2).
 // The number check cannot catch "HRV is climbing" with no HRV in the record. A
@@ -287,7 +317,7 @@ const DRIVER_KINDS: { kind: string; re: RegExp }[] = [
   { kind: 'resting HR', re: /\bresting (?:hr|heart rate)\b|\brhr\b/i },
   { kind: 'Oura', re: /\boura\b/i },
 ];
-const SAYS_ABSENT = /\b(?:no|not|none|without|missing|unavailable|yet|never)\b|n't\b/i;
+const SAYS_ABSENT = /\b(?:no|not|none|without|missing|unavailable|unknown|absent|yet|never)\b|n't\b|\boutside (?:this|the) (?:\w+ )?(?:read|data|record)\b/i;
 
 // A driver's direction said in words beside its name, with no number: "HRV is
 // climbing" is not backed by "-8% wk". Only present-tense words that always mean
@@ -297,18 +327,32 @@ const SAID_UP = 'up|higher|rising|climbing|climbs';
 const SAID_DOWN = 'down|lower|dropping|falling|dipping|slipping';
 const NAMED_TREND: { metric: RegExp; word: string }[] = [
   { metric: /^HRV\b/, word: 'hrv' },
-  { metric: /^Load$/, word: 'load' },
+  // "The weeks load up fast" is the verb.
+  { metric: /^Load$/, word: "(?<!\\b(?:you|they|to|weeks?|days?|blocks?) )load" },
   { metric: /^Weekly volume$/, word: '(?:weekly )?volume' },
 ];
+const SIGNED_PCT = /([+-])\s?(\d+(?:\.\d+)?)\s?%/;
+// "HRV was lower last week" is history. "HRV was down this week" is not.
+const PAST_VERB = /\b(?:was|were|had)\b/i;
+const THEN = /^[^.;!?,]{0,30}\b(?:last|yesterday|earlier|before|ago|previous|prior|first|until|then|in (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b/i;
 function saidAgainstTrend(voice: string, drivers: Driver[]): string[] {
   const hits: string[] = [];
-  for (const d of drivers) {
-    const name = NAMED_TREND.find((n) => n.metric.test(d.metric));
-    const m = name && `${d.value} ${d.trend ?? ''}`.match(/([+-])\s?(\d+(?:\.\d+)?)\s?%/);
-    if (!name || !m || parseFloat(m[2]) === 0) continue;
-    const against = m[1] === '+' ? SAID_DOWN : SAID_UP;
-    const near = (words: string) => new RegExp(String.raw`\b${name.word}\b(?:\s+(?:is|was|has|have|are|were|been|still|also|just|now|already|keeps?|kept))*\s+(?:${words})\b`, 'i');
-    if (near(against).test(voice)) hits.push(`${d.metric} direction`);
+  for (const name of NAMED_TREND) {
+    const named = drivers.filter((d) => name.metric.test(d.metric));
+    const signs = new Set(named.flatMap((d) => {
+      const m = `${d.value} ${d.trend ?? ''}`.match(SIGNED_PCT);
+      return m && parseFloat(m[2]) !== 0 ? [m[1]] : [];
+    }));
+    // Nothing signed has nothing to say against. Two drivers of one measure
+    // against different baselines back either word (HRV +2% wk, HRV vs week -3%).
+    if (signs.size !== 1) continue;
+    const against = signs.has('+') ? SAID_DOWN : SAID_UP;
+    const near = new RegExp(String.raw`\b${name.word}\b((?:\s+(?:is|was|has|have|are|were|been|still|also|just|now|already|keeps?|kept))*)\s+(?:${against})\b(?! and (?:up|down)\b)`, 'gi');
+    for (const m of voice.matchAll(near)) {
+      if (PAST_VERB.test(m[1]) && THEN.test(voice.slice(m.index + m[0].length))) continue;
+      hits.push(`${named[0].metric} direction`);
+      break;
+    }
   }
   return hits;
 }
@@ -325,6 +369,19 @@ function numberTokens(text: string): string[] {
   const joined = text.replace(/\b(\d{1,3})((?:,\d{3})+)\b/g, (_m, a: string, b: string) => a + b.replace(/,/g, ''));
   return (joined.match(/\d+(?:\.\d+)?/g) || []).map((n) => String(parseFloat(n)));
 }
+
+// "5:30" is 5.5 hours (CLAUDE.md 1.3, 6.4), said with hours as the unit. A pace
+// ("7:30/mi") is no hours.
+export function clockHourDecimals(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/(?<![\d:])(\d{1,2}):([0-5]\d)(?![\d:/])/g)) {
+    out.add(String(Math.round((parseInt(m[1], 10) + parseInt(m[2], 10) / 60) * 10) / 10));
+  }
+  return out;
+}
+const HOUR_DECIMAL = /(?<![\d.])(\d+\.\d)\s?(?:hours?|hrs?|h)\b/gi;
+// SCORA's own link: its path is no claim.
+const OWN_LINK = /\bhttps?:\/\/(?:www\.)?scora\.app(?:\/[^\s,;)]*)?(?=[\s,;).]|$)/gi;
 
 // A day window as driver names and the voice write it: "7d", "(28d)",
 // "7-day", "7 days", "last 7 full days".
@@ -380,22 +437,41 @@ function wordNumbers(text: string): { word: string; value: string }[] {
   const out: { word: string; value: string }[] = [];
   const tens = new RegExp(String.raw`\b(${Object.keys(TENS).join('|')})(?:[\s-](${Object.keys(ONES).slice(0, 9).join('|')}))?\b`, 'gi');
   for (const m of text.matchAll(tens)) out.push({ word: m[0], value: String(TENS[m[1].toLowerCase()] + (m[2] ? ONES[m[2].toLowerCase()] : 0)) });
-  const withUnit = new RegExp(String.raw`\b(${Object.keys(ONES).filter((w) => w !== 'one').join('|')})\s+${WORD_UNITS}\b`, 'gi');
+  // The tens word already read the whole of "forty-five minutes".
+  const withUnit = new RegExp(String.raw`(?<!\b(?:${Object.keys(TENS).join('|')})[\s-])\b(${Object.keys(ONES).filter((w) => w !== 'one').join('|')})\s+${WORD_UNITS}\b`, 'gi');
   for (const m of text.matchAll(withUnit)) out.push({ word: m[0], value: String(ONES[m[1].toLowerCase()]) });
   // "a hundred miles", "two hundred", "a dozen": a number however it is said.
   const big = new RegExp(String.raw`\b(?:(a|an|${Object.keys(ONES).join('|')})\s+)?(hundred|thousand|dozen)\b`, 'gi');
   const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, dozen: 12 };
-  for (const m of text.matchAll(big)) out.push({ word: m[0], value: String((ONES[(m[1] ?? '').toLowerCase()] ?? 1) * SCALE[m[2].toLowerCase()]) });
+  for (const m of text.matchAll(big)) {
+    // A name: "Thousand Oaks", "Hundred Acre". "Hundred Miles" keeps its number.
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 40);
+    if (!m[1] && /^[A-Z]/.test(m[2]) && /^\s+[A-Z]/.test(after) && !new RegExp(String.raw`^\s+${WORD_UNITS}\b`, 'i').test(after)) continue;
+    out.push({ word: m[0], value: String((ONES[(m[1] ?? '').toLowerCase()] ?? 1) * SCALE[m[2].toLowerCase()]) });
+  }
   // Digits said one by one: "nine nine".
   const digits = Object.keys(ONES).slice(0, 9).join('|');
-  for (const m of text.matchAll(new RegExp(String.raw`\b(${digits})\s+(${digits})\b`, 'gi'))) {
+  for (const m of text.matchAll(new RegExp(String.raw`\b(${digits})\s+(${digits})\b(?!-)`, 'gi'))) {
     out.push({ word: m[0], value: `${ONES[m[1].toLowerCase()]}${ONES[m[2].toLowerCase()]}` });
   }
   return out;
 }
 
-const UP = /\b(above|up|higher|over|rose|risen|climb(?:ed|ing|s)?|rising|more|gain(?:ed)?)\b/i;
-const DOWN = /\b(below|(?<!\b(?:settl\w*|slow\w*|wind\w*|calm\w*) )down|under|lower|dropped|fell|fallen|falling|less|dip(?:ped)?|slipped)\b/i;
+const UP = /\b(above|(?<!\b(?:shows?|showed|showing|woke|wakes?|held|holds?|picks?|picked|lines?|lined|adds?|added|ends?|ended|sums?|summed|sets?|stacks?|stacked|caught|catch(?:es|ing)?|kept|keeps?|warm\w*|wound) )up|higher|over(?!\s+the\s+(?:week|month|block)\b(?!')|\s+(?:the\s+)?(?:last|past)\b|\s+\d+\s+days?\b)|rose|risen|climb(?:ed|ing|s)?|rising|more|gain(?:ed)?)\b/i;
+const DOWN = /\b(below|(?<!\b(?:settl\w*|slow\w*|wind\w*|calm\w*|broke|broken|breaks?|written|laid) )down|under|lower|dropped|fell|fallen|falling|less|dip(?:ped)?|slipped)\b/i;
+// A new subject after one of these is another clause: "HRV is 8% lighter and
+// sleep held up". "HRV fell and is 8% off" is still the one claim.
+const CLAUSE_JOIN = /\s(?:and|but|while|though|although|yet|with|even)\s(?!(?:is|are|was|were|has|had|now|still|sits?|by)\b)/i;
+
+// True when the sentence says the cited percent moved against the driver's sign.
+export function saysAgainstSign(sentence: string, sign: string, size: string): boolean {
+  const n = size.replace('.', '\\.');
+  // Cited with its own sign, it says the direction itself.
+  if (new RegExp(String.raw`[${sign}]\s?${n}\s?%`).test(sentence)) return false;
+  const pct = new RegExp(String.raw`(?<![\d.])${n}(?![\d])\s?%`);
+  return sentence.split(CLAUSE_JOIN).filter((c) => pct.test(c)).some((c) =>
+    sign === '+' ? DOWN.test(c) && !UP.test(c) : UP.test(c) && !DOWN.test(c));
+}
 
 // Unit families as the voice and drivers write them.
 const UNIT: [RegExp, string][] = [
@@ -428,9 +504,9 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   if (drivers.some((d) => d.metric === PLAN_DRIVER_METRIC) && PLAN_OVERRIDE.test(banText) && !overrideIsObservation(banText, drivers)) {
     bannedHits.push('plan override');
   }
-  const squashed = banText.toLowerCase().replace(/[^a-z]/g, '');
-  for (const { re, label } of SQUASHED_BANS) {
-    if (re.test(squashed) && !bannedHits.includes(label)) bannedHits.push(label);
+  const clauses = banText.toLowerCase().split(CLAUSE_BREAK);
+  for (const { re, label } of SPELLED_BANS) {
+    if (clauses.some((c) => re.test(c)) && !bannedHits.includes(label)) bannedHits.push(label);
   }
   if (isNotEnglish(banText)) bannedHits.push('not english');
   if (EXCLAMATION.test(voice)) bannedHits.push('exclamation point');
@@ -456,7 +532,10 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
   }
   const windows = new Set(drivers.flatMap((d) => [...d.metric.matchAll(WINDOW_PHRASE)].map((m) => String(parseFloat(m[1])))));
   const dropWindow = (w: string, n: string) => (windows.has(String(parseFloat(n))) ? ' ' : w);
-  const numberText = windows.size ? voice.replace(WINDOW_PHRASE, dropWindow).replace(VOICE_NIGHT_AVERAGE, dropWindow) : voice;
+  const hours = clockHourDecimals(drivers.map((d) => `${d.value} ${d.trend ?? ''}`).join(' '));
+  const voiceNoLink = voice.replace(OWN_LINK, ' ');
+  const voiceNoWindow = windows.size ? voiceNoLink.replace(WINDOW_PHRASE, dropWindow).replace(VOICE_NIGHT_AVERAGE, dropWindow) : voiceNoLink;
+  const numberText = voiceNoWindow.replace(HOUR_DECIMAL, (w, n: string) => (hours.has(String(parseFloat(n))) ? ' ' : w));
   const unbackedNumbers = [...new Set(numberTokens(numberText))].filter((n) => !allowed.has(n));
   for (const w of wordNumbers(voice)) if (!allowed.has(w.value)) unbackedNumbers.push(w.word);
   // A driver number cited with a unit must carry a unit the driver has:
@@ -481,10 +560,8 @@ export function validateVoice(rawVoice: string, drivers: Driver[]): ValidationRe
     // Two signed drivers of the same size: the number alone cannot say which.
     const same = drivers.filter((o) => new RegExp(String.raw`[+-]\s?${m[2].replace('.', '\\.')}\s?%`).test(`${o.value} ${o.trend ?? ''}`));
     if (same.length > 1) continue;
-    const pct = new RegExp(String.raw`(?<![\d.])${m[2].replace('.', '\\.')}(?![\d])\s?%`);
-    for (const sentence of sentences.filter((x) => pct.test(x))) {
-      if (m[1] === '+' && DOWN.test(sentence) && !UP.test(sentence)) bannedHits.push(`wrong direction for ${d.metric}`);
-      if (m[1] === '-' && UP.test(sentence) && !DOWN.test(sentence)) bannedHits.push(`wrong direction for ${d.metric}`);
+    for (const sentence of sentences) {
+      if (saysAgainstSign(sentence, m[1], m[2])) bannedHits.push(`wrong direction for ${d.metric}`);
     }
   }
 
