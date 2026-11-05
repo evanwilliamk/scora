@@ -232,10 +232,14 @@ export type PlanLlm = (system: string, user: string) => Promise<string>;
 
 export class PlanParseError extends Error {}
 
+export const PLAN_TOO_LONG_LINE = `The plan is longer than ${MAX_PLAN_CHARS} characters.`;
+// 3000 tokens of JSON is about 50 sessions, well under 8000 characters of paste.
+export const PLAN_TOO_MANY_LINE = 'This plan has more sessions than can be read at once. Try the next few weeks.';
+
 export async function parsePlanText(text: string, today: string, llm: PlanLlm): Promise<ParseResult> {
   const trimmed = text.trim();
   if (!trimmed) throw new PlanParseError('The plan is empty.');
-  if (trimmed.length > MAX_PLAN_CHARS) throw new PlanParseError(`The plan is longer than ${MAX_PLAN_CHARS} characters.`);
+  if (trimmed.length > MAX_PLAN_CHARS) throw new PlanParseError(PLAN_TOO_LONG_LINE);
   const { system, user } = buildPlanParsePrompt(trimmed, today);
   const out = await llm(system, user);
   let json: unknown;
@@ -265,6 +269,8 @@ export function openAiPlanLlm(apiKey: string, fetchImpl: typeof fetch = fetch): 
     });
     if (!res.ok) throw await vendorHttpError(res, 'OpenAI');
     const json: any = await res.json();
+    // Cut JSON never parses, and "try one session per line" would be the wrong advice.
+    if (json.choices?.[0]?.finish_reason === 'length') throw new PlanParseError(PLAN_TOO_MANY_LINE);
     return json.choices?.[0]?.message?.content ?? '';
   };
 }

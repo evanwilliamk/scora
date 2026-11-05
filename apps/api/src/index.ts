@@ -36,7 +36,7 @@ import { supabasePrefsStore } from './preferences';
 import type { PrefsStore } from './preferences';
 import { isValidTimezone, isValidDeliveryMinute } from './delivery';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { parsePlanText, openAiPlanLlm, PlanParseError, storableText } from './plan-parse';
+import { parsePlanText, openAiPlanLlm, PlanParseError, PLAN_TOO_LONG_LINE, storableText } from './plan-parse';
 import { supabasePlanStore, withDescriptions, type StoredWorkout } from './plan-store';
 import { importIcs, IcalImportError } from './plan-ical';
 import { planForRead, planTodayCard, readNamesPlan, todayLine } from './plan-read';
@@ -1037,7 +1037,15 @@ const planClient = () => {
 const planStore = () => supabasePlanStore(planClient());
 const adaptStore = () => supabaseAdaptStore(planClient());
 
-fastify.post('/api/plan/manual', async (request, reply) => {
+fastify.post('/api/plan/manual', {
+  // A paste past the body limit says what one past the character limit says.
+  errorHandler: (err: { statusCode?: unknown }, request, reply) => {
+    if (err.statusCode === 413) return reply.code(413).send({ error: PLAN_TOO_LONG_LINE });
+    const { status, body } = publicError(err);
+    if (status >= 500) request.log.error({ err }, 'Unhandled route error');
+    return reply.code(status).send(body);
+  },
+}, async (request, reply) => {
   const { athleteId, text, today: clientToday } = (request.body as any) || {};
   if (!athleteId || typeof text !== 'string') {
     return reply.code(400).send({ error: 'Missing: athleteId, text' });

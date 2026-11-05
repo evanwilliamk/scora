@@ -10,6 +10,7 @@ import { computeDriverRecord } from '../src/drivers';
 import { buildDriverSeries } from '../src/driver-links';
 import { usableRecovery } from '../src/metrics';
 import { keepWholeSentences } from '../src/voice';
+import { PLAN_TOO_MANY_LINE } from '../src/plan-parse';
 import { openAiReasonLlm } from '../src/adaptation-reason';
 import { fetchOuraSummary, type OuraSummary } from '../src/oura';
 
@@ -178,4 +179,31 @@ test('an adaptation reason cut by the cap is not stored', async () => {
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// A long paste, from the screen's side: PlanView shows the reply's `error` as is.
+
+const iosShows = (line: string) => line.length <= 200 && /[.?]$/.test(line) && !line.startsWith('Missing:') && !/[A-Z]{2,}_[A-Z]/.test(line);
+
+test('a paste past the body limit gets the plan line, on the plan route only', async () => {
+  const r = await app.inject({ method: 'POST', url: '/api/plan/manual', payload: { athleteId: 'a1', text: 'Tue: 45 min tempo\n'.repeat(10_000), today } });
+  assert.equal(r.statusCode, 413);
+  assert.equal(r.json().error, 'The plan is longer than 8000 characters.');
+  assert.ok(iosShows(r.json().error));
+  const broken = await app.inject({ method: 'POST', url: '/api/plan/manual', headers: { 'content-type': 'application/json' }, payload: '{"text": secret-text' });
+  assert.deepEqual(broken.json(), { error: 'The request could not be read.' });
+});
+
+test('8000 characters of the worst escaping still reaches the route under the body limit', async () => {
+  const r = await app.inject({ method: 'POST', url: '/api/plan/manual', payload: { athleteId: 'a1', text: '\u0001'.repeat(8000) + 'x'.repeat(10), today } });
+  assert.notEqual(r.statusCode, 413);
+  assert.equal(r.json().error, 'The plan is longer than 8000 characters.');
+});
+
+test('a plan with more sessions than the token cap says so, not "one session per line"', async () => {
+  guard.openAi(cutAnswer('{"workouts": [{"date": "2026-11-10", "type": "run", "desc'));
+  const r = await app.inject({ method: 'POST', url: '/api/plan/manual', payload: { athleteId: 'a1', text: 'Tue: 45 min tempo', today } });
+  assert.equal(r.statusCode, 422);
+  assert.equal(r.json().error, PLAN_TOO_MANY_LINE);
+  assert.ok(iosShows(r.json().error));
 });
