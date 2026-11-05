@@ -995,3 +995,35 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: left caught: "All you need to know: HRV is up 8%." (literal §4.1 "you need to"), "You could hold 4:50 pace in March.", "Rest tomorrow, then a long run Saturday: that is how the plan reads.", "Long run Saturday, hit the distance at 4:50 pace.", "Take today's 52ms against the month and it sits high." Not fixed, since this pass adds no bans: "Ride 30 minutes." and "Swim 20 minutes." pass the validator, because `\d` followed by `\b` in the clause-command pattern only matches one digit ("Add 10 minutes." too). Fixed on claude/validator-ride-swim: those three `\d` are now `\d+`. The list exception for "swim 40, ride 260" already allows it.
 - Why: each left-caught line has the same words as a real order, and a missed prescription costs more than one fallback read.
 - To reverse: BANNED_PATTERNS in `apps/api/src/validator.ts`, with rows in `apps/api/test/validator-precision.test.ts`.
+
+### 2026-11-05: No SSRF guard built, because the server fetches no client URL
+- Status: DECIDED
+- Branch: claude/api-security-1105
+- Context: the security brief assumed the iCal import fetches a client URL. It does not: the app fetches the feed and posts the text (Q17 option B), and every server fetch goes to a fixed vendor host or the local server.
+- Choice: no private-address, DNS or redirect guard, since nothing would call it. A test now fails if a fetch to a non-fixed target or a body or query URL field appears in `apps/api/src`.
+- Why: a guard with no caller is untested code that reads as protection. It belongs with a server-side feed fetch, if one is ever added.
+- To reverse: if the server ever fetches feeds, add the guard in that change and update `every fetch in the API source...` in `apps/api/test/security-routes.test.ts`.
+
+### 2026-11-05: Voice validators catch steered output: links, prompt talk, other languages
+- Status: DECIDED
+- Branch: claude/api-security-1105
+- Context: chat messages and Strava activity names reach an OpenAI prompt, and steered replies with a link, the system prompt or another language passed every check.
+- Choice: on every voice surface, catch any link or markup except scora.app, talk about the prompt or model, 8 words in a row from the system prompt (quoted examples excluded), and any non-English read. Alternatives: an LLM moderation call (costs money, and is itself steerable); a smaller word list.
+- Why: the English bans cannot read other languages, so another language passed all of them. The app has no translations yet. A caught draft costs one retry and then the plain fallback.
+- To reverse: `BANNED_PATTERNS`, `isNotEnglish` and `promptEchoHits` in `apps/api/src/validator.ts`. A Spanish question now gets the fallback, so translations need `isNotEnglish` relaxed.
+
+### 2026-11-05: Chat METRIC lines must look like metrics; chat claims about sleep or HRV need the data
+- Status: DECIDED
+- Branch: claude/api-security-1105
+- Context: the app shows METRIC lines as drivers, and a sentence could pass as a metric name or value. Chat data holds runs only, yet "Your HRV crashed" passed because it has no number.
+- Choice: a name of at most 5 words and 40 characters, a value of a number with a short unit, else the line is dropped. A chat sentence naming sleep, HRV or readiness must also name the gap ("not in the data"). Alternative: match every METRIC name against the data, which would drop honest labels like "Miles this week".
+- Why: both are cheap and fail to a plain fallback. Other claims with no number still pass: the validator cannot prove a word like "tired".
+- To reverse: `metricShapeOk` and `unbackedTopic` in `apps/api/src/cdv-check.ts`.
+
+### 2026-11-05: Body limit 128 KB, fixed lines for errors outside a route
+- Status: DECIDED
+- Branch: claude/api-security-1105
+- Context: routes used Fastify's 1 MB default, and its default error reply returns the error's message, including a parser's quote of the body and any unexpected throw.
+- Choice: 128 KB on every route except `/api/plan/ical` (keeps 3 MB). A shared handler answers fixed lines under `error`, the key the app reads, and logs the real error. Env names left the Oura and push replies. The Unknown card reply no longer repeats the request.
+- Why: the largest honest body is a pasted plan, 8000 characters or 48 KB if all escaped.
+- To reverse: `BODY_LIMIT_BYTES` and `publicError` in `apps/api/src/http-errors.ts`.
