@@ -44,7 +44,19 @@ struct ScoraApp: App {
       if let athleteId = components?.queryItems?.first(where: { $0.name == "athlete_id" })?.value,
          let name = components?.queryItems?.first(where: { $0.name == "name" })?.value,
          let token = components?.queryItems?.first(where: { $0.name == "token" })?.value {
+        let outcome = StravaReconnect.outcome(incoming: athleteId, pendingFor: StravaReconnect.pendingFor)
+        StravaReconnect.clear()
+        if outcome == .otherAccount {
+          let line = OuraLinkResult(connected: false, message: StravaReconnect.otherAccountLine)
+          NotificationCenter.default.post(name: OuraLinkResult.notification, object: line)
+          return
+        }
         tokenManager.saveToken(token, athleteId: athleteId, athleteName: name)
+        if outcome == .reconnected {
+          NotificationCenter.default.post(name: StravaReconnect.reconnected, object: nil)
+          let line = OuraLinkResult(connected: true, message: StravaReconnect.connectedLine)
+          NotificationCenter.default.post(name: OuraLinkResult.notification, object: line)
+        }
       }
     }
 

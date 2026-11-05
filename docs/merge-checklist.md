@@ -243,3 +243,7 @@ From `apps/api`, after migration 1: `npx tsx scripts/ingest-knowledge.ts <export
 ## 6. Open questions that touch this branch
 
 Q28 (RLS), Q20 (rotate the Strava secret), Q18 (sign Oura state), Q16 (token in the deep link), Q26 (token encryption), Q27 (account deletion), Q21 (body weight).
+
+## Added 2026-11-05: Settings sheet (`claude/ios-settings`)
+
+No migration or flag. Smoke test on a phone: gear on the dashboard, change the time and save, then Reconnect Strava with the same account (banner says Strava connected, read reloads) and with another account (banner says nothing changed, same athlete stays). Sign Out now lives in this sheet.

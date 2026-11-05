@@ -1082,3 +1082,26 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Why: the table is the claim that stops a second send. In-memory claims would resend on a restart, and pushes resume by themselves when the migration is applied, so the failure is quiet and safe. The migrations-first order was tested clean in both directions.
 - To reverse: catch the missing table in `runTick` in apps/api/src/scheduler.ts and claim in memory.
 
+### 2026-11-05: Settings sheet (Q40 A, Evan silent 3 days)
+- Status: DECIDED
+- Branch: claude/ios-settings
+- Context: The app had no way to change delivery time or reconnect Strava short of signing out.
+- Choice: A gear on the dashboard opens Settings: delivery time (same picker and PUT /api/preferences as onboarding), Strava and Oura status with connect buttons, Sign Out. The header's Sign Out button moved into the sheet, which also gives it a second tap. No confirmation dialog (that is Q41). No new routes: Oura status reads the `connections.oura` field /api/read already sent; Strava status reads the read's own error sentence.
+- Why: The header had no room for a fourth icon plus Sign Out at large text sizes, and one tap signing out wipes the cached read.
+- To reverse: Drop claude/ios-settings, or put the Sign Out button back in `DashboardView.header`.
+
+### 2026-11-05: Reconnect Strava refuses a different account
+- Status: DECIDED
+- Branch: claude/ios-settings
+- Context: Reconnect uses the sign-in link, which answers with whichever Strava account was chosen in the browser, and signing in as a second athlete keeps the first athlete's data on the phone (Q46, still open). The new button would have made that reachable from normal use.
+- Choice: A reconnect started in Settings that comes back with another athlete id is dropped on the phone, with the banner "That was a different Strava account. Nothing changed." The sign-in path itself is unchanged, and a sign-in link arriving any other way behaves as before. The server still stores that other account's tokens when its callback runs.
+- Why: Guards only the new flow, so Q46 stays Evan's call.
+- To reverse: Remove the `.otherAccount` branch in `ScoraApp.handleDeepLink`.
+
+### 2026-11-05: Miles for everyone stays for the alpha (Q39 B, Evan silent 3 days)
+- Status: DECIDED
+- Branch: claude/ios-settings (log only, no code)
+- Context: No Strava unit preference is stored, so km athletes see miles.
+- Choice: No change. Add `athletes.distance_unit` before any km market.
+- Why: Alpha athletes are in the US.
+- To reverse: Answer Q39 A.

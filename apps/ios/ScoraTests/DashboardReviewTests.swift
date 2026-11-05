@@ -398,3 +398,147 @@ final class OfflineReviewTests: XCTestCase {
     }
   }
 }
+
+// Settings (Q40 A): what it says about connections comes from the read and
+// cards, and a Strava reconnect never swaps the athlete.
+final class SettingsLogicTests: XCTestCase {
+  func testStravaStatusOnlyClaimsWhatTheReadShowed() {
+    XCTAssertEqual(StravaStatus.of(hasRead: true, error: nil), .connected)
+    XCTAssertEqual(StravaStatus.of(hasRead: false, error: nil), .unknown)
+    XCTAssertEqual(StravaStatus.of(hasRead: false, error: "Strava needs to be connected again."), .needsReconnect)
+    XCTAssertEqual(StravaStatus.of(hasRead: true, error: "Strava not connected or refresh failed. Please reconnect Strava."), .needsReconnect)
+    XCTAssertEqual(StravaStatus.of(hasRead: true, error: "Strava is not answering right now."), .unknown, "an outage is no sign the link is broken")
+    XCTAssertEqual(StravaStatus.of(hasRead: false, error: "You appear to be offline."), .unknown)
+    XCTAssertEqual(StravaStatus.of(hasRead: true, error: "Oura needs to be connected again."), .unknown)
+  }
+
+  func testReadRepliesCarryTheOuraConnection() throws {
+    let base = #"{"read":{"voice":"x"},"cards":[]"#
+    func decode(_ tail: String) throws -> ReadResponse {
+      try JSONDecoder().decode(ReadResponse.self, from: Data((base + tail).utf8))
+    }
+    XCTAssertEqual(try decode(#","connections":{"strava":true,"oura":false,"healthKit":true}}"#).connections?.oura, false)
+    XCTAssertEqual(try decode(#","connections":{"strava":true,"oura":true}}"#).connections?.oura, true)
+    XCTAssertNil(try decode("}").connections, "a cached or older reply has no field")
+  }
+
+  func testOuraStatusFromTheRead() {
+    XCTAssertEqual(OuraStatus.of(connected: nil), .unknown)
+    XCTAssertEqual(OuraStatus.of(connected: true), .connected)
+    XCTAssertEqual(OuraStatus.of(connected: false), .notConnected)
+    XCTAssertEqual(OuraStatus.notConnected.buttonLabel, "Connect Oura")
+    XCTAssertEqual(OuraStatus.connected.buttonLabel, "Reconnect Oura")
+    XCTAssertEqual(OuraStatus.unknown.buttonLabel, "Reconnect Oura")
+  }
+
+  func testStravaReconnectOutcome() {
+    XCTAssertEqual(StravaReconnect.outcome(incoming: "1", pendingFor: nil), .signIn)
+    XCTAssertEqual(StravaReconnect.outcome(incoming: "1", pendingFor: "1"), .reconnected)
+    XCTAssertEqual(StravaReconnect.outcome(incoming: "2", pendingFor: "1"), .otherAccount)
+  }
+
+  func testSignOutForgetsAStartedReconnect() {
+    StravaReconnect.begin(athleteId: "1")
+    addTeardownBlock { StravaReconnect.clear() }
+    TokenManager().logout()
+    XCTAssertNil(StravaReconnect.pendingFor)
+  }
+
+  func testShownMinutePrefersThisAthletesWaitingChoice() {
+    let waiting = PendingOnboarding(athleteId: "1", timezone: "UTC", deliveryMinute: 420)
+    XCTAssertEqual(SettingsPrefs.shownMinute(remote: 360, pending: waiting, athleteId: "1"), 420)
+    XCTAssertEqual(SettingsPrefs.shownMinute(remote: 360, pending: waiting, athleteId: "2"), 360)
+    XCTAssertEqual(SettingsPrefs.shownMinute(remote: 360, pending: nil, athleteId: "1"), 360)
+  }
+
+  // MARK: Requests, through the stubbed transport
+
+  private var savedTransport: OnboardingSync.Transport!
+  private var savedAthlete: String?
+  private var savedZone: Any?
+  private var sent: [URLRequest] = []
+
+  override func setUp() {
+    super.setUp()
+    savedTransport = OnboardingSync.transport
+    savedAthlete = UserDefaults.standard.string(forKey: "scora.athleteId")
+    OnboardingSync.pending = nil
+    TimeZoneSync.forget()
+    sent = []
+  }
+
+  override func tearDown() {
+    OnboardingSync.transport = savedTransport
+    UserDefaults.standard.set(savedAthlete, forKey: "scora.athleteId")
+    OnboardingSync.pending = nil
+    TimeZoneSync.forget()
+    super.tearDown()
+  }
+
+  private func stub(_ status: Int?, body: String = "{}") {
+    OnboardingSync.transport = { [weak self] req in
+      self?.sent.append(req)
+      guard let status else { return nil }
+      return (status, Data(body.utf8))
+    }
+  }
+
+  func testLoadReadsTheSavedMinute() async {
+    stub(200, body: #"{"timezone":"UTC","deliveryMinute":405,"onboarded":true}"#)
+    let minute = await SettingsPrefs.load(athleteId: "1")
+    XCTAssertEqual(minute, 405)
+    XCTAssertEqual(sent.first?.httpMethod, "GET")
+    XCTAssertTrue(sent.first?.url?.query?.contains("athleteId=1") ?? false)
+  }
+
+  func testLoadFailureIsNilNotADefault() async {
+    stub(nil)
+    var minute = await SettingsPrefs.load(athleteId: "1")
+    XCTAssertNil(minute)
+    stub(500)
+    minute = await SettingsPrefs.load(athleteId: "1")
+    XCTAssertNil(minute)
+    stub(200, body: #"{"timezone":"UTC"}"#)
+    minute = await SettingsPrefs.load(athleteId: "1")
+    XCTAssertNil(minute)
+  }
+
+  func testSaveSendsMinuteAndZoneAndReplacesAWaitingChoice() async throws {
+    UserDefaults.standard.set("1", forKey: "scora.athleteId")
+    OnboardingSync.keep(PendingOnboarding(athleteId: "1", timezone: "UTC", deliveryMinute: 420))
+    stub(200)
+    let ok = await SettingsPrefs.save(athleteId: "1", minute: 390, zone: "Asia/Tokyo")
+    XCTAssertTrue(ok)
+    let req = try XCTUnwrap(sent.first)
+    XCTAssertEqual(req.httpMethod, "PUT")
+    let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(req.httpBody)) as? [String: Any])
+    XCTAssertEqual(body["athleteId"] as? String, "1")
+    XCTAssertEqual(body["deliveryMinute"] as? Int, 390)
+    XCTAssertEqual(body["timezone"] as? String, "Asia/Tokyo")
+    XCTAssertEqual(body["onboarded"] as? Bool, true)
+    XCTAssertNil(OnboardingSync.pending, "the old choice must not overwrite this one on the next launch")
+    XCTAssertFalse(TimeZoneSync.needsSync(current: "Asia/Tokyo"))
+  }
+
+  func testFailedSaveKeepsAWaitingChoiceAndRecordsNoZone() async {
+    UserDefaults.standard.set("1", forKey: "scora.athleteId")
+    let waiting = PendingOnboarding(athleteId: "1", timezone: "UTC", deliveryMinute: 420)
+    OnboardingSync.keep(waiting)
+    stub(500)
+    var ok = await SettingsPrefs.save(athleteId: "1", minute: 390, zone: "Asia/Tokyo")
+    XCTAssertFalse(ok)
+    stub(nil)
+    ok = await SettingsPrefs.save(athleteId: "1", minute: 390, zone: "Asia/Tokyo")
+    XCTAssertFalse(ok)
+    XCTAssertEqual(OnboardingSync.pending, waiting)
+    XCTAssertTrue(TimeZoneSync.needsSync(current: "Asia/Tokyo"))
+  }
+
+  func testSaveLandingAfterSignOutRecordsNoZone() async {
+    UserDefaults.standard.removeObject(forKey: "scora.athleteId")
+    stub(200)
+    let ok = await SettingsPrefs.save(athleteId: "1", minute: 390, zone: "Asia/Tokyo")
+    XCTAssertTrue(ok)
+    XCTAssertTrue(TimeZoneSync.needsSync(current: "Asia/Tokyo"))
+  }
+}

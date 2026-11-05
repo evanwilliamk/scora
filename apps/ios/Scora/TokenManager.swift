@@ -96,6 +96,7 @@ class TokenManager: ObservableObject {
   func logout() {
     PushManager.shared.unregister(athleteId: athleteId)
     TimeZoneSync.forget()
+    StravaReconnect.clear()
     ReadCache.clear() // the last read is this athlete's health data
     CalendarFeed.save(nil, for: athleteId) // the next athlete on this phone never refreshes this calendar
     WatchLedger.clear(athleteId: athleteId) // their sessions as sent to the Watch

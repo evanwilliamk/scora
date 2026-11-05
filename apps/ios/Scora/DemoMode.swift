@@ -25,6 +25,10 @@ enum DemoMode {
     return args.contains("-demo-onboarding") ? .oura : nil
   }
   static var deliveryFails: Bool { args.contains("-demo-delivery-fails") }
+  // -demo-settings: Settings opens on its own, showing 6:30 as the saved time.
+  // -demo-settings-load-fails: the saved time cannot be loaded.
+  static var opensSettings: Bool { args.contains("-demo-settings") || settingsLoadFails }
+  static var settingsLoadFails: Bool { args.contains("-demo-settings-load-fails") }
   static var opensChart: Bool { ProcessInfo.processInfo.arguments.contains("-demo-chart") }
   static var opensPlan: Bool { ProcessInfo.processInfo.arguments.contains("-demo-plan") }
   // -demo-plan-sessions: Your Plan shows two sample SCORA sessions (today
