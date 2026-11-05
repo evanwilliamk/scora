@@ -995,3 +995,43 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: left caught: "All you need to know: HRV is up 8%." (literal §4.1 "you need to"), "You could hold 4:50 pace in March.", "Rest tomorrow, then a long run Saturday: that is how the plan reads.", "Long run Saturday, hit the distance at 4:50 pace.", "Take today's 52ms against the month and it sits high." Not fixed, since this pass adds no bans: "Ride 30 minutes." and "Swim 20 minutes." pass the validator, because `\d` followed by `\b` in the clause-command pattern only matches one digit ("Add 10 minutes." too). Fixed on claude/validator-ride-swim: those three `\d` are now `\d+`. The list exception for "swim 40, ride 260" already allows it.
 - Why: each left-caught line has the same words as a real order, and a missed prescription costs more than one fallback read.
 - To reverse: BANNED_PATTERNS in `apps/api/src/validator.ts`, with rows in `apps/api/test/validator-precision.test.ts`.
+
+### 2026-11-05: Driver existence covers claims with no number
+- Status: DECIDED
+- Branch: claude/voice-spec-1105
+- Context: the validator read only digits, so "HRV is climbing" passed with no HRV in the record, or with HRV at -8% (CLAUDE.md §3.2).
+- Choice: new `unbackedClaims` in ValidationResult: naming HRV, sleep, resting HR or Oura with no such driver fails, unless the sentence says the data is absent; a present-tense direction word right after HRV, Load or volume must agree with the signed trend. Kept out of `bannedHits`, so the banned-phrase rate and the false-catch corpus are unchanged; counted in `unbacked` telemetry. Alternative: a banned label.
+- Why: a claim with no driver is the hard rule. A rejected draft costs one retry and at worst the plain fallback.
+- To reverse: drop the `unbackedClaims` pushes in `validateVoice` (`apps/api/src/validator.ts`).
+
+### 2026-11-05: Prompts and call settings follow doc 08
+- Status: DECIDED
+- Branch: claude/voice-spec-1105
+- Context: no decision explained the differences from doc 08 §3.2, §4.2, §12.
+- Choice: daily 2-4 sentences, 0.6, 250 tokens (was 2-3, 0.5, 200); weekly 3-5, 0.7, 400 (was 4-6, 0.5, 320); reason 0.4, 100 (was 0.3, 120). The caps raise cost slightly only when the model uses the room. Sentence counts stay prompt-only (question below).
+- Why: the doc is the spec and nothing logged a reason to differ.
+- To reverse: `maxTokens` and `temperature` at the `generateValidatedVoice` calls in `apps/api/src/index.ts`; `openAiReasonLlm`.
+
+### 2026-11-05: The weekly read, why, more and chat name no posture they were not given
+- Status: DECIDED
+- Branch: claude/voice-spec-1105
+- Context: the weekly prompt invited a posture with none given. Doc 08 §4.1 has a posture sequence input that nothing supplies.
+- Choice: weekly and chat: none may be named. Why and more: only the read's own. Same `postureClaimHits` check as the read and card. Alternative: build the posture sequence, which needs stored daily postures.
+- Why: a posture with no decision behind it has no driver.
+- To reverse: the `check` on the weekly call in `index.ts`, `expansionReply` in `whatsapp.ts`, `checkCdvText` in `cdv-check.ts`.
+
+### 2026-11-05: A recovery 0 and a missing distance are no data
+- Status: DECIDED
+- Branch: claude/voice-spec-1105
+- Context: an Oura 0 read as "HRV 0ms" and could fire a rest posture on -100%, which can also adapt a plan. Runs with no distance read "Longest run 0 mi".
+- Choice: `usableRecovery` nulls zeros before drivers and posture, the floor HealthKit already has. No distance: no longest run, long run or volume driver; a week with no runs keeps its real 0. New card line "No run distance recorded in the last 30 days." (wording is yours). Stored plan amounts of 0 are left out.
+- Why: no claim without data.
+- To reverse: `usableRecovery` and the `> 0` checks in `apps/api/src/metrics.ts`, `plan-read.ts`.
+
+### 2026-11-05: Voice audit questions
+- Status: NEEDS EVAN
+- Branch: claude/voice-spec-1105
+- Context: `docs/voice-spec-audit.md` lists six choices left open; curated lines were not changed.
+- Choice (or options): (1) sentence counts enforced: both bounds, upper only (recommended), or prompt only. (2) Curated lines on legal values such as "after 0 hard days" and "HRV is still 5% above baseline. The body is stubborn": tighten the rules (recommended) or reword. (3) Fixed adaptation sentence has no number and says "Today's" forever: append driver and date (recommended) or leave. (4) "Acute:chronic load" label: "Load vs usual" (recommended) or leave. (5) Fallback as a driver list (recommended for now) or the top pattern, as doc 08 says. (6) Retries: 1 (recommended) or doc 08's 2, a paid call.
+- Why: wording is Evan's, and (6) costs money.
+- To reverse: nothing changed for these.
