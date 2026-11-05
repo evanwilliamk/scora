@@ -7,7 +7,7 @@
 
 import type { AdaptationDecision } from '../../../packages/plan-engine/src/index';
 import type { Driver } from './metrics';
-import { normalizeForCheck, validateVoice } from './validator';
+import { normalizeForCheck, promptEchoHits, validateVoice } from './validator';
 import type { VoiceEmission } from './telemetry';
 import { vendorErrorKind, vendorHttpError } from './vendor-error';
 
@@ -175,6 +175,7 @@ export function reasonIssues(text: string, d: Decided, evidence: Driver[]): stri
   const facts: Driver[] = mins ? [{ metric: 'Duration', value: `${mins} min` }] : [];
   const v = validateVoice(t, [...evidence, ...facts]);
   issues.push(...v.bannedHits.map((h) => `banned: ${h}`), ...v.unbackedNumbers.map((n) => `unbacked number ${n}`));
+  issues.push(...promptEchoHits(t, SYSTEM).map((h) => `banned: ${h}`));
 
   // A number said with a time or distance unit must be the change's own
   // duration, or a driver that states that number in that unit. "62 minutes

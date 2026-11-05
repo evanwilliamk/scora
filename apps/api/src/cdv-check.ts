@@ -4,7 +4,7 @@
 // measured values in the data block the server sent it, and small counts in
 // the athlete's own question ("my last 3 runs").
 
-import { buildFallbackVoice, validateVoice } from './validator';
+import { buildFallbackVoice, normalizeForCheck, promptEchoHits, validateVoice } from './validator';
 import { stripChartLine } from './cdv-chart';
 import type { Driver } from './validator';
 import type { VoiceEmission } from './telemetry';
@@ -79,12 +79,28 @@ function clockOnlyDecimals(text: string, data: unknown, already: string[] = []):
   return out;
 }
 
+// Chat's data is runs only, so unless a field says otherwise a word about sleep, HRV or readiness has nothing
+// behind it, with or without a number ("Your HRV crashed"). Saying it is not in
+// the data is what the prompt asks for and stays allowed.
+const NOT_IN_RUN_DATA = /\b(?:hrv|heart rate variability|sleep|slept|resting (?:hr|heart rate)|readiness)\b/i;
+const NAMES_A_GAP = /\b(?:not|no|without|cannot|never|none|missing|lacks?|only)\b|n't\b/i;
+// Field names only: a run named "sleep" backs nothing.
+const hasHealthField = (data: unknown): boolean => {
+  if (Array.isArray(data)) return data.some(hasHealthField);
+  if (!data || typeof data !== 'object') return false;
+  return Object.entries(data).some(([k, v]) => /hrv|sleep|resting|readiness/i.test(k) || hasHealthField(v));
+};
+const unbackedTopic = (voice: string, data: unknown) =>
+  !hasHealthField(data) && voice.split(/(?<=[.;!?])\s+/).some((s) => NOT_IN_RUN_DATA.test(s) && !NAMES_A_GAP.test(s));
+
 // The full check on one voice line, as checkCdvReply runs it.
-function checkCdvText(voice: string, data: unknown, question: string) {
+function checkCdvText(voice: string, data: unknown, question: string, prompt = '') {
   const v = validateVoice(timesWhole(voice), cdvSource(data, question));
+  v.bannedHits.push(...promptEchoHits(voice, prompt));
+  if (unbackedTopic(normalizeForCheck(voice), data)) v.bannedHits.push('unbacked topic');
   v.unbackedNumbers.push(...clockOnlyDecimals(voice, data, v.unbackedNumbers));
   // An empty voice is no answer, so it falls back like a failed one.
-  v.ok = v.ok && v.unbackedNumbers.length === 0 && voice.trim() !== '';
+  v.ok = v.bannedHits.length === 0 && v.unbackedNumbers.length === 0 && voice.trim() !== '';
   return v;
 }
 
@@ -94,18 +110,34 @@ export function cdvTextOk(voice: string, data: unknown, question: string): boole
   return checkCdvText(voice, data, question).ok;
 }
 
-export function checkCdvReply(voice: string, metricLines: Driver[], data: unknown, question: string): CdvChecked {
+// A METRIC line is a short name and a number with its unit. Anything longer is
+// a sentence wearing a metric's clothes, and the app shows it as a driver.
+const METRIC_NAME = /^\p{L}[\p{L}\p{N} '()/%&.,-]{0,39}$/u;
+const METRIC_VALUE_PART = /^[~+-]?\d[\d.,:/]*\s?(?:%|[a-z]+(?:\/[a-z]+)?(?:\s[a-z]+){0,2})?$/i;
+const metricShapeOk = (d: Driver) =>
+  METRIC_NAME.test(d.metric) && d.metric.split(/\s+/).length <= 5
+  && d.value.length <= 32 && d.value.split(' / ').every((part) => METRIC_VALUE_PART.test(part.trim()));
+
+// Outside text bound for a prompt: one line, no control or invisible characters.
+export function promptText(v: unknown, max: number): string | null {
+  if (typeof v !== 'string') return null;
+  return v.replace(/\p{Cf}/gu, '').replace(/[\p{Cc}\s]+/gu, ' ').trim().slice(0, max);
+}
+
+// `prompt`, when given, is the system prompt: a reply repeating it is caught.
+export function checkCdvReply(voice: string, metricLines: Driver[], data: unknown, question: string, prompt = ''): CdvChecked {
   const source = cdvSource(data, question);
   // A METRIC line is shown to the athlete as a driver, so its name, value and
   // trend must all be in the data, and none of it may be banned phrasing.
   const drivers = metricLines
     .map((d) => (trendIssue(d.trend) ? { metric: d.metric, value: d.value } : d))
+    .filter(metricShapeOk)
     .filter((d) => {
       const line = `${d.metric} ${d.value} ${d.trend ?? ''}`;
       // The same decimal rule as the voice: the fallback quotes these lines.
       return validateVoice(timesWhole(line), source).ok && clockOnlyDecimals(line, data).length === 0;
     });
-  const v = checkCdvText(voice, data, question);
+  const v = checkCdvText(voice, data, question, prompt);
   if (v.ok) return { voice, drivers, fallback: false, bannedHits: [], unbackedNumbers: [], finalOk: true };
   const fallback = drivers.length
     ? buildFallbackVoice(drivers, 'Here')
@@ -144,10 +176,11 @@ export async function checkCdvWithRetry(
   data: unknown,
   question: string,
   retry: (note: string) => Promise<string>,
+  prompt = '',
 ): Promise<{ raw: string; checked: CdvChecked; attempts: 1 | 2; seenBanned: string[]; seenUnbacked: number }> {
   const check = (r: string) => {
     const p = parseCdvLines(r);
-    return checkCdvReply(p.voice, p.metricLines, data, question);
+    return checkCdvReply(p.voice, p.metricLines, data, question, prompt);
   };
   const first = check(raw);
   // Every catch across both drafts, for the telemetry line.
