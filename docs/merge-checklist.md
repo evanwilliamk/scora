@@ -65,6 +65,15 @@ From 2026-11-04 (one new migration, section 1 item 16; no new flag or env var):
 - `POST /api/plan/generate` (flag `PLAN_GENERATION`): a race Monday to Wednesday starts the plan a week earlier and the plan's `end_date` is race day; a race more than 12 months out answers 422 `race_too_far`. The new app build's date picker stops at the same day.
 - A calendar feed naming Runna is stored as `external_source='runna'`, checked on a synthetic feed only. No real Runna feed has been seen.
 
+From 2026-11-05 to 2026-11-06 (no new migration or flag; one test-only env var, section 2):
+
+- A reply the token cap cut never goes out mid-sentence. Read, weekly, card, why and more keep their whole sentences; with none, they take the driver fallback and its `voice_emission` line. Chat drops its unfinished last line; with no text left, it answers as in an outage and refunds the query. An adaptation reason falls to the fixed sentence.
+- `POST /api/plan/manual`: a paste the model could not finish answers 422 "This plan has more sessions than can be read at once. Try the next few weeks." A body over the limit answers 413 with the same sentence as one over the character limit.
+- An Oura 0 (sleep, sleep score, HRV, resting HR, readiness, and the same in earlier nights) counts as no reading in cards, posture, charts and the week HRV average.
+- With no reading from the ring last night, the read uses the app's Apple Health values, even when earlier nights set a week average. The Sleep card can name Apple Health on those mornings.
+- `POST /api/plan/generate` (flag `PLAN_GENERATION`): the same setup after the plan's first week answers with the active plan, nothing rewritten. `start_date` is the plan's own and `workouts` counts the template's sessions still ahead, not stored rows.
+- Weekly Load and last week's Week So Far minutes are rounded per local day. Either can sit a few minutes from the raw seconds, and the read's rolling 7-day Load still rounds the total.
+
 ## 1. Apply the migrations (Supabase SQL editor, in this order)
 
 All in `apps/api/supabase/migrations/`, tested on PGlite (`apps/api/test/migrations.test.ts`, `migration-rehearsal.test.ts`), none applied anywhere. Filename order is the apply order. The five files already on `main` (2026-07) are not listed; the precheck confirms they are on production.
@@ -207,7 +216,7 @@ Flags are on only with the exact value `on`. Each defaults off, and with Plan-ti
 |---|---|---|
 | `ICAL_IMPORT=on` | `POST /api/plan/ical` and the calendar link field on Your Plan | migrations 2, 7, 9, 13 and 16 |
 | `KNOWLEDGE_RETRIEVAL=on` | knowledge library passages in the read, with `read_citations` rows | migration 1, the starter sources (spec §6), a real ingest run (section 4) |
-| `PLAN_GENERATION=on` | plan setup screen, `/api/plan/options`, `/api/plan/block` | migrations 4, 6, 10 and 11, reviewed templates in `packages/plan-templates` (none yet) |
+| `PLAN_GENERATION=on` | plan setup screen, `/api/plan/options`, `/api/plan/generate`, `/api/plan/block` | migrations 4, 6, 10 and 11, reviewed templates in `packages/plan-templates` (none yet) |
 | `PLAN_ADAPTATIONS=on` | named plan changes with the read, `/api/plan/adaptations` and its history | migrations 4 and 5, an active SCORA plan (so `PLAN_GENERATION` first) |
 | `ADAPTATION_REASON_LLM=on` | gpt-4o-mini words the change reason (uses `OPENAI_API_KEY`) | `PLAN_ADAPTATIONS` |
 | `INLINE_CHARTS=on` | tappable drivers in the read | nothing else |
@@ -216,7 +225,7 @@ Flags are on only with the exact value `on`. Each defaults off, and with Plan-ti
 
 All eight flags are new on this branch.
 
-Also new in the code, test only, never set on Railway: `NODE_ENV=test`, `SCORA_NO_LISTEN=1` (both together stop the server from listening) and `APNS_TEST_HOST` (ignored unless `NODE_ENV=test`).
+Also new in the code, test only, never set on Railway: `NODE_ENV=test`, `SCORA_NO_LISTEN=1` (both together stop the server from listening), `APNS_TEST_HOST` and `PLAN_TEMPLATE_DIR` (both ignored unless `NODE_ENV=test`). `NODE_ENV=test` on Railway would make `PLAN_TEMPLATE_DIR` live, and the loader trusts a file's own `status: reviewed`.
 
 No new secrets. The existing ones stay as they are, Evan sets, never committed: `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `STRAVA_CLIENT_SECRET`, `OURA_CLIENT_SECRET`, `APNS_KEY` (plus the non-secret `SUPABASE_URL`, `OURA_CLIENT_ID`, `API_URL`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_ENV`). `PUSH_TZ` can be removed.
 
