@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { weeklyPlanDriver } from '../src/weekly';
+import { buildWeeklySummary } from '../src/metrics';
 import { weekSoFar, plannedRunMinutes } from '../src/week-so-far';
 import { validateVoice } from '../src/validator';
 
@@ -59,4 +60,15 @@ test('weekly push: once per week, even when the athlete changes time zone that M
   }
   // The next Monday it is due again.
   assert.equal(dueDeliveries({ ...sentTokyo, delivery_minute: 360 }, new Date(Date.UTC(2026, 10, 9, 14, 5))).weekly, true);
+});
+
+test('journey 2026-11-06: Monday\'s weekly Load is the minutes Sunday\'s Week So Far showed', () => {
+  // 30:30 three times: 31 + 31 + 31 day by day, where the seconds alone would round to 92.
+  const on = (date: string) => ({ type: 'Run', start_date_local: `${date}T08:00:00Z`, start_date: `${date}T08:00:00Z`, distance: 8000, moving_time: 1830 });
+  const runs = [on('2026-10-19'), on('2026-10-21'), on('2026-10-24')];
+  const wsf = weekSoFar(runs, '2026-10-25');
+  const weekly = buildWeeklySummary(runs, null, '2026-10-26');
+  assert.equal(wsf.total_min, 93);
+  assert.equal(weekly.drivers.find((d) => d.metric === 'Load')?.value, `${wsf.total_min} min`);
+  assert.equal(weekly.stats.find((s) => s.label === 'Load')?.value, `${wsf.total_min} min`);
 });

@@ -322,6 +322,12 @@ const shiftDay = (date: string, n: number) => {
 // The athlete's local calendar day of an activity.
 const localDay = (a: any) => String(a.start_date_local || a.start_date).slice(0, 10);
 
+const minutesByDay = (arr: any[]) => {
+  const byDay = new Map<string, number>();
+  for (const a of arr) byDay.set(localDay(a), (byDay.get(localDay(a)) ?? 0) + (a.moving_time || 0) / 60);
+  return [...byDay.values()].reduce((s, m) => s + Math.round(m), 0);
+};
+
 // Reduce the last 7 days (vs the prior 7) into a weekly review: the stats the
 // weekly view shows and the drivers the weekly read is allowed to cite. Same
 // discipline as buildDashboard — every number is real; Oura fields only appear
@@ -351,8 +357,10 @@ export function buildWeeklySummary(activities: any[], ouraRaw?: OuraSummary | nu
   // Volume + load, week over week.
   const miles = +totalMiles(thisWeek).toFixed(1);
   const lastMiles = +totalMiles(lastWeek).toFixed(1);
-  const min = totalMovingMin(thisWeek);
-  const lastMin = totalMovingMin(lastWeek);
+  // Summed day by day, as the Week So Far and the weekly plan driver count, so
+  // Monday's review states the minutes Sunday's Week So Far showed.
+  const min = minutesByDay(thisWeek);
+  const lastMin = minutesByDay(lastWeek);
   const wk = (t: string) => (t === 'n/a' ? undefined : `${t} wk`);
   const volTrend = wk(pct(miles, lastMiles));
   const loadTrend = wk(pct(min, lastMin));
