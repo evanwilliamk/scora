@@ -1,5 +1,5 @@
 SCORA — LLM Prompt Specification
-Version: v2 (2026-04-26) Supersedes: v1 Companion to: CLAUDE.md v1.4, 02_SCORA_PRD_v1.4.md, 07_SCORA_Architecture_Data_Model_v2.md, 06_SCORA_Pattern_Library_v0.3.md
+Version: v2 (2026-04-26) Supersedes: v1 Companion to: CLAUDE.md v1.4, 02_SCORA_PRD_v1_4.md, 07_SCORA_Architecture_Data_Model_v2.md, 06_SCORA_Pattern_Library_v0_3.md
 
 
 0. What changed in v2
@@ -9,7 +9,7 @@ New prompts for the plan tier:
 workout-description.md — plain-English rendering of a structured workout.
 adaptation-reason.md — plain-English explanation of why a plan adaptation happened.
 plan-summary.md — block-level summary at plan creation ("this is a 12-week half marathon build...").
-Plan-vs-body pattern subfamily — new patterns in 06_SCORA_Pattern_Library_v0.3.md that fire when plan and body agree/disagree.
+Plan-vs-body pattern subfamily — new patterns in 06_SCORA_Pattern_Library_v0_3.md that fire when plan and body agree/disagree.
 Voice unchanged in intent — still non-prescriptive; new prompts respect the voice-vs-plan boundary in CLAUDE.md §1.
 LLM never invents workouts — plan generation is template-assembly; LLM only writes plain-English descriptions.
 

@@ -124,6 +124,9 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [~] Plan tier gates 3.1.10 (adherence, from the athlete's done/missed marks) and 3.1.11 (adaptations per athlete per week) as a read-only SQL report, `apps/api/scripts/plan-gates.sql`, paste into the Supabase SQL editor (`claude/plan-gates`, on `claude/integration-2026-10-22`; run on PGlite in tests)
 - [~] Gate 3.1.9: a successful Send to Watch stamps `workout_kit_pushed_at` via `POST /api/plan/workouts/:id/watch-sent`; `plan-gates.sql` reports the share (`claude/watch-sent-record`, on `claude/integration-2026-10-28`)
 - [~] Plan bars audit (doc 10 §6.2): `apps/api/scripts/plan-invariants.sql` lists any engine adaptation that changed a long run, touched race week, moved more than 10% of a week's minutes, or put a moved hard session next to another (`claude/plan-invariants-audit`, on `claude/integration-2026-10-28`)
+- [ ] Funnel events as telemetry lines (doc 09 §5), API side: `onboard_free_completed` the first time `onboarded_at` is set, `plan_setup_completed` on a plan actually created, labels only, no health value, ready to forward to PostHog. Done when route tests show one line per first completion, none on a repeat, and `log-audit` passes the lines
+- [ ] Notifications off (spec audit top gap, iOS): ask after the delivery step instead of at launch, check `authorizationStatus`, and tell a denied athlete on the done screen and in Settings that no morning push will come. Done when seen on the simulator with notifications denied, logic unit tested. Wording logged in DECISIONS.md for Evan
+- [ ] Spec audit SwiftUI list (`docs/spec-audit-1106.md`, items 2 to 7). Done when each is changed or declined with a line in DECISIONS.md and seen on the simulator
 - [ ] WorkoutKit scheduling on a paired Apple Watch (Evan). Done when a sent session appears in the Watch's Workout app on its day and runs with the plan's steps
 - [!] Calorie engine needs body weight; Strava only sends it with `profile:read_all` (Q21). Done when an athlete with a known weight gets estimates with the method shown
 - [~] Rest posture with no move window: the session drops to easy at the same duration, named reason; long runs stay (Q19 option B, `claude/rest-no-window-downgrade`, on `claude/integration-2026-10-18`)
@@ -131,6 +134,7 @@ All `[~]` branches from 2026-10-17 to 2026-10-28 are merged together, with doc c
 - [ ] Plan tier gating for the flags above, once the Stripe item exists (Evan). Done when a Free athlete gets 404 or the Free behavior from every Plan-tier route, and a coach-assigned athlete never sees plan generation
   - [!] Code half, ASK (Q30): an `athletes.tier` column (default `free`, Evan can set `plan` by hand), one `requireTier` check on every Plan-tier route, coach-assigned athletes kept out of generation. Done when route tests show a Free athlete gets the Free behavior from each Plan-tier route. Stripe then only writes the column. Route-by-route design: `docs/tier-gating-design.md` (recommends doc 07's `subscription_tiers` table, keyed by Strava id for now)
   - [~] Free-tier boundaries today vs §5.1, pinned in route tests, 3 gaps listed: `docs/free-tier-boundaries.md` (`claude/free-tier-boundaries`)
+  - [~] PRD and doc 09 vs the code, row by row, doc pointers fixed, 5 behaviors pinned: `docs/spec-audit-1106.md` (`claude/spec-audit-1106`)
 
 ## Later phases (refined 2026-11-03 from the 90-day plan §4, doc 07 §4.6 to §5.5, doc 10 §4 and §6.3)
 

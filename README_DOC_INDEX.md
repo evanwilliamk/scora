@@ -32,7 +32,7 @@ Read these in order before writing any code.
 
 │
 
-├── 01_SCORA_90-Day_Execution_Plan_v1.4.md           ← CURRENT (three-tier phasing)
+├── 01_SCORA_90-Day_Execution_Plan_v1_4.md           ← CURRENT (three-tier phasing)
 
 ├── 01_SCORA_90-Day_Execution_Plan_v1.3.md           ← v1.3 (native iOS + WhatsApp, no plan tier)
 
@@ -42,7 +42,7 @@ Read these in order before writing any code.
 
 │
 
-├── 02_SCORA_PRD_v1.4.md                             ← CURRENT (three-tier product spec)
+├── 02_SCORA_PRD_v1_4.md                             ← CURRENT (three-tier product spec)
 
 ├── 02_SCORA_PRD_v1.3.md                             ← v1.3 (single-tier)
 
@@ -72,7 +72,7 @@ Read these in order before writing any code.
 
 │
 
-├── 06_SCORA_Pattern_Library_v0.3.md                 ← CURRENT (plan-vs-body subfamily)
+├── 06_SCORA_Pattern_Library_v0_3.md                 ← CURRENT (plan-vs-body subfamily)
 
 ├── 06_SCORA_Pattern_Library_v0.2.md                 ← v0.2 (schema-defining)
 
@@ -153,9 +153,9 @@ The proprietary work is the voice — the library of interpretations, the tone, 
 Appears in:
 
 CLAUDE.md §0
-02_SCORA_PRD_v1.4.md §0
-06_SCORA_Pattern_Library_v0.3.md §1
-01_SCORA_90-Day_Execution_Plan_v1.4.md §0
+02_SCORA_PRD_v1_4.md §0
+06_SCORA_Pattern_Library_v0_3.md §1
+01_SCORA_90-Day_Execution_Plan_v1_4.md §0
 
 Most important sentence in the company.
 
@@ -197,14 +197,14 @@ Evan Kosowski — founder, voice lead, product, engineering, everything else.
 
 # | File | What it gives you
 1 | CLAUDE.md | Standing orders. Voice rules. Voice-vs-Plan distinction. Banned phrases. Tech stack. Non-negotiables. Read first. Re-read regularly.
-2 | 02_SCORA_PRD_v1.4.md | Product spec. Three-tier features. User journeys. Data model overview.
+2 | 02_SCORA_PRD_v1_4.md | Product spec. Three-tier features. User journeys. Data model overview.
 3 | 07_SCORA_Architecture_Data_Model_v2.md | Concrete schemas, API contracts, pipelines, Stripe Connect + WorkoutKit + plan generation + coach marketplace details.
 4 | 08_SCORA_LLM_Prompt_Spec_v2.md | Production prompts (daily-read plan-aware, weekly-read, workout-description, adaptation-reason, plan-summary, CDV spec). Validator pipelines.
-5 | 06_SCORA_Pattern_Library_v0.3.md | The voice. Pattern schema. Banned-phrase list. Plan-vs-body subfamily.
+5 | 06_SCORA_Pattern_Library_v0_3.md | The voice. Pattern schema. Banned-phrase list. Plan-vs-body subfamily.
 File | Consult when
 09_SCORA_Onboarding_Flow_v2.md | Free tier onboarding, Plan tier upgrade flow, Coach tier booking flow, coach onboarding.
 10_SCORA_Acceptance_Criteria_v2.md | Verifying phase gates. Writing observability. Free tier Phase 1 → Plan tier Phase 2 → Coach marketplace Phase 3.
-01_SCORA_90-Day_Execution_Plan_v1.4.md | Understanding what to build when. Phased scope.
+01_SCORA_90-Day_Execution_Plan_v1_4.md | Understanding what to build when. Phased scope.
 03_SCORA_Feature_Roadmap_12mo.md | Long-range roadmap context. (Stale framing in places; treat as historical until update.)
 04_SCORA_ICP_Interview_Script.md | Running customer discovery.
 05_SCORA_Home_Screen_Mockup.html | Visual reference for dashboard direction (open in browser).
