@@ -52,7 +52,8 @@ export async function fakeRest(): Promise<FakeRest> {
       } catch (e) {
         next = { status: 500, body: { message: e instanceof Error ? e.message : String(e) } };
       }
-      let out = next.body ?? [];
+      // A null body stays null: an rpc that returned null answers null, not a list.
+      let out = next.body === undefined ? [] : next.body;
       // .single() / .maybeSingle() ask for one object.
       if (String(req.headers.accept ?? '').includes('vnd.pgrst.object') && Array.isArray(out)) {
         if (out.length !== 1) {

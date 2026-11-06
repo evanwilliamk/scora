@@ -2,8 +2,9 @@
 // fake REST server: supabase-js select / insert / upsert / update / delete
 // with eq, neq, is, gte, lte, gt, lt, in and or filters run as SQL, so the
 // production store code is tested against the real schema and constraints.
-// Not a full PostgREST: no general embedding (only scheduled_workouts' inner
-// join on training_plans), no ordering beyond `order=col`, no ranges.
+// Not a full PostgREST: embeds only the inner joins the stores use (a row's
+// training_plans status, a plan's plan_templates), ordering is `order=col` with
+// .asc or .desc, no ranges.
 // `rpc/<fn>` runs the function with named arguments, and a table or function
 // the schema lacks answers as PostgREST does (404, PGRST205 or PGRST202), so
 // code can be run against an older schema.
@@ -69,14 +70,21 @@ function where(params: URLSearchParams, values: unknown[]): string {
   return parts.length ? `where ${parts.join(' and ')}` : '';
 }
 
+// The select without its `name!inner(a, b)` embeds, and those embeds' columns.
+const EMBED = /([a-z_]+)!inner\(([^)]*)\)/g;
+const plainColumns = (select: string) => select.replace(EMBED, '').split(',').map((c) => c.trim()).filter(Boolean);
+const embedsOf = (select: string | null) =>
+  [...(select ?? '').matchAll(EMBED)].map((m) => ({ table: m[1], cols: m[2].split(',').map((c) => c.trim()) }));
+
 function pick(rows: any[], select: string | null): any[] {
   if (!select || select.trim() === '*') return rows;
-  const cols = select.split(',').map((s) => s.trim()).filter((c) => c && !c.includes('!inner'));
+  const cols = plainColumns(select);
   if (cols.includes('*')) return rows;
   const embeds = /training_plans!inner/.test(select);
   return rows.map((r) => ({
     ...Object.fromEntries(cols.map((c) => [c, r[c]])),
     ...(embeds ? { training_plans: { current_status: 'active' } } : {}),
+    ...(r.plan_templates ? { plan_templates: r.plan_templates } : {}),
   }));
 }
 
@@ -113,7 +121,7 @@ export async function runRest(pg: PGlite, req: RestRequest): Promise<RestAnswer>
   const wantRows = prefer.includes('return=representation') || req.method === 'GET';
   const select = req.params.get('select');
   // A named column the table lacks is an error, as in PostgREST, even with no rows to pick from.
-  const named = (select ?? '').split(',').map((c) => c.trim()).filter((c) => /^[a-z_][a-z0-9_]*$/.test(c));
+  const named = plainColumns(select ?? '').filter((c) => /^[a-z_][a-z0-9_]*$/.test(c));
   if (named.length) {
     const have = await pg.query<{ c: string }>(
       `select column_name as c from information_schema.columns where table_schema = 'public' and table_name = $1`, [req.table]);
@@ -124,11 +132,21 @@ export async function runRest(pg: PGlite, req: RestRequest): Promise<RestAnswer>
     let rows: any[] = [];
     if (req.method === 'GET') {
       const order = req.params.get('order');
-      const orderSql = order ? `order by ${order.split(',').map((o) => ident(o.split('.')[0])).join(', ')}` : '';
+      const orderSql = order
+        ? `order by ${order.split(',').map((o) => `${ident(o.split('.')[0])}${o.split('.')[1] === 'desc' ? ' desc' : ''}`).join(', ')}`
+        : '';
       const limit = req.params.get('limit');
       const r = await pg.query<{ r: any }>(
         `select to_jsonb(${t}.*) as r from ${t} ${where(req.params, values)} ${orderSql} ${limit ? `limit ${Number(limit)}` : ''}`, values);
       rows = r.rows.map((x) => x.r);
+      // A plan's template, the one embed that returns columns.
+      if (embedsOf(select).some((e) => e.table === 'plan_templates')) {
+        const cols = embedsOf(select).find((e) => e.table === 'plan_templates')!.cols;
+        for (const row of rows) {
+          const tmpl = await pg.query<{ r: any }>('select to_jsonb(t.*) as r from plan_templates t where t.id = $1', [row.template_id]);
+          row.plan_templates = tmpl.rows[0] ? Object.fromEntries(cols.map((c) => [c, tmpl.rows[0].r[c]])) : null;
+        }
+      }
     } else if (req.method === 'POST') {
       const body = Array.isArray(req.body) ? req.body : [req.body];
       const onConflict = req.params.get('on_conflict');

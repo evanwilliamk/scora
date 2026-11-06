@@ -1,0 +1,70 @@
+# TEST FIXTURE for test/journey-sim.test.ts. Not training content: the numbers
+# exist only to give the adaptation rules room to fire (a move, a downgrade, a
+# long run that shifts) inside a 21-day simulation.
+slug: journey-fixture-3wk
+sport: run
+goal_type: 10k
+duration_weeks: 3
+experience_level: regular
+weekly_volume_range_km: [30, 50]
+author: Journey Fixture
+version: 0.0.1
+status: reviewed
+reviewed_by: Test Fixture
+reviewed_on: 2026-11-05
+phases:
+  - { name: Base, weeks: [1], focus: fixture base }
+  - { name: Build, weeks: [2], focus: fixture build }
+  - { name: Taper, weeks: [3], focus: fixture taper }
+week_load_percent: [100, 100, 80]
+weekly_pattern:
+  monday: easy
+  tuesday: quality_a
+  wednesday: easy
+  thursday: quality_b
+  friday: easy
+  saturday: long_effort
+  sunday: easy
+workout_types_by_phase:
+  Base:
+    easy: [easy_run]
+    quality_a: [fartlek]
+    quality_b: [easy_run]
+    long_effort: [long_easy]
+  Build:
+    easy: [easy_run]
+    quality_a: [threshold_intervals]
+    quality_b: [tempo_run]
+    long_effort: [long_easy]
+  Taper:
+    easy: [easy_run]
+    quality_a: [fartlek]
+    quality_b: [easy_run]
+    long_effort: [long_easy]
+workout_definitions:
+  easy_run:
+    intensity: easy
+    structure:
+      - { type: steady, duration_min: 25, intensity: easy }
+  fartlek:
+    intensity: intervals
+    structure:
+      - { type: warmup, duration_min: 14, intensity: easy }
+      - { type: interval, reps: 6, work_duration_min: 2, work_intensity: moderate, rest_duration_min: 2, rest_intensity: easy }
+      - { type: cooldown, duration_min: 14, intensity: easy }
+  threshold_intervals:
+    intensity: threshold
+    structure:
+      - { type: warmup, duration_min: 12, intensity: easy }
+      - { type: interval, reps: 2, work_duration_min: 10, work_intensity: threshold, rest_duration_min: 4, rest_intensity: easy }
+      - { type: cooldown, duration_min: 14, intensity: easy }
+  tempo_run:
+    intensity: tempo
+    structure:
+      - { type: warmup, duration_min: 8, intensity: easy }
+      - { type: steady, duration_min: 20, intensity: tempo }
+      - { type: cooldown, duration_min: 7, intensity: easy }
+  long_easy:
+    intensity: long
+    structure:
+      - { type: steady, duration_min: 120, intensity: easy }
