@@ -109,7 +109,7 @@ test('with templates of two lengths, the one that still fits before the race is 
   const [four] = templates;
   const eight = { ...four, slug: 'test-fixture-8wk', version: '9.0.0', duration_weeks: 8 };
   let stored: any = null;
-  const store = { hasActiveCoachPlan: async () => false, createPlan: async (p: any) => { stored = p; return 'mem-1'; } };
+  const store = { hasActiveCoachPlan: async () => false, activeSetup: async () => null, createPlan: async (p: any) => { stored = p; return 'mem-1'; } };
   const { plan } = await generatePlan('mem', req, '2026-10-21', [eight, four], store);
   assert.equal(plan.template_slug, four.slug);
   assert.equal(plan.start_date, '2026-10-19');
@@ -313,6 +313,38 @@ test('review 2026-11-01 (second pass): a weekly km with more than two decimals i
   assert.equal(again.planId, first.planId);
   const plans = (await db.query<any>(`select current_status from training_plans where athlete_id = 'k1'`)).rows;
   assert.deepEqual(plans.map((r) => r.current_status), ['active']);
+});
+
+test('journey 2026-11-06: the same setup after the first week is the plan the athlete is on, not race_too_soon', async () => {
+  const store = sqlGenerateStore(db);
+  const first = await generatePlan('j1', req, '2026-10-19', templates, store);
+  const w = (await db.query<any>(
+    `select id from scheduled_workouts where training_plan_id = $1 order by scheduled_date limit 1`, [first.planId])).rows[0];
+  await db.query(`update scheduled_workouts set athlete_completed = true where id = $1`, [w.id]);
+  const again = await generatePlan('j1', req, '2026-10-28', templates, store);
+  assert.equal(again.planId, first.planId);
+  assert.equal(again.plan.start_date, first.plan.start_date);
+  assert.ok(again.plan.workouts.every((x) => x.scheduled_date >= '2026-10-28'));
+  const plans = (await db.query<any>(`select current_status from training_plans where athlete_id = 'j1'`)).rows;
+  assert.deepEqual(plans.map((r) => r.current_status), ['active']);
+  const done = (await db.query<any>(`select athlete_completed from scheduled_workouts where id = $1`, [w.id])).rows[0];
+  assert.equal(done.athlete_completed, true);
+  // A real change still has to fit: a new weekly km is a new plan, and it is too late for one.
+  assert.equal(await code(generatePlan('j1', { ...req, current_weekly_km: 36 }, '2026-10-28', templates, store)), 'race_too_soon');
+});
+
+test('journey 2026-11-06: a shorter template that now fits does not replace the plan on the same setup', async () => {
+  const store = sqlGenerateStore(db);
+  const shorter = loadTemplates(join(here, 'fixtures', 'journey-templates'));
+  const first = await generatePlan('j2', req, '2026-10-19', templates, store);
+  // The race is 3 weeks from this Monday, so the 3-week fixture now fits.
+  const again = await generatePlan('j2', req, '2026-10-27', [...templates, ...shorter], store);
+  assert.equal(again.planId, first.planId);
+  assert.equal(again.plan.template_slug, first.plan.template_slug);
+  // A different setup still takes the template that fits, and replaces this plan.
+  const other = await generatePlan('j2', { ...req, current_weekly_km: 36 }, '2026-10-27', [...templates, ...shorter], store);
+  assert.notEqual(other.planId, first.planId);
+  assert.equal(other.plan.template_slug, shorter[0].slug);
 });
 
 test('PLAN_TEMPLATE_DIR is honored only under NODE_ENV=test', () => {
