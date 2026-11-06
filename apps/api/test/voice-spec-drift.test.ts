@@ -119,7 +119,7 @@ test('driver existence: a claim about a measure the record does not have is stop
     assert.deepEqual(r.bannedHits, [], 'a driver check, not a banned phrase');
   }
   const all: Driver[] = [{ metric: 'Sleep', value: '7:12', trend: 'Oura 84' }, { metric: 'HRV', value: '52ms' }, { metric: 'Resting HR', value: '48 bpm' }];
-  for (const line of ['HRV is climbing.', 'Sleep held.', 'Resting heart rate is flat.', 'Oura reads well.']) {
+  for (const line of ['HRV is 52ms.', 'Sleep held.', 'Resting heart rate is flat.', 'Oura reads well.']) {
     assert.equal(validateVoice(line, all).ok, true, line);
   }
   // Saying the data is absent is not a claim (§3.6, and the chat prompt asks for it).
@@ -136,7 +136,7 @@ test('driver existence: a direction in words beside the name must agree with the
   for (const line of ['HRV is down.', 'Load is up.', 'HRV has come down with it.', 'Load dropped the week before.', 'Load is up and HRV is lower.']) {
     assert.equal(validateVoice(line, down).ok, true, line);
   }
-  assert.equal(validateVoice('HRV is up.', [{ metric: 'HRV', value: '30ms', trend: '+0% wk' }]).ok, true, 'zero has no direction');
+  assert.equal(validateVoice('HRV is up.', [{ metric: 'HRV', value: '30ms', trend: '+0% wk' }]).ok, false, 'zero backs no direction');
 });
 
 test('a claim no driver backs goes back to the model named, then falls back', async () => {

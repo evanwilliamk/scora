@@ -1137,3 +1137,18 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: "Oura was not connected. Nothing changed; you can try again from Settings." and "Oura did not connect. Nothing changed; try again from Settings."
 - Why: Settings always has the button.
 - To reverse: `OuraLinkResult.init?(url:)`.
+### 2026-11-05: Validator false-catch pass on tonight's rules, lines left caught and misses found
+- Status: NEEDS EVAN
+- Branch: claude/validator-precision-1105
+- Context: a fresh corpus across daily, weekly, card, chat, adaptation reason and fallback, on drivers built by the real builders, freed 74 false catches. Worst finds: "forty-five minutes" read as "five minutes", "You shouldered" as "you should", "Tim, your coach" as "I'm your coach", terse English fragments as not English, "HRV was lower last week" as a direction against today's trend, and "5.5 hours" (CLAUDE.md 1.3) against a 5:30 driver.
+- Choice (or options): left caught: "Rest." and "What moved? Sleep." (same words as the order; "Rest." is tonight's must-catch), "You'll run into the weekend", "Not a hundred percent", "Seven Mile Beach", "HRV is up on yesterday" (no driver for yesterday), "Oura has HRV at 52ms" on a day with no Oura score, a lower-case foreign run name with no English around it. Also caught, outside this pass's files: "Your miles tapered off" in weekly and chat (`postureClaimHits` in `drivers.ts`). Misses found, not fixed since this pass adds no bans: (1) "HRV is climbing" passes with HRV 52ms and no trend. Options: catch it, since no driver rose (recommended), or leave it. (2) "Load fell 8%" passes with Load and HRV both +8%, because two signed drivers of one size switch the number check off, even with the same sign. Options: skip only when the signs differ (recommended), or leave it. Nothing is blocked on these.
+- Why: each left-caught line has the same words as a real order or claims a number with no driver, and a missed prescription costs more than one fallback read. Accepted risk from narrowing: a place name keeps its small words out of the language count, and up to 12 letters of another script may sit in an English line, so a short steered phrase in a name's shape can pass that one check. Word bans still read the line.
+- To reverse: `isNotEnglish`, `SPELLED_BANS`, `saidAgainstTrend`, `saysAgainstSign`, `clockHourDecimals` in `apps/api/src/validator.ts`, `unbackedNumberWord` in `apps/api/src/adaptation-reason.ts`, with rows in `apps/api/test/validator-precision-1105.test.ts`.
+
+### 2026-11-05: A direction word needs a trend behind it
+- Status: DECIDED
+- Branch: claude/validator-miss-1105
+- Context: "HRV is climbing" passed with a value and no trend, and "Load fell 8%" passed when Load and HRV were both +8%. CLAUDE.md 3.2 makes this a hard rule, so it was fixed rather than asked.
+- Choice: For HRV, Load and weekly volume, an up or down word beside the name with no signed trend is an unbacked claim, unless it cites a number (the number check takes those). A flat or +0% trend backs no direction. Same-size drivers are only skipped when their signs differ. Chat is exempt from the no-trend half, since its data block can hold a series. "Tapered off" no longer counts as a taper posture claim.
+- Why: A day with no week average now gets a retry, then the fallback, rather than an invented direction. Watch the fallback rate on athletes in their first week.
+- To reverse: Restore `if (signs.size !== 1) continue;` in `saidAgainstTrend`.
