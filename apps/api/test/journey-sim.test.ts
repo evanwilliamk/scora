@@ -600,7 +600,8 @@ function checkWeekly(sim: Sim, date: string, where: string, x: any) {
     return;
   }
   tally('weekly with runs');
-  const m = minutes(week);
+  // Day by day, as the Week So Far counts.
+  const m = [...new Set(week.map(localDateOf))].reduce((sum, d) => sum + minutes(week.filter((r) => localDateOf(r) === d)), 0);
   const load = (x.drivers ?? []).find((d: any) => d.metric === 'Load');
   check(load?.value === `${m} min`, 'weekly Load is the seven complete local days', `${sim.id} ${date} ${where} ${load?.value} vs ${m}`);
   check(x.stats.find((s: any) => s.label === 'Load')?.value === `${m} min`, 'weekly tile equals weekly driver', `${sim.id} ${date} ${where}`);
@@ -936,7 +937,15 @@ test('21 days across features, four athletes at once', { timeout: 300_000 }, asy
   const injectFetch = (async (url: any, init: any) => {
     const u = new URL(String(url));
     const body = init?.body ? JSON.parse(init.body) : undefined;
+    // A scheduled read can adapt the plan before the athlete opens the app: the
+    // same rules are checked here as on a read the app asks for.
+    const watched = u.pathname === '/api/read' && sims[body?.athleteId]?.planId ? sims[body.athleteId] : null;
+    const rowsBefore = watched ? await activeRows(watched.id) : [];
+    const adaptsBefore = watched ? await adaptationRows(watched.id) : [];
     const r = await app.inject({ method: init?.method ?? 'GET', url: u.pathname, payload: body });
+    if (watched && r.statusCode === 200) {
+      await checkAdaptations(watched, body.today, 'push', rowsBefore, await activeRows(watched.id), adaptsBefore, r.json().posture?.posture ?? null);
+    }
     const route = `scheduler ${u.pathname} ${r.statusCode}`;
     statuses.set(route, (statuses.get(route) ?? 0) + 1);
     check(r.statusCode < 500, 'no route returns a 500', `${route} ${r.body.slice(0, 120)}`);
@@ -976,7 +985,7 @@ test('21 days across features, four athletes at once', { timeout: 300_000 }, asy
 
   // Weekly pushes, with each one's body checked by re-reading it through the route.
   const startAt = Date.parse('2026-10-18T12:00:00Z');
-  const endAt = Date.parse('2026-11-09T14:00:00Z'); // through every zone's Monday delivery after day 21
+  const endAt = Date.parse('2026-11-09T16:00:00Z'); // through every zone's Monday delivery after day 21 (Los Angeles at 07:30 is 15:30Z)
   let ticks = 0;
   for (let now = startAt; now <= endAt; now += STEP) {
     mock.timers.setTime(now);

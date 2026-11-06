@@ -229,15 +229,17 @@ export class World {
     let reply: string;
     if (system.startsWith('You write one short line')) {
       // The adaptation reason: a clean line naming the change and one driver, or an advising one.
-      const day = /CHANGE: \w+: (\w+)'s/.exec(user)?.[1] ?? 'Tomorrow';
+      const change = /^CHANGE: (\w+): (\w+)'s .*? to ([\w ]+?)(?:, |\.|$)/m.exec(user);
+      const day = change?.[2] ?? 'Tomorrow';
       const driver = /^- [^:]+: (\S+)/m.exec(user)?.[1] ?? '';
-      reply = bad ? `You should skip ${day}.` : /^CHANGE: MOVED/m.test(user)
-        ? `${day}'s session moved. ${driver ? `The record reads ${driver}.` : ''}`.trim()
-        : `${day}'s session changed. ${driver ? `The record reads ${driver}.` : ''}`.trim();
+      const cited = driver ? ` The record reads ${driver}.` : '';
+      reply = bad ? `You should skip ${day}.` : change?.[1] === 'MOVED'
+        ? `${day}'s session moved to ${change[3]}.${cited}`
+        : `${day}'s session is now ${change?.[3] ?? 'lighter'}.${cited}`;
     } else if (system.includes('voice layer')) {
       // Chat: the data block's own numbers, in the output format.
       const data = JSON.parse(user.slice(user.indexOf('Data (JSON):') + 12, user.indexOf('Answer THIS')).trim());
-      reply = bad ? this.bad(mode) : `${data.thisWeek.miles} mi across ${data.thisWeek.runs} runs in the last 7 days.\nMETRIC: Weekly miles | VALUE: ${data.thisWeek.miles} mi | TREND: flat\nCHART: weekly_miles`;
+      reply = bad ? this.bad(mode) : `${data.thisWeek.miles} mi across ${data.thisWeek.runs} runs this past week.\nMETRIC: Weekly miles | VALUE: ${data.thisWeek.miles} mi | TREND: flat\nCHART: weekly_miles`;
     } else {
       reply = bad ? this.bad(mode) : this.draft(user);
     }
