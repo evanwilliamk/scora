@@ -1,5 +1,5 @@
 SCORA — Acceptance Criteria
-Version: v2 (2026-04-26) Supersedes: v1 Companion to: 01_SCORA_90-Day_Execution_Plan_v1.4.md, 02_SCORA_PRD_v1.4.md
+Version: v2 (2026-04-26) Supersedes: v1 Companion to: 01_SCORA_90-Day_Execution_Plan_v1_4.md, 02_SCORA_PRD_v1_4.md
 
 
 0. What changed in v2

@@ -1,5 +1,5 @@
 SCORA — 90-Day Execution Plan
-Version: v1.4 Date: 2026-04-26 Supersedes: v1.3 Companion to: 02_SCORA_PRD_v1.4.md, 07_SCORA_Architecture_Data_Model_v2.md, 10_SCORA_Acceptance_Criteria_v2.md
+Version: v1.4 Date: 2026-04-26 Supersedes: v1.3 Companion to: 02_SCORA_PRD_v1_4.md, 07_SCORA_Architecture_Data_Model_v2.md, 10_SCORA_Acceptance_Criteria_v2.md
 
 
 0. Cornerstone (unchanged)

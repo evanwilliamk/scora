@@ -1,5 +1,5 @@
 SCORA — Onboarding Flow
-Version: v2 (2026-04-26) Supersedes: v1 Companion to: 02_SCORA_PRD_v1.4.md, 07_SCORA_Architecture_Data_Model_v2.md Audience: Coding agent + designer
+Version: v2 (2026-04-26) Supersedes: v1 Companion to: 02_SCORA_PRD_v1_4.md, 07_SCORA_Architecture_Data_Model_v2.md Audience: Coding agent + designer
 
 
 0. What changed in v2

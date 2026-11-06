@@ -1,5 +1,5 @@
 SCORA — Architecture & Data Model
-Version: v2 (2026-04-26) Supersedes: v1 Companion to: CLAUDE.md v1.4, 02_SCORA_PRD_v1.4.md Audience: Coding agent + SCORA contributors
+Version: v2 (2026-04-26) Supersedes: v1 Companion to: CLAUDE.md v1.4, 02_SCORA_PRD_v1_4.md Audience: Coding agent + SCORA contributors
 
 
 0. What changed from v1
