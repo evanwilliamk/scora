@@ -20,6 +20,13 @@ test('Monday to today, later days empty, compared with last week to the same day
   assert.equal(w.line, '3 runs, 120 min since Monday; 95 min through Thursday last week.');
 });
 
+test('two weeks of the same runs read the same: last week rounds per day, as this week does', () => {
+  // Three days of 40.4 min: 40 a day, 120 counted day by day, 121 as one rounded total.
+  const secs = (d: string) => ({ type: 'Run', start_date_local: `${d}T07:00:00Z`, moving_time: 2424 });
+  const w = weekSoFar(['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-19', '2026-10-20', '2026-10-21'].map(secs), '2026-10-21');
+  assert.deepEqual([w.total_min, w.last_week_to_date_min], [120, 120]);
+});
+
 test('every number in the line is shown, and the line passes the voice validator', () => {
   const w = weekSoFar([run('2026-10-19', 40), run('2026-10-12', 30)], '2026-10-19');
   assert.equal(w.line, '1 run, 40 min since Monday; 30 min through Monday last week.');

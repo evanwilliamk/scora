@@ -58,9 +58,9 @@ export function weekSoFar(activities: any[], today: string, planned?: Map<string
     return d >= iso(monday) && d <= today;
   });
   const total = days.reduce((s, d) => s + (d.run_min ?? 0), 0);
+  // Rounded per day, as this week's total is, so equal weeks read as equal.
   let last = 0;
-  for (let i = 0; i <= dow; i++) last += minutesOn(iso(monday - 7 * DAY + i * DAY));
-  last = Math.round(last);
+  for (let i = 0; i <= dow; i++) last += Math.round(minutesOn(iso(monday - 7 * DAY + i * DAY)));
 
   const n = thisWeek.length;
   let line = n === 0
