@@ -82,6 +82,14 @@ export function parseGenerateRequest(body: any): GenerateRequest {
   };
 }
 
+// The library's folder. PLAN_TEMPLATE_DIR points the end-to-end simulation at
+// synthetic templates and is ignored outside NODE_ENV=test (as APNS_TEST_HOST
+// is): the loader trusts a file's own "status: reviewed", so in production a
+// stray folder would be an unreviewed way into athletes' plans.
+export function planTemplateDir(env: Record<string, string | undefined>, libraryDir: string): string {
+  return env.NODE_ENV === 'test' && env.PLAN_TEMPLATE_DIR ? env.PLAN_TEMPLATE_DIR : libraryDir;
+}
+
 // Match, assemble, store. `today` is the athlete's local date. Workouts dated
 // before today are not stored (the plan may start earlier this week).
 export async function generatePlan(

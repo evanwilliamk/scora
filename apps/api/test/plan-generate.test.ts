@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite-pgvector';
 import { loadTemplates } from '../../../packages/plan-engine/src/index';
-import { GenerateError, generatePlan, parseGenerateRequest, sqlGenerateStore } from '../src/plan-generate';
+import { GenerateError, generatePlan, parseGenerateRequest, planTemplateDir, sqlGenerateStore } from '../src/plan-generate';
 import { adaptTomorrow, sqlAdaptStore } from '../src/plan-adapt';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -313,4 +313,12 @@ test('review 2026-11-01 (second pass): a weekly km with more than two decimals i
   assert.equal(again.planId, first.planId);
   const plans = (await db.query<any>(`select current_status from training_plans where athlete_id = 'k1'`)).rows;
   assert.deepEqual(plans.map((r) => r.current_status), ['active']);
+});
+
+test('PLAN_TEMPLATE_DIR is honored only under NODE_ENV=test', () => {
+  const lib = '/library';
+  assert.equal(planTemplateDir({ NODE_ENV: 'test', PLAN_TEMPLATE_DIR: '/fixture' }, lib), '/fixture');
+  assert.equal(planTemplateDir({ NODE_ENV: 'test' }, lib), lib);
+  assert.equal(planTemplateDir({ NODE_ENV: 'production', PLAN_TEMPLATE_DIR: '/fixture' }, lib), lib);
+  assert.equal(planTemplateDir({ PLAN_TEMPLATE_DIR: '/fixture' }, lib), lib);
 });

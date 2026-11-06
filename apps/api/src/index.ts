@@ -47,6 +47,7 @@ import { addDays, isCalendarDay, mondayOf } from './dates';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planBlock, planOptions, supabaseGenerateStore,
+  planTemplateDir,
 } from './plan-generate';
 import { TEMPLATE_DIR, describeWorkout, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
@@ -1168,9 +1169,7 @@ fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {
 // never load here. Off unless PLAN_GENERATION=on; Plan tier gating waits for
 // the Stripe item.
 let _templates: PlanTemplate[] | null = null;
-// The library's folder; PLAN_TEMPLATE_DIR points the end-to-end simulation at
-// synthetic templates. Reviewed templates only either way (loadTemplates).
-const templateDir = () => process.env.PLAN_TEMPLATE_DIR || TEMPLATE_DIR;
+const templateDir = () => planTemplateDir(process.env, TEMPLATE_DIR);
 // The goals the plan setup screen may offer (doc 09 §2.3), from the loaded
 // templates. Off unless PLAN_GENERATION=on, like generation itself. Empty
 // while a coach's plan is active: generation is hidden then (CLAUDE.md §5.3).
