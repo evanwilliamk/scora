@@ -37,6 +37,18 @@ export interface GenerateStore {
   hasActiveCoachPlan(athleteId: string): Promise<boolean>;
   // Returns the new plan id.
   createPlan(payload: CreatePlanPayload): Promise<string>;
+  // The athlete's active SCORA plan as it was set up, or null.
+  activeSetup(athleteId: string): Promise<ActiveSetup | null>;
+}
+
+export interface ActiveSetup {
+  id: string;
+  template_slug: string;
+  template_version: string;
+  goal_race_type: string | null;
+  goal_race_date: string | null;
+  start_date: string;
+  weekly_volume_start_km: number | null;
 }
 
 export interface CreatePlanPayload {
@@ -82,6 +94,17 @@ export function parseGenerateRequest(body: any): GenerateRequest {
   };
 }
 
+const sameSetup = (a: ActiveSetup, req: GenerateRequest) =>
+  a.goal_race_type === req.goal_type && a.goal_race_date === req.goal_race_date && Number(a.weekly_volume_start_km) === req.current_weekly_km;
+
+// The library's folder. PLAN_TEMPLATE_DIR points the end-to-end simulation at
+// synthetic templates and is ignored outside NODE_ENV=test (as APNS_TEST_HOST
+// is): the loader trusts a file's own "status: reviewed", so in production a
+// stray folder would be an unreviewed way into athletes' plans.
+export function planTemplateDir(env: Record<string, string | undefined>, libraryDir: string): string {
+  return env.NODE_ENV === 'test' && env.PLAN_TEMPLATE_DIR ? env.PLAN_TEMPLATE_DIR : libraryDir;
+}
+
 // Match, assemble, store. `today` is the athlete's local date. Workouts dated
 // before today are not stored (the plan may start earlier this week).
 export async function generatePlan(
@@ -102,6 +125,18 @@ export async function generatePlan(
   // reads as the last day of the next February.
   if (req.goal_race_date > `${Number(today.slice(0, 4)) + 1}${today.slice(4)}`) {
     throw new GenerateError('race_too_far', 'That race is more than 12 months away. Plans can be built within 12 months of the race.');
+  }
+  // The same setup again after the plan's first week: the plan the athlete is
+  // on, marks and named changes kept. Without this the race reads as too soon
+  // (the block has already started), or a shorter template that now fits would
+  // replace the plan. Inside the first week create_scora_plan answers the repeat.
+  const active = await store.activeSetup(athleteId);
+  if (active && active.start_date < mondayOf(today) && sameSetup(active, req)) {
+    const pinned = templates.find((t) => t.slug === active.template_slug && t.version === active.template_version);
+    if (pinned && pinned.sport === req.sport && pinned.experience_level === req.experience_level) {
+      const plan = assemblePlan({ template: pinned, start_date: active.start_date, goal_race_date: req.goal_race_date });
+      return { planId: active.id, plan: { ...plan, workouts: plan.workouts.filter((w) => w.scheduled_date >= today) } };
+    }
   }
   const template = matchTemplate(templates, { ...req, today });
   if (!template) {
@@ -166,6 +201,17 @@ export function sqlGenerateStore(db: Db): GenerateStore {
       const r = await db.query('select create_scora_plan($1::jsonb) as id', [JSON.stringify(payload)]);
       return r.rows[0].id as string;
     },
+    async activeSetup(athleteId) {
+      const r = await db.query(
+        `select p.id, t.slug as template_slug, t.version as template_version, p.goal_race_type,
+                to_char(p.goal_race_date, 'YYYY-MM-DD') as goal_race_date, to_char(p.start_date, 'YYYY-MM-DD') as start_date,
+                p.weekly_volume_start_km::float8 as weekly_volume_start_km
+         from training_plans p join plan_templates t on t.id = p.template_id
+         where p.athlete_id = $1 and p.source = 'scora_ai' and p.current_status = 'active' limit 1`,
+        [athleteId],
+      );
+      return (r.rows[0] as ActiveSetup | undefined) ?? null;
+    },
   };
 }
 
@@ -182,6 +228,19 @@ export function supabaseGenerateStore(sb: { from: (t: string) => any; rpc: (fn: 
       const r = await sb.rpc('create_scora_plan', { p: payload });
       if (r.error) throw new Error(`Save plan: ${r.error.message}`);
       return r.data as string;
+    },
+    async activeSetup(athleteId) {
+      const r = await sb.from('training_plans')
+        .select('id, goal_race_type, goal_race_date, start_date, weekly_volume_start_km, plan_templates!inner(slug, version)')
+        .eq('athlete_id', athleteId).eq('source', 'scora_ai').eq('current_status', 'active').limit(1);
+      if (r.error) throw new Error(`Load active plan: ${r.error.message}`);
+      const row = (r.data ?? [])[0];
+      if (!row) return null;
+      return {
+        id: row.id, template_slug: row.plan_templates.slug, template_version: row.plan_templates.version,
+        goal_race_type: row.goal_race_type, goal_race_date: row.goal_race_date, start_date: row.start_date,
+        weekly_volume_start_km: row.weekly_volume_start_km,
+      };
     },
   };
 }

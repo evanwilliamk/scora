@@ -47,6 +47,7 @@ import { addDays, isCalendarDay, mondayOf } from './dates';
 import { adaptTomorrow, adaptationsEnabled, planChangeContext, supabaseAdaptStore, withTimeout } from './plan-adapt';
 import {
   GenerateError, generatePlan, generationEnabled, parseGenerateRequest, planBlock, planOptions, supabaseGenerateStore,
+  planTemplateDir,
 } from './plan-generate';
 import { TEMPLATE_DIR, describeWorkout, loadTemplates } from '../../../packages/plan-engine/src/index';
 import type { PlanTemplate } from '../../../packages/plan-engine/src/index';
@@ -1179,6 +1180,7 @@ fastify.post('/api/plan/workouts/:id/status', async (request, reply) => {
 // never load here. Off unless PLAN_GENERATION=on; Plan tier gating waits for
 // the Stripe item.
 let _templates: PlanTemplate[] | null = null;
+const templateDir = () => planTemplateDir(process.env, TEMPLATE_DIR);
 // The goals the plan setup screen may offer (doc 09 §2.3), from the loaded
 // templates. Off unless PLAN_GENERATION=on, like generation itself. Empty
 // while a coach's plan is active: generation is hidden then (CLAUDE.md §5.3).
@@ -1187,7 +1189,7 @@ fastify.get('/api/plan/options', async (request, reply) => {
   const { athleteId } = request.query as { athleteId?: string };
   if (!athleteId) return reply.code(400).send({ error: 'Missing: athleteId' });
   try {
-    _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
+    _templates = _templates ?? loadTemplates(templateDir());
     if (await supabaseGenerateStore(planClient()).hasActiveCoachPlan(String(athleteId))) return reply.send({ goals: [] });
     return reply.send({ goals: planOptions(_templates) });
   } catch (e) {
@@ -1227,7 +1229,7 @@ fastify.post('/api/plan/generate', async (request, reply) => {
   try {
     // Refuse a bad request (a race date like 2026-02-30) before any loading.
     const req = parseGenerateRequest(body);
-    _templates = _templates ?? loadTemplates(TEMPLATE_DIR);
+    _templates = _templates ?? loadTemplates(templateDir());
     const { planId, plan } = await generatePlan(String(body.athleteId), req, today, _templates, supabaseGenerateStore(planClient()));
     return reply.send({
       planId,
