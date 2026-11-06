@@ -122,6 +122,28 @@ test('a ring reporting only zeros gives way to Apple Health on the read', async 
   assert.ok(r.json().drivers.some((d: any) => d.metric === 'HRV' && d.value === '52ms'), r.body);
 });
 
+test('a ring with no reading last night gives way to Apple Health, though earlier nights set a week average', async () => {
+  rest.handle('athletes', () => ({ body: [{
+    strava_access_token: 'tok-a1', strava_refresh_token: 'ref-a1', strava_expires_at: Math.floor(now / 1000) + 3600,
+    oura_access_token: 'oura-tok', oura_refresh_token: 'oura-ref', oura_expires_at: Math.floor(now / 1000) + 3600,
+  }] }));
+  guard.stravaActivities([run(1), run(3)]);
+  guard.oura({
+    sleep: { data: [
+      { day: today, type: 'long_sleep', total_sleep_duration: 0, average_hrv: 0, lowest_heart_rate: 0 },
+      { day: dayAgo(1), type: 'long_sleep', total_sleep_duration: 25000, average_hrv: 60, lowest_heart_rate: 50 },
+      { day: dayAgo(2), type: 'long_sleep', total_sleep_duration: 25000, average_hrv: 60, lowest_heart_rate: 50 },
+    ] },
+    daily_sleep: { data: [] },
+    daily_readiness: { data: [] },
+  });
+  guard.openAi('Load is 80 min this week.');
+  const r = await app.inject({ method: 'POST', url: '/api/read', payload: { athleteId: '42', today, health: { sleepSeconds: 25920, hrvMs: 52 } } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().connections.healthKit, true);
+  assert.ok(r.json().drivers.some((d: any) => d.metric === 'HRV' && d.value === '52ms'), r.body);
+});
+
 // Replies the token cap stopped (finish_reason "length").
 
 const cutAnswer = (content: string) => ({ body: { choices: [{ message: { role: 'assistant', content }, finish_reason: 'length' }] } });

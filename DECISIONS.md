@@ -1184,3 +1184,19 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice (or options): (1) leave it and watch the cdv fallback rate once real traffic exists (recommended, no change made). (2) add the window to the data block so 7 is backed. Nothing is blocked. The simulation's fake now says "this past week", so its chats reach the passing path.
 - Why: no real-traffic number yet, and validator scope changes were tonight's other branch.
 - To reverse: not applicable (no change).
+
+### 2026-11-06: A ring with no reading last night gives way to Apple Health
+- Status: DECIDED
+- Branch: claude/review-1106
+- Context: the read treated Oura as empty only when the week HRV average was empty too, but that average comes from earlier nights, so a ring left off or reporting zeros last night kept the read from using the phone's sleep and HRV.
+- Choice: only last night's values and readiness decide the handover. The alternative was to keep Oura and show no-data cards on those mornings.
+- Why: the phone holds a real reading for that night. The cost is that this one read uses Apple Health's week average and has no Oura sleep score history behind its posture.
+- To reverse: add `ouraUsable.hrvWeekAvgMs` back to the `ouraEmpty` list in `apps/api/src/index.ts`.
+
+### 2026-11-06: A chat answer that is "not shown" still spends a query
+- Status: NEEDS EVAN
+- Branch: claude/review-1106
+- Context: only an outage or a reply with no usable text refunds. A reply rejected twice with no checked METRIC line answers "That answer could not be checked against your data, so it is not shown." and counts against the 3 a day. A second draft cut to nothing by the token cap ends here too.
+- Choice (or options): (1) refund when the fallback shows nothing (recommended: no answer, no query, matching the outage rule; costs up to two more model calls per retry). (2) leave it, since a query that keeps failing checks should not be free. No change made, nothing is blocked.
+- Why: this is a free-tier boundary, so it is your call.
+- To reverse: not applicable (no change).

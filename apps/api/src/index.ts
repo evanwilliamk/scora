@@ -658,10 +658,12 @@ fastify.post('/api/read', async (request, reply) => {
     // fetchOuraSummary turns Oura API errors into empty values, so a connected
     // Oura with no sleep, HRV or readiness at all (an outage) is treated like no
     // Oura. Readiness alone still counts as Oura, so it is never dropped.
-    // A ring reporting only zeros has no reading either (usableRecovery).
+    // A ring reporting only zeros has no reading either (usableRecovery). Last
+    // night's values only: the week average comes from earlier nights, so a
+    // ring left off last night still has one.
     const ouraUsable = usableRecovery(ouraSummary);
     const ouraEmpty = !ouraUsable || [ouraUsable.sleepSeconds, ouraUsable.sleepScore, ouraUsable.hrvMs,
-      ouraUsable.restingHr, ouraUsable.hrvWeekAvgMs, ouraUsable.readinessScore].every((v) => v == null);
+      ouraUsable.restingHr, ouraUsable.readinessScore].every((v) => v == null);
     if (ouraEmpty && health && typeof health === 'object') {
       // Untrusted input: the same plausible ranges as parseHealthNights;
       // anything else (a string, NaN, a negative) is null, never "NaN:NaN".
