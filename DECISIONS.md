@@ -1152,3 +1152,35 @@ Decision log for agent work on SCORA. Product decisions from April 2026 live in 
 - Choice: For HRV, Load and weekly volume, an up or down word beside the name with no signed trend is an unbacked claim, unless it cites a number (the number check takes those). A flat or +0% trend backs no direction. Same-size drivers are only skipped when their signs differ. Chat is exempt from the no-trend half, since its data block can hold a series. "Tapered off" no longer counts as a taper posture claim.
 - Why: A day with no week average now gets a retry, then the fallback, rather than an invented direction. Watch the fallback rate on athletes in their first week.
 - To reverse: Restore `if (signs.size !== 1) continue;` in `saidAgainstTrend`.
+
+### 2026-11-06: The same plan setup after week 1 returns the plan the athlete is on
+- Status: DECIDED
+- Branch: claude/journey-sim-1105
+- Context: the journey simulation sent the same setup in week 2 and got race_too_soon for the race the athlete is training for. With a shorter template in the library, it would have replaced the plan instead. create_scora_plan's repeat check could only catch a repeat inside week 1.
+- Choice: `generatePlan` answers a repeat (same race type, race date, weekly km, level and sport) with the active plan once the block has started, on its pinned template version. The alternative was to leave the refusal and reword it. No migration.
+- Why: marks and named changes stay, and a setup screen reopened mid-block cannot swap the plan.
+- To reverse: remove the `activeSetup` block in `generatePlan` (`apps/api/src/plan-generate.ts`).
+
+### 2026-11-06: Weekly Load is summed day by day
+- Status: DECIDED
+- Branch: claude/journey-sim-1105
+- Context: Monday's weekly said 247 min where Sunday's Week So Far said 246, because one rounded the week and the other rounded each day.
+- Choice: `buildWeeklySummary` Load rounds per local day, as the Week So Far and the "Plan, last 7 full days" driver already do. The alternative was rounding the Week So Far total from seconds, but then its days would not add up to it. The read's rolling 7-day Load still rounds the total.
+- Why: an athlete can compare the two screens. The weekly can sit up to 3 min from the raw seconds.
+- To reverse: `minutesByDay` in `apps/api/src/metrics.ts`.
+
+### 2026-11-06: PLAN_TEMPLATE_DIR only works under NODE_ENV=test
+- Status: DECIDED
+- Branch: claude/journey-sim-1105
+- Context: the loader trusts a file's own `status: reviewed`, so this override set in production would load any folder of YAML into athletes' plans.
+- Choice: `planTemplateDir` ignores it outside NODE_ENV=test, as APNS_TEST_HOST is.
+- Why: the coach sign-off is the rule (CLAUDE.md 6.1). `status: reviewed` in the library folder itself is still self-declared and relies on code review.
+- To reverse: `planTemplateDir` in `apps/api/src/plan-generate.ts`.
+
+### 2026-11-06: A chat line saying "the last 7 days" falls back
+- Status: NEEDS EVAN
+- Branch: claude/journey-sim-1105
+- Context: the simulation's first chat draft said "4 mi across 2 runs in the last 7 days". The chat check found no 7 in the data block, so it retried and then used the fallback. Real model drafts may say this too; the retry prompt tells the model which number to drop, so most should recover.
+- Choice (or options): (1) leave it and watch the cdv fallback rate once real traffic exists (recommended, no change made). (2) add the window to the data block so 7 is backed. Nothing is blocked. The simulation's fake now says "this past week", so its chats reach the passing path.
+- Why: no real-traffic number yet, and validator scope changes were tonight's other branch.
+- To reverse: not applicable (no change).
